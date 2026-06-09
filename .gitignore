@@ -1,0 +1,85 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# ── Ambiente virtual ──────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Django ────────────────────────────────────────────────────────────────────
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+
+# Arquivos de sessão e cache do Django
+django_cache/
+.cache/
+
+# ── Variáveis de ambiente ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Playwright ────────────────────────────────────────────────────────────────
+# Sessão persistente do Playwright (cookies/localStorage entre execuções)
+leads/.pw_session_state.json
+
+# Browsers instalados pelo Playwright (pesados, reinstale com: playwright install firefox)
+ms-playwright/
+
+# ── Cookies do Google (NUNCA commitar — dados sensíveis de sessão) ────────────
+leads/google_cookies.json
+leads/google_maps_cookies.json
+
+# ── Screenshots de diagnóstico do scraper ────────────────────────────────────
+tmp/
+*.png
+*.jpg
+*.jpeg
+
+# ── Backups gerados pelo scraper_cookie_patch.py ─────────────────────────────
+*.py.bak
+*.bak
+
+# ── Editores e IDEs ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Testes e cobertura ────────────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+coverage.xml
+*.cover
+
+# ── Build / distribuição ──────────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+
+# ── Arquivos estáticos coletados (gerados pelo collectstatic) ─────────────────
+staticfiles/
+static_root/
+
+# ── Celery ────────────────────────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat.pid
+
+# ── Diagnóstico ───────────────────────────────────────────────────────────────
+diagnostico_scraper.py
+testar_ollama.py

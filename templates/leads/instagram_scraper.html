@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto" x-data="{ scraping: false }">
+    <!-- Header Section -->
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Instagram Lead Scraper</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Busque contas corporativas e influenciadores no Instagram através de dorks de busca avançada.</p>
+    </div>
+
+    <!-- Scraper Form Card -->
+    <div class="glass-panel rounded-2xl p-8 shadow-md relative overflow-hidden">
+        <!-- Decoration banner -->
+        <div class="absolute top-0 left-0 right-0 h-1.5 gradient-bg-primary"></div>
+        
+        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-4 mb-6">Configurações de Consulta</h3>
+
+        <form method="POST" action="{% url 'instagram_scraper' %}" @submit="scraping = true" class="space-y-6">
+            {% csrf_token %}
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <!-- Field 1: Nicho -->
+                <div>
+                    <label for="niche" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">Nicho / Segmento *</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-solid fa-hashtag"></i>
+                        </div>
+                        <input type="text" name="niche" id="niche" required placeholder="Ex: advogado, dentista, arquiteto"
+                               class="block w-full pl-10 pr-4 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition text-slate-900 dark:text-white">
+                    </div>
+                </div>
+
+                <!-- Field 2: Localizacao -->
+                <div>
+                    <label for="location" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">Localização (Opcional)</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                            <i class="fa-solid fa-earth-americas"></i>
+                        </div>
+                        <input type="text" name="location" id="location" placeholder="Ex: São Paulo, Curitiba"
+                               class="block w-full pl-10 pr-4 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition text-slate-900 dark:text-white">
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <!-- Field 3: Quantidade -->
+                <div>
+                    <label for="limit" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">Quantidade de Leads</label>
+                    <select name="limit" id="limit"
+                            class="block w-full px-3 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition text-slate-900 dark:text-white">
+                        <option value="5">5 Perfis</option>
+                        <option value="10" selected>10 Perfis</option>
+                        <option value="20">20 Perfis</option>
+                        <option value="50">50 Perfis</option>
+                    </select>
+                </div>
+
+                <!-- Filters -->
+                <div class="space-y-3.5 flex flex-col justify-end pt-4 sm:pt-0">
+                    <label class="relative flex items-center cursor-pointer select-none">
+                        <input type="checkbox" name="only_verified" id="only_verified" class="sr-only peer">
+                        <div class="w-10 h-6 bg-slate-200 dark:bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-indigo-500/20 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        <span class="ml-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Apenas perfis VERIFICADOS <i class="fa-solid fa-circle-check text-blue-500 ml-0.5"></i></span>
+                    </label>
+                    
+                    <label class="relative flex items-center cursor-pointer select-none">
+                        <input type="checkbox" name="only_with_bio_link" id="only_with_bio_link" class="sr-only peer">
+                        <div class="w-10 h-6 bg-slate-200 dark:bg-slate-800 rounded-full peer peer-focus:ring-2 peer-focus:ring-indigo-500/20 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        <span class="ml-3 text-xs font-semibold text-slate-700 dark:text-slate-300">Apenas perfis com link externo na Bio <i class="fa-solid fa-link text-[10px] ml-0.5"></i></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Query simulator explanation box -->
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 space-y-2 leading-relaxed">
+                <div class="flex items-center text-indigo-500 font-semibold">
+                    <i class="fa-solid fa-circle-info mr-2 text-sm"></i>
+                    <span>Como funciona a busca por dorks?</span>
+                </div>
+                <p>O sistema faz uma requisição simulada baseada em dorks estruturadas do tipo <code class="font-mono bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-400 text-[10px]">site:instagram.com "dentista" "São Paulo"</code>. Isso permite colher informações diretamente de perfis públicos sem acionar as restrições normais de login da plataforma.</p>
+            </div>
+
+            <!-- Submit button -->
+            <div class="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button type="submit" :disabled="scraping"
+                        class="py-2.5 px-6 font-semibold text-xs text-white rounded-xl gradient-bg-primary hover:opacity-95 shadow-md shadow-indigo-500/10 active:scale-[0.99] transition duration-150 flex items-center space-x-2">
+                    <i class="fa-solid fa-magnifying-glass-plus text-xs"></i>
+                    <span>Buscar Perfis</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- SCRAPING LOADER OVERLAY (Alpine Controlled) -->
+    <div x-show="scraping" 
+         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md"
+         style="display: none;">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-8 text-center space-y-6 shadow-2xl">
+            <!-- Animated Spinner -->
+            <div class="relative flex items-center justify-center">
+                <div class="w-16 h-16 rounded-full border-4 border-slate-100 dark:border-slate-800 border-t-indigo-600 animate-spin"></div>
+                <i class="fa-brands fa-instagram text-2xl text-indigo-500 absolute animate-pulse-soft"></i>
+            </div>
+            
+            <div class="space-y-2">
+                <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Buscando Perfis Comerciais</h3>
+                <p class="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
+                    Estamos gerando queries inteligentes para mapear biografias, categorias, marcas de verificação e links externos. Aguarde alguns segundos.
+                </p>
+            </div>
+            
+            <div class="skeleton-box h-1.5 rounded-full w-full"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

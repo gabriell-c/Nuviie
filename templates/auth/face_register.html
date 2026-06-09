@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastro Facial | Nuviie Hub</title>
+    <script>
+        if (localStorage.getItem('theme') === 'dark' ||
+            (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+
+    <style>
+        @keyframes pulse-ring {
+            0%   { box-shadow: 0 0 0 0   rgba(99,102,241,0.5); }
+            70%  { box-shadow: 0 0 0 18px rgba(99,102,241,0); }
+            100% { box-shadow: 0 0 0 0   rgba(99,102,241,0); }
+        }
+        @keyframes success-pop {
+            0%   { transform: scale(1);   box-shadow: 0 0 0 0   rgba(16,185,129,0.6); }
+            50%  { transform: scale(1.06); box-shadow: 0 0 0 20px rgba(16,185,129,0); }
+            100% { transform: scale(1);   box-shadow: 0 0 0 0   rgba(16,185,129,0); }
+        }
+        @keyframes countdown {
+            from { stroke-dashoffset: 0; }
+            to   { stroke-dashoffset: 126; }
+        }
+        #faceGuide          { animation: pulse-ring 1.8s ease-out infinite; }
+        #faceGuide.captured { animation: success-pop 0.5s ease-out forwards; border-color: #10b981; border-style: solid; }
+        #faceGuide.waiting  { animation: pulse-ring 1.8s ease-out infinite; border-color: rgb(99,102,241); }
+        .step-circle        { transition: all 0.3s; }
+        #countdownRing      { transform-origin: center; transform: rotate(-90deg); }
+    </style>
+</head>
+
+<body class="min-h-full bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex items-center justify-center p-4 relative overflow-hidden">
+
+    <div class="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none"></div>
+    <div class="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-emerald-500/10 blur-[120px] pointer-events-none"></div>
+
+    <div class="w-full max-w-lg z-10 my-8">
+
+        <!-- Logo -->
+        <div class="flex flex-col items-center mb-6">
+            <div class="gradient-bg-primary w-12 h-12 rounded-2xl flex items-center justify-center text-white font-extrabold text-2xl shadow-lg shadow-indigo-500/30 mb-3">N</div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Nuviie<span class="text-indigo-500">.hub</span></h1>
+            <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">Cadastro de Reconhecimento Facial</p>
+        </div>
+
+        <div class="glass-panel rounded-3xl p-8 shadow-2xl">
+            <h2 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-1">
+                <i class="fa-solid fa-camera mr-2 text-indigo-500"></i>Cadastrar seu rosto
+            </h2>
+            <p class="text-xs text-slate-400 dark:text-slate-500 mb-5">
+                Vamos capturar <strong>4 poses</strong> para que o sistema te reconheça em qualquer ângulo.
+                Siga as instruções em cada etapa.
+            </p>
+
+            {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                <div class="p-3.5 rounded-xl text-xs font-medium border flex items-center
+                    {% if message.tags == 'success' %}bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400
+                    {% else %}bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400{% endif %}">
+                    <i class="fa-solid {% if message.tags == 'success' %}fa-circle-check{% else %}fa-circle-exclamation{% endif %} mr-2 shrink-0"></i>
+                    <span>{{ message }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Step indicators -->
+            <div class="flex items-center justify-center gap-2 mb-5" id="stepIndicators">
+                {% for label in pose_labels %}
+                <div class="flex flex-col items-center gap-1" data-step="{{ forloop.counter0 }}">
+                    <div class="step-circle w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold
+                        {% if forloop.first %}border-indigo-500 bg-indigo-500/20 text-indigo-400{% else %}border-slate-300 dark:border-slate-700 text-slate-400{% endif %}"
+                        id="stepCircle{{ forloop.counter0 }}">
+                        <span id="stepIcon{{ forloop.counter0 }}">{{ forloop.counter }}</span>
+                    </div>
+                    {% if not forloop.last %}
+                    <div class="hidden"></div>
+                    {% endif %}
+                </div>
+                {% if not forloop.last %}
+                <div class="h-px w-6 bg-slate-200 dark:bg-slate-700 mb-4" id="stepLine{{ forloop.counter0 }}"></div>
+                {% endif %}
+                {% endfor %}
+            </div>
+
+            <!-- Instruction card -->
+            <div class="mb-3 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-center">
+                <p class="text-xs font-semibold text-indigo-400" id="poseInstruction">
+                    Iniciando câmera…
+                </p>
+            </div>
+
+            <!-- Camera view -->
+            <div class="relative rounded-2xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 bg-black mb-4">
+                <video id="video" class="w-full aspect-video object-cover" autoplay playsinline muted></video>
+                <canvas id="canvas" class="hidden"></canvas>
+
+                <!-- Face guide oval -->
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div id="faceGuide" class="w-44 h-52 rounded-[50%] border-[3px] border-dashed border-indigo-400/70 waiting"></div>
+                </div>
+
+                <!-- Countdown ring (top-right) -->
+                <div class="absolute top-3 right-3 w-10 h-10" id="countdownWrap">
+                    <svg viewBox="0 0 44 44" class="w-full h-full -rotate-90">
+                        <circle cx="22" cy="22" r="20" fill="none" stroke="rgba(99,102,241,0.2)" stroke-width="3"/>
+                        <circle id="countdownRing" cx="22" cy="22" r="20" fill="none"
+                            stroke="rgb(99,102,241)" stroke-width="3"
+                            stroke-dasharray="126" stroke-dashoffset="0"
+                            stroke-linecap="round"/>
+                    </svg>
+                    <span id="countdownNum" class="absolute inset-0 flex items-center justify-center text-xs font-bold text-indigo-400">3</span>
+                </div>
+
+                <!-- Status badge -->
+                <div id="statusBadge" class="absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse inline-block"></span>
+                    <span id="statusText">Iniciando…</span>
+                </div>
+            </div>
+
+            <!-- Captured poses preview -->
+            <div class="grid grid-cols-4 gap-2 mb-5">
+                {% for label in pose_labels %}
+                <div class="relative rounded-xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-700 aspect-square bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
+                     id="preview{{ forloop.counter0 }}">
+                    <i class="fa-solid fa-user text-slate-300 dark:text-slate-600 text-xl" id="previewIcon{{ forloop.counter0 }}"></i>
+                    <img id="previewImg{{ forloop.counter0 }}" class="hidden absolute inset-0 w-full h-full object-cover" src="" alt="pose {{ forloop.counter }}">
+                    <div class="hidden absolute inset-0 bg-emerald-500/30 flex items-center justify-center" id="previewCheck{{ forloop.counter0 }}">
+                        <i class="fa-solid fa-check text-emerald-400 text-lg"></i>
+                    </div>
+                    <span class="absolute bottom-1 left-0 right-0 text-center text-[9px] text-slate-400">Pose {{ forloop.counter }}</span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Hidden form -->
+            <form method="POST" id="registerForm">
+                {% csrf_token %}
+                {% for label in pose_labels %}
+                <input type="hidden" name="pose_{{ forloop.counter0 }}" id="poseInput{{ forloop.counter0 }}">
+                {% endfor %}
+            </form>
+
+            <!-- Submit button (shown after all poses captured) -->
+            <button id="submitBtn" class="hidden w-full py-3 rounded-2xl font-semibold text-sm bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-lg shadow-indigo-500/30"
+                    onclick="document.getElementById('registerForm').submit()">
+                <i class="fa-solid fa-face-smile mr-2"></i>Salvar reconhecimento facial
+            </button>
+
+            <div class="flex justify-between items-center mt-4">
+                <a href="{% url 'profile' %}" class="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition">
+                    <i class="fa-solid fa-arrow-left mr-1"></i> Voltar ao perfil
+                </a>
+                <button type="button" id="retakeBtn" class="hidden text-xs font-semibold text-rose-400 hover:text-rose-300 transition"
+                        onclick="restartCapture()">
+                    <i class="fa-solid fa-rotate-right mr-1"></i> Recomeçar
+                </button>
+            </div>
+
+            {% if face_backend %}
+            <p class="text-center text-[9px] text-slate-500/50 mt-4">engine: {{ face_backend }}</p>
+            {% endif %}
+        </div>
+
+        <div class="text-center mt-6 text-xs text-slate-400">
+            &copy; 2026 Nuviie Agência Digital. Todos os direitos reservados.
+        </div>
+    </div>
+
+<script>
+(() => {
+    // ── Pose definitions (must match POSE_LABELS in views.py order) ──────
+    const POSES = [
+        { label: "Olhe direto para a câmera",          icon: "fa-face-smile" },
+        { label: "Vire levemente para a esquerda (~30°)", icon: "fa-face-smile-wink" },
+        { label: "Vire levemente para a direita (~30°)", icon: "fa-face-grin" },
+        { label: "Olhe levemente para cima",            icon: "fa-face-laugh-beam" },
+    ];
+
+    const COUNTDOWN_SECS = 3;   // seconds user has to position per pose
+    const PAUSE_MS       = 800; // pause between poses
+
+    // ── DOM ───────────────────────────────────────────────────────────────
+    const video        = document.getElementById('video');
+    const canvas       = document.getElementById('canvas');
+    const statusText   = document.getElementById('statusText');
+    const statusBadge  = document.getElementById('statusBadge');
+    const faceGuide    = document.getElementById('faceGuide');
+    const countdownNum = document.getElementById('countdownNum');
+    const countdownRing= document.getElementById('countdownRing');
+    const submitBtn    = document.getElementById('submitBtn');
+    const retakeBtn    = document.getElementById('retakeBtn');
+    const poseInstr    = document.getElementById('poseInstruction');
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let currentPose  = 0;
+    let countdownInt = null;
+    let capturedAll  = false;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function setStatus(text, color = 'amber') {
+        const map = {
+            amber:   ['bg-amber-500/20',   'text-amber-400',   'border-amber-500/30',   'bg-amber-400'],
+            indigo:  ['bg-indigo-500/20',  'text-indigo-400',  'border-indigo-500/30',  'bg-indigo-400'],
+            emerald: ['bg-emerald-500/20', 'text-emerald-400', 'border-emerald-500/30', 'bg-emerald-400'],
+            rose:    ['bg-rose-500/20',    'text-rose-400',    'border-rose-500/30',    'bg-rose-400'],
+        };
+        const [bg, text_, border, dotBg] = map[color];
+        statusBadge.className = `absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-1.5 ${bg} ${text_} ${border}`;
+        statusBadge.querySelector('span').className = `w-1.5 h-1.5 rounded-full inline-block animate-pulse ${dotBg}`;
+        statusText.textContent = text;
+    }
+
+    function markStepDone(idx) {
+        const circle = document.getElementById(`stepCircle${idx}`);
+        const icon   = document.getElementById(`stepIcon${idx}`);
+        circle.className = 'step-circle w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold border-emerald-500 bg-emerald-500/20 text-emerald-400';
+        icon.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
+        if (idx < POSES.length - 1) {
+            const nextCircle = document.getElementById(`stepCircle${idx+1}`);
+            nextCircle.className = 'step-circle w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold border-indigo-500 bg-indigo-500/20 text-indigo-400';
+        }
+    }
+
+    function showPreview(idx, dataUrl) {
+        const img   = document.getElementById(`previewImg${idx}`);
+        const icon  = document.getElementById(`previewIcon${idx}`);
+        const check = document.getElementById(`previewCheck${idx}`);
+        const box   = document.getElementById(`preview${idx}`);
+        img.src = dataUrl;
+        img.classList.remove('hidden');
+        icon.classList.add('hidden');
+        check.classList.remove('hidden');
+        check.classList.add('flex');
+        box.classList.remove('border-dashed', 'border-slate-300', 'dark:border-slate-700');
+        box.classList.add('border-emerald-500/50');
+    }
+
+    function animateCountdown(secs, onDone) {
+        clearInterval(countdownInt);
+        let remaining = secs;
+        countdownNum.textContent = remaining;
+        // SVG ring: 126 = full circle dasharray
+        countdownRing.style.animation = 'none';
+        countdownRing.style.strokeDashoffset = '0';
+        // Trigger reflow
+        countdownRing.getBoundingClientRect();
+        countdownRing.style.transition = `stroke-dashoffset ${secs}s linear`;
+        countdownRing.style.strokeDashoffset = '126';
+
+        countdownInt = setInterval(() => {
+            remaining--;
+            countdownNum.textContent = Math.max(0, remaining);
+            if (remaining <= 0) {
+                clearInterval(countdownInt);
+                onDone();
+            }
+        }, 1000);
+    }
+
+    // ── Capture one frame ─────────────────────────────────────────────────
+    function captureFrame() {
+        canvas.width  = video.videoWidth  || 640;
+        canvas.height = video.videoHeight || 480;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        return canvas.toDataURL('image/jpeg', 0.92);
+    }
+
+    // ── Run a single pose ─────────────────────────────────────────────────
+    function runPose(idx) {
+        if (idx >= POSES.length) {
+            finishCapture();
+            return;
+        }
+
+        currentPose = idx;
+        const pose  = POSES[idx];
+
+        poseInstr.innerHTML = `<i class="fa-solid ${pose.icon} mr-2"></i>${pose.label}`;
+        setStatus(`Pose ${idx + 1} de ${POSES.length}`, 'indigo');
+
+        faceGuide.className = 'w-44 h-52 rounded-[50%] border-[3px] border-dashed border-indigo-400/70 waiting';
+
+        animateCountdown(COUNTDOWN_SECS, () => {
+            // Capture!
+            const dataUrl = captureFrame();
+            document.getElementById(`poseInput${idx}`).value = dataUrl;
+            showPreview(idx, dataUrl);
+            markStepDone(idx);
+
+            faceGuide.className = 'w-44 h-52 rounded-[50%] border-[3px] border-solid border-emerald-400 captured';
+            setStatus('Pose capturada!', 'emerald');
+
+            setTimeout(() => runPose(idx + 1), PAUSE_MS);
+        });
+    }
+
+    // ── All poses done ────────────────────────────────────────────────────
+    function finishCapture() {
+        capturedAll = true;
+        poseInstr.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Todas as poses capturadas! Clique em Salvar.';
+        setStatus('Pronto!', 'emerald');
+        faceGuide.className = 'w-44 h-52 rounded-[50%] border-[3px] border-solid border-emerald-400';
+        submitBtn.classList.remove('hidden');
+        retakeBtn.classList.remove('hidden');
+        countdownNum.textContent = '✓';
+        countdownRing.style.strokeDashoffset = '0';
+        countdownRing.style.stroke = '#10b981';
+    }
+
+    // ── Restart ───────────────────────────────────────────────────────────
+    window.restartCapture = function() {
+        capturedAll = false;
+        submitBtn.classList.add('hidden');
+        retakeBtn.classList.add('hidden');
+        // Reset previews
+        for (let i = 0; i < POSES.length; i++) {
+            document.getElementById(`poseInput${i}`).value = '';
+            document.getElementById(`previewImg${i}`).classList.add('hidden');
+            document.getElementById(`previewIcon${i}`).classList.remove('hidden');
+            document.getElementById(`previewCheck${i}`).classList.add('hidden');
+            document.getElementById(`previewCheck${i}`).classList.remove('flex');
+            const box = document.getElementById(`preview${i}`);
+            box.classList.add('border-dashed', 'border-slate-300');
+            box.classList.remove('border-emerald-500/50');
+            const circle = document.getElementById(`stepCircle${i}`);
+            circle.className = `step-circle w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-bold ${i === 0 ? 'border-indigo-500 bg-indigo-500/20 text-indigo-400' : 'border-slate-300 dark:border-slate-700 text-slate-400'}`;
+            document.getElementById(`stepIcon${i}`).textContent = i + 1;
+        }
+        countdownRing.style.stroke = 'rgb(99,102,241)';
+        runPose(0);
+    };
+
+    // ── Camera start ──────────────────────────────────────────────────────
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+            });
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+                setStatus('Câmera pronta', 'amber');
+                setTimeout(() => runPose(0), 800);
+            };
+        } catch (err) {
+            setStatus('Câmera indisponível', 'rose');
+            poseInstr.textContent = 'Não foi possível acessar a câmera. Verifique as permissões.';
+        }
+    }
+
+    startCamera();
+})();
+</script>
+</body>
+</html>

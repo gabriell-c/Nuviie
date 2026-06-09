@@ -1,0 +1,1010 @@
+{% extends 'base.html' %}
+
+{% block extra_head %}
+<!-- SortableJS CDN for drag and drop -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div x-data="kanbanBoard()" x-init="init()" class="space-y-6 flex flex-col h-full overflow-hidden">
+    <!-- Top Filter Bar -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">CRM Kanban Pipeline</h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Gerencie o progresso comercial de seus leads em tempo real.</p>
+        </div>
+
+        <!-- Filters Grid -->
+        <div class="flex flex-wrap items-center gap-3">
+            <!-- Search -->
+            <div class="relative w-48 sm:w-64">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                </span>
+                <input type="text" x-model="filters.search" @input.debounce.300ms="fetchLeads()" placeholder="Buscar leads..."
+                       class="block w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition text-slate-900 dark:text-white">
+            </div>
+
+            <!-- Source Filter -->
+            <select x-model="filters.source" @change="fetchLeads()"
+                    class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition">
+                <option value="">Todas as origens</option>
+                <option value="google_maps">Google Maps</option>
+                <option value="instagram">Instagram</option>
+            </select>
+
+            <!-- Website Filter -->
+            <select x-model="filters.has_site" @change="fetchLeads()"
+                    class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition">
+                <option value="">Todos os websites</option>
+                <option value="true">Com website</option>
+                <option value="false">Sem website</option>
+            </select>
+
+            <!-- Export Buttons -->
+            <div class="flex items-center space-x-2 border-l border-slate-200 dark:border-slate-800 pl-3">
+                <button @click="exportLeads('csv')" class="p-2 text-slate-500 hover:text-indigo-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-lg transition" title="Exportar CSV">
+                    <i class="fa-solid fa-file-csv text-lg"></i>
+                </button>
+                <button @click="exportLeads('json')" class="p-2 text-slate-500 hover:text-indigo-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-lg transition" title="Exportar JSON">
+                    <i class="fa-solid fa-file-code text-lg"></i>
+                </button>
+            </div>
+            
+            <!-- Manual Create Lead -->
+            <button @click="openCreateModal()" class="btn-interactive px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center space-x-1.5 shadow-md shadow-indigo-500/10">
+                <i class="fa-solid fa-plus text-[10px]"></i>
+                <span>Criar Lead</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Kanban Grid Columns Container -->
+    <div class="flex-1 overflow-x-auto overflow-y-hidden -mx-6 md:-mx-8 px-6 md:px-8 pb-4">
+        <div class="flex space-x-4 min-w-[1200px] h-full items-start">
+            <!-- Loop through stages -->
+            {% for code, display in status_choices %}
+            <div class="flex-1 min-w-[240px] max-w-[320px] bg-slate-100/60 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/40 rounded-2xl p-4 flex flex-col h-full max-h-[calc(100vh-220px)]">
+                <!-- Column Header -->
+                <div class="flex items-center justify-between mb-4 shrink-0">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2 h-2 rounded-full 
+                                     {% if code == 'novo' %} bg-indigo-500
+                                     {% elif code == 'contatado' %} bg-blue-500
+                                     {% elif code == 'negociacao' %} bg-amber-500
+                                     {% elif code == 'retornou' %} bg-purple-500
+                                     {% elif code == 'fechado' %} bg-emerald-500
+                                     {% else %} bg-slate-400 {% endif %}"></span>
+                        <span class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{{ display }}</span>
+                    </div>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                          x-text="getLeadsByStatus('{{ code }}').length">0</span>
+                </div>
+
+                <!-- Column Scrollable Body -->
+                <div class="flex-1 overflow-y-auto space-y-3 pr-1 kanban-column" id="col-{{ code }}" data-status="{{ code }}">
+                    
+                    <!-- Loading state skeleton -->
+                    <template x-if="loading">
+                        <div class="space-y-3">
+                            <div class="skeleton-box rounded-xl h-24 w-full"></div>
+                            <div class="skeleton-box rounded-xl h-24 w-full"></div>
+                        </div>
+                    </template>
+
+                    <!-- Cards -->
+                    <template x-for="lead in getLeadsByStatus('{{ code }}')" :key="lead.id">
+                        <div :data-id="lead.id" @click="openDetails(lead.id)"
+                             class="bg-white dark:bg-slate-850 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm cursor-grab hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition duration-150 relative group">
+                            
+                            <!-- Rating / Quality indicator -->
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold"
+                                      x-text="lead.category || 'Nicho indefinido'"></span>
+                                      
+                                <div class="flex items-center space-x-1">
+                                    <i class="fa-solid fa-star text-amber-400 text-[9px]" x-show="lead.rating"></i>
+                                    <span class="text-[9px] text-slate-400 font-bold" x-show="lead.rating" x-text="lead.rating"></span>
+                                </div>
+                            </div>
+
+                            <!-- Lead Name -->
+                            <h4 class="text-xs font-bold text-slate-800 dark:text-slate-200 line-clamp-1 flex items-center">
+                                <span x-text="lead.name"></span>
+                                <i class="fa-solid fa-circle-check text-blue-500 text-[9px] ml-1 shrink-0" x-show="lead.is_verified"></i>
+                            </h4>
+
+                            <!-- Snippet Bio -->
+                            <p class="text-[10px] text-slate-400 dark:text-slate-500 line-clamp-2 mt-1" x-text="lead.bio || 'Sem descrição cadastrada.'"></p>
+
+                            <!-- Footer properties -->
+                            <div class="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 mt-3 pt-2 text-[10px]">
+                                <div class="flex items-center space-x-2 text-slate-400">
+                                    <i class="fa-brands fa-whatsapp text-emerald-500 text-xs" x-show="lead.normalized_phone"></i>
+                                    <i class="fa-solid fa-globe text-indigo-400" x-show="lead.website"></i>
+                                </div>
+                                
+                                <span class="text-[9px] font-medium text-slate-400 dark:text-slate-500" x-text="formatDate(lead.created_at)"></span>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Empty state indicator inside column -->
+                    <template x-if="!loading && getLeadsByStatus('{{ code }}').length === 0">
+                        <div class="h-24 flex flex-col items-center justify-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-slate-400 dark:text-slate-600">
+                            <i class="fa-solid fa-folder-open text-base mb-1"></i>
+                            <span class="text-[10px]">Vazio</span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- MODAL 90% SCREEN: Lead Details -->
+    <div x-show="detailsModalOpen" 
+         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95"
+         style="display: none;">
+        
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+             @click.away="closeDetailsModal()">
+             
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <div class="flex items-center space-x-3">
+                    <span class="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 uppercase tracking-wide"
+                          x-text="currentLead.source_display"></span>
+                    <h2 class="text-base font-bold text-slate-800 dark:text-slate-200" x-text="currentLead.name">Lead Details</h2>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <!-- Botão: Abrir no Firefox real (Playwright) -->
+                    <button x-show="currentLead.maps_link"
+                            @click="openInFirefox(currentLead.maps_link)"
+                            :disabled="firefoxOpening"
+                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-600 dark:text-slate-300 hover:text-orange-600 dark:hover:text-orange-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-orange-200 dark:hover:border-orange-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                            :title="firefoxOpening ? 'Abrindo Firefox...' : 'Abrir no Firefox (Playwright)'"
+                            title="Abrir no Firefox">
+                        <i class="fa-brands fa-firefox-browser text-xs" :class="firefoxOpening ? 'animate-pulse text-orange-500' : ''"></i>
+                        <span x-text="firefoxOpening ? 'Abrindo...' : 'Abrir Firefox'"></span>
+                    </button>
+                    <button @click="editMode = !editMode" class="text-slate-400 hover:text-indigo-500 p-1.5 rounded-lg transition" :title="editMode ? 'Visualizar' : 'Editar dados'">
+                        <i class="fa-solid" :class="editMode ? 'fa-eye' : 'fa-pen-to-square'"></i>
+                    </button>
+                    <button @click="deleteLead(currentLead.id)" class="text-slate-400 hover:text-red-500 p-1.5 rounded-lg transition" title="Excluir lead permanentemente">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                    <button @click="closeDetailsModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Content (Scrollable Grid) -->
+            <div class="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6" x-show="currentLead">
+                
+                <!-- Col Left: Main Fields & Actions -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Actions Box -->
+                    <div class="glass-panel p-5 rounded-2xl space-y-4">
+                        <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Ações Rápidas de Contato</h4>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <!-- WhatsApp -->
+                            <a :href="currentLead.whatsapp_link" target="_blank" 
+                               :class="currentLead.normalized_phone ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
+                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
+                                <i class="fa-brands fa-whatsapp text-lg mb-1"></i>
+                                <span>WhatsApp</span>
+                            </a>
+                            <!-- Website -->
+                            <a :href="currentLead.website" target="_blank" 
+                               :class="currentLead.website ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
+                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
+                                <i class="fa-solid fa-globe text-lg mb-1"></i>
+                                <span>Abrir Website</span>
+                            </a>
+                            <!-- Instagram -->
+                            <a :href="'https://instagram.com/' + (currentLead.instagram || '').replace('@','')" target="_blank" 
+                               :class="currentLead.instagram ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-pink-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
+                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
+                                <i class="fa-brands fa-instagram text-lg mb-1"></i>
+                                <span>Instagram</span>
+                            </a>
+                            <!-- Facebook -->
+                            <a :href="currentLead.facebook" target="_blank" 
+                               :class="currentLead.facebook ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
+                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
+                                <i class="fa-brands fa-facebook text-lg mb-1"></i>
+                                <span>Facebook</span>
+                            </a>
+                            <!-- Google Meu Negócio -->
+                            <a :href="currentLead.maps_link" target="_blank" 
+                               :class="currentLead.maps_link ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 shadow-slate-200/60' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none border-transparent'"
+                               class="flex flex-col items-center justify-center p-3 rounded-xl border font-semibold text-[10px] text-center shadow-md transition">
+                                <svg class="w-5 h-5 mb-1" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                                </svg>
+                                <span>Google Maps</span>
+                            </a>
+                        </div>
+
+                        <!-- Website detected type badge -->
+                        <template x-if="currentLead.website_detected_type && currentLead.website_detected_type !== 'website'">
+                            <div class="mt-3 flex items-center space-x-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-500 text-xs shrink-0"></i>
+                                <p class="text-[10px] text-amber-700 dark:text-amber-400 leading-snug">
+                                    O link de <strong>"site"</strong> desta empresa foi identificado como 
+                                    <strong x-text="currentLead.website_detected_type_display || currentLead.website_detected_type"></strong>.
+                                    O campo website foi reclassificado automaticamente.
+                                </p>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- View/Edit Fields -->
+                    <div class="glass-panel p-6 rounded-2xl space-y-4">
+                        <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                            <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Informações de Cadastro</h4>
+                            <span class="text-xs font-bold text-slate-800 dark:text-slate-200" x-show="!editMode">Pontuação de Qualidade: <span class="text-emerald-500" x-text="currentLead.quality_score + ' pts'"></span></span>
+                        </div>
+
+                        <!-- Read-only mode -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs" x-show="!editMode">
+                            <div>
+                                <span class="text-slate-400 block mb-1">Nome Fantasia</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.name"></span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block mb-1">Segmento / Categoria</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.category || '-'"></span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block mb-1">Cidade / Região</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.city || '-'"></span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block mb-1">Telefone Principal</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.phone_number || '-'"></span>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <span class="text-slate-400 block mb-1">Endereço Completo</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.address || '-'"></span>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <span class="text-slate-400 block mb-1">Descrição / Biografia</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200 block whitespace-pre-wrap leading-relaxed" x-text="currentLead.bio || '-'"></span>
+                            </div>
+                        </div>
+
+                        <!-- Edit Form mode -->
+                        <form @submit.prevent="saveLeadEdits()" class="space-y-4 text-xs" x-show="editMode">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Nome Fantasia</label>
+                                    <input type="text" x-model="currentLead.name" required
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Segmento</label>
+                                    <input type="text" x-model="currentLead.category"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Cidade</label>
+                                    <input type="text" x-model="currentLead.city"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Telefone Principal</label>
+                                    <input type="text" x-model="currentLead.phone_number"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Website URL</label>
+                                    <input type="url" x-model="currentLead.website"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Instagram (@handle)</label>
+                                    <input type="text" x-model="currentLead.instagram"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-slate-400 mb-1">Endereço Completo</label>
+                                    <input type="text" x-model="currentLead.address"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-slate-400 mb-1">Descrição / Bio</label>
+                                    <textarea x-model="currentLead.bio" rows="3"
+                                              class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"></textarea>
+                                </div>
+                            </div>
+                            <div class="flex justify-end space-x-2 pt-2">
+                                <button type="button" @click="editMode = false" class="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold">Cancelar</button>
+                                <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Col Right: Reviews, Hours & Notes -->
+                <div class="space-y-6 flex flex-col h-full overflow-hidden">
+
+                    <!-- Avaliações Recentes -->
+                    <template x-if="currentLead.recent_reviews && currentLead.recent_reviews.length > 0">
+                        <div class="glass-panel p-5 rounded-2xl shrink-0">
+                            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+                                <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Avaliações Recentes</h4>
+                                <div class="flex items-center space-x-1 text-amber-500">
+                                    <i class="fa-solid fa-star text-xs"></i>
+                                    <span class="text-xs font-bold text-slate-700 dark:text-slate-300" x-text="currentLead.rating ? currentLead.rating.toFixed(1) + ' (' + currentLead.review_count + ')' : '-'"></span>
+                                </div>
+                            </div>
+                            <div class="space-y-3 max-h-52 overflow-y-auto pr-1">
+                                <template x-for="(rev, idx) in (currentLead.recent_reviews || []).slice(0, 10)" :key="idx">
+                                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 space-y-1.5">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-[10px] font-bold text-slate-700 dark:text-slate-300" x-text="rev.author || 'Anônimo'"></span>
+                                            <div class="flex items-center space-x-0.5">
+                                                <template x-for="s in (rev.rating || 0)" :key="s">
+                                                    <i class="fa-solid fa-star text-amber-400" style="font-size:8px"></i>
+                                                </template>
+                                                <template x-for="s in (5 - (rev.rating || 0))" :key="s">
+                                                    <i class="fa-regular fa-star text-slate-300 dark:text-slate-700" style="font-size:8px"></i>
+                                                </template>
+                                            </div>
+                                        </div>
+                                        <p class="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed" x-text="rev.text || '(Sem comentário)'"></p>
+                                        <span class="text-[9px] text-slate-400 dark:text-slate-600" x-text="rev.date || ''"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Horários de Funcionamento -->
+                    <template x-if="currentLead.business_hours && Object.keys(currentLead.business_hours).length > 0">
+                        <div class="glass-panel p-5 rounded-2xl shrink-0">
+                            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
+                                <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Horário de Funcionamento</h4>
+                                <template x-if="currentLead.business_hours.aberto_agora === true">
+                                    <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Aberto agora</span>
+                                </template>
+                                <template x-if="currentLead.business_hours.aberto_agora === false">
+                                    <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 uppercase tracking-wider">Fechado agora</span>
+                                </template>
+                            </div>
+                            <template x-if="currentLead.business_hours.status_atual">
+                                <p class="text-[10px] text-slate-500 dark:text-slate-400 mb-3 italic" x-text="currentLead.business_hours.status_atual"></p>
+                            </template>
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
+                                <template x-for="[dayKey, dayLabel] in [['seg','Segunda'],['ter','Terça'],['qua','Quarta'],['qui','Quinta'],['sex','Sexta'],['sab','Sábado'],['dom','Domingo']]" :key="dayKey">
+                                    <template x-if="currentLead.business_hours[dayKey]">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-slate-400 dark:text-slate-500 font-semibold" x-text="dayLabel"></span>
+                                            <span :class="currentLead.business_hours[dayKey] === 'Fechado' ? 'text-red-400' : 'text-slate-700 dark:text-slate-300 font-medium'"
+                                                  x-text="currentLead.business_hours[dayKey]"></span>
+                                        </div>
+                                    </template>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Histórico de Notas -->
+                    <div class="glass-panel p-6 rounded-2xl flex flex-col flex-1 overflow-hidden min-h-0">
+                        <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider border-b border-slate-100 dark:border-slate-800 pb-3 mb-4 shrink-0">Histórico de Notas</h4>
+                        
+                        <!-- Add Note Form -->
+                        <form @submit.prevent="submitNote()" class="mb-4 shrink-0 space-y-2">
+                            <textarea x-model="newNoteText" placeholder="Adicionar nova observação ou nota comercial..." rows="2" required
+                                      class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"></textarea>
+                            <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl flex items-center justify-center space-x-1">
+                                <i class="fa-solid fa-paper-plane text-[9px]"></i>
+                                <span>Salvar Nota</span>
+                            </button>
+                        </form>
+                        
+                        <!-- Notes List (Scrollable) -->
+                        <div class="flex-1 overflow-y-auto space-y-3 pr-1">
+                            <template x-for="note in currentLead.notes" :key="note.id">
+                                <div class="p-3 bg-slate-50 dark:bg-slate-850 border border-slate-100 dark:border-slate-800/80 rounded-xl space-y-1">
+                                    <div class="flex items-center justify-between text-[9px] font-semibold">
+                                        <span class="text-slate-700 dark:text-slate-300" x-text="note.user_name"></span>
+                                        <span class="text-slate-400" x-text="note.created_at_formatted"></span>
+                                    </div>
+                                    
+                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider uppercase
+                                                 bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                                          x-text="note.action_type_display"></span>
+                                          
+                                    <p class="text-[10px] text-slate-600 dark:text-slate-400 whitespace-pre-wrap leading-relaxed mt-1" x-text="note.note"></p>
+                                </div>
+                            </template>
+
+                            <template x-if="!currentLead.notes || currentLead.notes.length === 0">
+                                <div class="text-center py-6 text-slate-400">
+                                    <i class="fa-solid fa-note-sticky text-lg mb-1 block"></i>
+                                    <span class="text-[10px]">Nenhuma nota cadastrada.</span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MODAL: Navegador Embutido (Browser Preview via Playwright) -->
+    <div x-show="browserModalOpen"
+         class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 scale-100"
+         x-transition:leave-end="opacity-0 scale-95"
+         style="display: none;">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col overflow-hidden"
+             style="height: 88vh;"
+             @click.away="closeBrowserPreview()">
+
+            <!-- Barra do navegador fake -->
+            <div class="flex items-center space-x-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 shrink-0">
+                <!-- Dots estilo macOS -->
+                <div class="flex items-center space-x-1.5">
+                    <button @click="closeBrowserPreview()" class="w-3 h-3 rounded-full bg-red-400 hover:bg-red-500 transition flex items-center justify-center group" title="Fechar">
+                        <i class="fa-solid fa-xmark text-[6px] text-red-800 opacity-0 group-hover:opacity-100"></i>
+                    </button>
+                    <div class="w-3 h-3 rounded-full bg-amber-400"></div>
+                    <div class="w-3 h-3 rounded-full bg-emerald-400"></div>
+                </div>
+
+                <!-- URL bar -->
+                <div class="flex-1 flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 space-x-2 min-w-0">
+                    <i class="fa-solid fa-lock text-emerald-500 text-[10px] shrink-0"></i>
+                    <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono" x-text="browserUrl"></span>
+                </div>
+
+                <!-- Botões de ação -->
+                <div class="flex items-center space-x-1 shrink-0">
+                    <!-- Badge de tempo -->
+                    <span x-show="browserLoadTime" class="text-[9px] font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg mr-1"
+                          x-text="browserLoadTime + 's'"></span>
+                    <button @click="reloadBrowserPreview()"
+                            class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition" title="Tirar novo screenshot">
+                        <i class="fa-solid fa-rotate-right text-xs" :class="browserLoading ? 'animate-spin text-indigo-500' : ''"></i>
+                    </button>
+                    <a :href="browserUrl" target="_blank"
+                       class="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition" title="Abrir em nova aba real">
+                        <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                    </a>
+                    <button @click="closeBrowserPreview()"
+                            class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition" title="Fechar">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Corpo do modal -->
+            <div class="flex-1 relative bg-slate-100 dark:bg-slate-950 overflow-auto">
+
+                <!-- Loading overlay -->
+                <div x-show="browserLoading"
+                     class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-slate-900 space-y-5">
+                    <div class="relative w-14 h-14">
+                        <div class="w-14 h-14 rounded-full border-4 border-slate-100 dark:border-slate-800 border-t-indigo-600 animate-spin"></div>
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <i class="fa-solid fa-map-location-dot text-indigo-500 text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="text-center space-y-1">
+                        <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Abrindo com Playwright...</p>
+                        <p class="text-xs text-slate-400">O Firefox está carregando a página. Pode levar até 30s.</p>
+                    </div>
+                    <!-- Barra de progresso animada -->
+                    <div class="w-48 h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-indigo-500 rounded-full animate-pulse" style="width: 60%"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-400 font-mono" x-text="browserElapsed > 0 ? browserElapsed + 's...' : ''"></p>
+                </div>
+
+                <!-- Erro -->
+                <div x-show="browserError && !browserLoading"
+                     class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-slate-900 space-y-5 px-8 text-center">
+                    <div class="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
+                        <i class="fa-solid fa-triangle-exclamation text-red-400 text-2xl"></i>
+                    </div>
+                    <div class="space-y-2">
+                        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Falha ao capturar screenshot</h3>
+                        <p class="text-xs text-slate-400 leading-relaxed max-w-sm" x-text="browserError"></p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button @click="reloadBrowserPreview()"
+                                class="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition">
+                            <i class="fa-solid fa-rotate-right text-xs"></i>
+                            <span>Tentar novamente</span>
+                        </button>
+                        <a :href="browserUrl" target="_blank"
+                           class="flex items-center space-x-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition">
+                            <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                            <span>Abrir em nova aba</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Screenshot renderizado -->
+                <div x-show="browserImage && !browserLoading && !browserError"
+                     class="min-h-full flex flex-col">
+                    <!-- Banner informativo -->
+                    <div class="px-4 py-2 bg-indigo-50 dark:bg-indigo-950/40 border-b border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between shrink-0">
+                        <div class="flex items-center space-x-2 text-[10px] text-indigo-600 dark:text-indigo-400">
+                            <i class="fa-solid fa-camera text-[10px]"></i>
+                            <span>Screenshot capturado pelo Playwright — página real, não um iframe. Clique em <strong>"↗ Abrir"</strong> para interagir.</span>
+                        </div>
+                        <a :href="browserUrl" target="_blank"
+                           class="flex items-center space-x-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 transition shrink-0 ml-3">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            <span>Abrir e interagir</span>
+                        </a>
+                    </div>
+                    <!-- Imagem -->
+                    <div class="flex-1 overflow-auto bg-slate-200 dark:bg-slate-950 flex items-start justify-center p-4">
+                        <img :src="browserImage"
+                             alt="Screenshot da página"
+                             class="max-w-full shadow-2xl rounded-lg border border-slate-300 dark:border-slate-700"
+                             style="cursor: zoom-in;"
+                             @click="toggleZoom($event)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Create Lead Manually -->
+    <div x-show="createModalOpen" 
+         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+         style="display: none;">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl p-6"
+             @click.away="closeCreateModal()">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+                <h3 class="font-bold text-slate-800 dark:text-slate-200 text-sm">Criar Lead Manualmente</h3>
+                <button @click="closeCreateModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <form @submit.prevent="createLead()" class="space-y-4 text-xs">
+                <div>
+                    <label class="block text-slate-400 mb-1">Nome / Razão Social *</label>
+                    <input type="text" x-model="newLeadForm.name" required
+                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Segmento / Nicho</label>
+                        <input type="text" x-model="newLeadForm.category"
+                               class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Cidade</label>
+                        <input type="text" x-model="newLeadForm.city"
+                               class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Telefone Principal</label>
+                        <input type="text" x-model="newLeadForm.phone_number" placeholder="11 99999-9999"
+                               class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Website URL</label>
+                        <input type="url" x-model="newLeadForm.website" placeholder="https://..."
+                               class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" @click="closeCreateModal()" class="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold">Salvar Lead</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function kanbanBoard() {
+        return {
+            leads: [],
+            loading: true,
+            detailsModalOpen: false,
+            createModalOpen: false,
+            browserModalOpen: false,
+            browserUrl: '',
+            browserLoading: false,
+            browserError: '',
+            browserImage: '',
+            browserLoadTime: 0,
+            browserElapsed: 0,
+            _browserElapsedTimer: null,
+            firefoxOpening: false,
+            editMode: false,
+            currentLead: {},
+            newNoteText: '',
+            
+            filters: {
+                search: '',
+                source: '',
+                has_site: ''
+            },
+            
+            newLeadForm: {
+                name: '',
+                category: '',
+                city: '',
+                phone_number: '',
+                website: '',
+                source: 'google_maps',
+                status: 'novo'
+            },
+            
+            init() {
+                this.fetchLeads().then(() => {
+                    this.initSortable();
+                });
+            },
+            
+            getLeadsByStatus(status) {
+                return this.leads.filter(l => l.status === status);
+            },
+            
+            async fetchLeads() {
+                this.loading = true;
+                
+                // Build query string
+                const params = new URLSearchParams();
+                if (this.filters.search) params.append('search', this.filters.search);
+                if (this.filters.source) params.append('source', this.filters.source);
+                if (this.filters.has_site) params.append('has_site', this.filters.has_site);
+                
+                try {
+                    const response = await fetch(`/api/leads/?${params.toString()}`, {
+                        headers: {
+                            'X-CSRFToken': this.getCookie('csrftoken'),
+                            'Accept': 'application/json'
+                        }
+                    });
+                    if (response.ok) {
+                        this.leads = await response.json();
+                    }
+                } catch (e) {
+                    console.error("Erro ao buscar leads:", e);
+                } finally {
+                    this.loading = false;
+                }
+            },
+            
+            initSortable() {
+                const columns = document.querySelectorAll('.kanban-column');
+                const self = this;
+                
+                columns.forEach(col => {
+                    new Sortable(col, {
+                        group: 'kanban',
+                        animation: 150,
+                        ghostClass: 'sortable-ghost',
+                        chosenClass: 'sortable-chosen',
+                        
+                        async onEnd(evt) {
+                            const leadId = evt.item.getAttribute('data-id');
+                            const targetStatus = evt.to.getAttribute('data-status');
+                            const sourceStatus = evt.from.getAttribute('data-status');
+                            
+                            if (targetStatus === sourceStatus) return;
+                            
+                            // Visual update immediately
+                            const lead = self.leads.find(l => l.id == leadId);
+                            if (lead) {
+                                lead.status = targetStatus;
+                            }
+                            
+                            // API Request
+                            try {
+                                const response = await fetch(`/api/leads/${leadId}/update-status/`, {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRFToken': self.getCookie('csrftoken')
+                                    },
+                                    body: JSON.stringify({ status: targetStatus })
+                                });
+                                
+                                if (!response.ok) {
+                                    // Revert if API fails
+                                    if (lead) lead.status = sourceStatus;
+                                    self.fetchLeads();
+                                }
+                            } catch (e) {
+                                console.error("Erro ao atualizar status:", e);
+                                if (lead) lead.status = sourceStatus;
+                                self.fetchLeads();
+                            }
+                        }
+                    });
+                });
+            },
+            
+            async openDetails(id) {
+                this.editMode = false;
+                this.newNoteText = '';
+                
+                try {
+                    const response = await fetch(`/api/leads/${id}/`);
+                    if (response.ok) {
+                        this.currentLead = await response.json();
+                        this.detailsModalOpen = true;
+                    }
+                } catch (e) {
+                    console.error("Erro ao abrir detalhes:", e);
+                }
+            },
+            
+            async openBrowserPreview(url) {
+                if (!url) return;
+                this.browserUrl = url;
+                this.browserLoading = true;
+                this.browserError = '';
+                this.browserImage = '';
+                this.browserLoadTime = 0;
+                this.browserElapsed = 0;
+                this.browserModalOpen = true;
+
+                // Contador de tempo decorrido
+                const startTime = Date.now();
+                this._browserElapsedTimer = setInterval(() => {
+                    this.browserElapsed = Math.floor((Date.now() - startTime) / 1000);
+                }, 1000);
+
+                try {
+                    const encodedUrl = encodeURIComponent(url);
+                    const resp = await fetch(`/leads/preview/?url=${encodedUrl}`, {
+                        headers: { 'X-CSRFToken': this.getCookie('csrftoken') }
+                    });
+                    const data = await resp.json();
+
+                    clearInterval(this._browserElapsedTimer);
+                    this.browserLoadTime = Math.floor((Date.now() - startTime) / 1000);
+
+                    if (data.image) {
+                        this.browserImage = data.image;
+                        this.browserError = '';
+                    } else {
+                        this.browserError = data.error || 'Erro desconhecido ao capturar screenshot.';
+                    }
+                } catch (e) {
+                    clearInterval(this._browserElapsedTimer);
+                    this.browserError = 'Falha na requisição ao servidor: ' + e.message;
+                } finally {
+                    this.browserLoading = false;
+                }
+            },
+
+            async openInFirefox(url) {
+                if (!url) return;
+                this.firefoxOpening = true;
+                try {
+                    const encodedUrl = encodeURIComponent(url);
+                    const resp = await fetch(`/leads/open-browser/?url=${encodedUrl}`, {
+                        headers: { 'X-CSRFToken': this.getCookie('csrftoken') }
+                    });
+                    const data = await resp.json();
+                    if (data.ok) {
+                        console.log(`[Nuviie] Firefox aberto (PID ${data.pid}): ${url}`);
+                        setTimeout(() => { this.firefoxOpening = false; }, 2000);
+                    } else {
+                        alert('Erro ao abrir Firefox: ' + data.error);
+                        this.firefoxOpening = false;
+                    }
+                } catch (e) {
+                    alert('Falha na requisição: ' + e.message);
+                    this.firefoxOpening = false;
+                }
+            },
+
+            closeBrowserPreview() {
+                this.browserModalOpen = false;
+                this.browserLoading = false;
+                this.browserError = '';
+                this.browserImage = '';
+                clearInterval(this._browserElapsedTimer);
+                setTimeout(() => {
+                    this.browserUrl = '';
+                    this.browserLoadTime = 0;
+                    this.browserElapsed = 0;
+                }, 300);
+            },
+
+            async reloadBrowserPreview() {
+                if (!this.browserUrl) return;
+                const url = this.browserUrl;
+                this.browserImage = '';
+                this.browserError = '';
+                await this.openBrowserPreview(url);
+            },
+
+            toggleZoom(event) {
+                const img = event.target;
+                if (img.style.maxWidth === 'none') {
+                    img.style.maxWidth = '100%';
+                    img.style.cursor = 'zoom-in';
+                } else {
+                    img.style.maxWidth = 'none';
+                    img.style.cursor = 'zoom-out';
+                }
+            },
+
+            closeDetailsModal() {
+                this.detailsModalOpen = false;
+                this.currentLead = {};
+            },
+            
+            async saveLeadEdits() {
+                try {
+                    const response = await fetch(`/api/leads/${this.currentLead.id}/`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCookie('csrftoken')
+                        },
+                        body: JSON.stringify(this.currentLead)
+                    });
+                    
+                    if (response.ok) {
+                        const updated = await response.json();
+                        // Update in local lists
+                        const index = this.leads.findIndex(l => l.id === updated.id);
+                        if (index !== -1) {
+                            this.leads[index] = updated;
+                        }
+                        this.currentLead = updated;
+                        this.editMode = false;
+                    }
+                } catch (e) {
+                    console.error("Erro ao salvar dados:", e);
+                }
+            },
+            
+            async submitNote() {
+                if (!this.newNoteText.strip) {
+                    this.newNoteText = this.newNoteText.trim();
+                }
+                if (!this.newNoteText) return;
+                
+                try {
+                    const response = await fetch(`/api/leads/${this.currentLead.id}/add-note/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCookie('csrftoken')
+                        },
+                        body: JSON.stringify({ note: this.newNoteText })
+                    });
+                    
+                    if (response.ok) {
+                        const newNote = await response.json();
+                        if (!this.currentLead.notes) this.currentLead.notes = [];
+                        this.currentLead.notes.unshift(newNote);
+                        this.newNoteText = '';
+                    }
+                } catch (e) {
+                    console.error("Erro ao salvar nota:", e);
+                }
+            },
+            
+            async deleteLead(id) {
+                if (!confirm("Tem certeza que deseja excluir permanentemente este lead?")) return;
+                
+                try {
+                    const response = await fetch(`/api/leads/${id}/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': this.getCookie('csrftoken')
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        this.leads = this.leads.filter(l => l.id !== id);
+                        this.closeDetailsModal();
+                    }
+                } catch (e) {
+                    console.error("Erro ao deletar lead:", e);
+                }
+            },
+            
+            openCreateModal() {
+                this.newLeadForm = {
+                    name: '',
+                    category: '',
+                    city: '',
+                    phone_number: '',
+                    website: '',
+                    source: 'google_maps',
+                    status: 'novo'
+                };
+                this.createModalOpen = true;
+            },
+            
+            closeCreateModal() {
+                this.createModalOpen = false;
+            },
+            
+            async createLead() {
+                try {
+                    const response = await fetch('/api/leads/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCookie('csrftoken')
+                        },
+                        body: JSON.stringify(this.newLeadForm)
+                    });
+                    
+                    if (response.ok) {
+                        const created = await response.json();
+                        this.leads.unshift(created);
+                        this.closeCreateModal();
+                    }
+                } catch (e) {
+                    console.error("Erro ao criar lead:", e);
+                }
+            },
+            
+            exportLeads(format) {
+                const params = new URLSearchParams();
+                params.append('format', format);
+                if (this.filters.search) params.append('search', this.filters.search);
+                if (this.filters.source) params.append('source', this.filters.source);
+                
+                window.location.href = `/leads/export/?${params.toString()}`;
+            },
+            
+            formatDate(isoStr) {
+                if (!isoStr) return '';
+                const date = new Date(isoStr);
+                return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            },
+            
+            getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
+            }
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuviie | SaaS Tools Hub</title>
+    
+    <!-- Inline script to prevent theme flash -->
+    <script>
+        if (localStorage.getItem('theme') === 'dark' || 
+            (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    
+    <!-- Tailwind CSS & Flowbite / Plugins -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#1e293b',
+                            950: '#020617',
+                        },
+                        indigo: {
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                        },
+                        emerald: {
+                            500: '#10b981',
+                            600: '#059669',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    
+    <!-- Alpine.js for interactive states -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Custom CSS -->
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="h-full bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col md:flex-row overflow-hidden" 
+      x-data="{ 
+        darkMode: localStorage.getItem('theme') === 'dark',
+        sidebarOpen: false,
+        toggleTheme() {
+            this.darkMode = !this.darkMode;
+            localStorage.setItem('theme', this.darkMode ? 'dark' : 'light');
+            if (this.darkMode) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+      }">
+
+    <!-- Mobile Header -->
+    <header class="md:hidden flex items-center justify-between px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30 w-full shrink-0">
+        <div class="flex items-center space-x-2">
+            <div class="gradient-bg-primary w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-lg">N</div>
+            <span class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Nuviie<span class="text-indigo-500">.hub</span></span>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button @click="toggleTheme()" class="text-slate-500 dark:text-slate-400 focus:outline-none">
+                <i class="fa-solid" :class="darkMode ? 'fa-sun' : 'fa-moon'"></i>
+            </button>
+            <button @click="sidebarOpen = !sidebarOpen" class="text-slate-500 dark:text-slate-400 focus:outline-none">
+                <i class="fa-solid fa-bars text-xl"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Sidebar Navigation -->
+    <aside class="fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 transition duration-200 ease-in-out z-40 w-64 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 h-full shrink-0"
+           :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'">
+        
+        <!-- Sidebar Brand Info -->
+        <div class="hidden md:flex items-center px-6 py-6 border-b border-slate-100 dark:border-slate-800">
+            <div class="flex items-center space-x-3 w-15 h-15">
+                <img src="{% static 'imgs/logo_branca.png' %}" alt="logo" class="w-[90px] h-[90px]" >
+            </div>
+        </div>
+
+        <!-- Mobile Sidebar Close Button -->
+        <div class="md:hidden flex justify-end p-4 border-b border-slate-100 dark:border-slate-800">
+            <button @click="sidebarOpen = false" class="text-slate-500">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+            {% if user.is_authenticated %}
+            <a href="{% url 'dashboard' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'dashboard' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-chart-pie text-lg"></i>
+                <span>Dashboard</span>
+            </a>
+            
+            <div class="pt-4 pb-2">
+                <span class="px-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">Ferramentas</span>
+            </div>
+            
+            <a href="{% url 'maps_scraper' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'maps_scraper' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-map-location-dot text-lg"></i>
+                <span>Maps Lead Generator</span>
+            </a>
+            
+            <a href="{% url 'instagram_scraper' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'instagram_scraper' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-brands fa-instagram text-lg font-bold"></i>
+                <span>Instagram Scraper</span>
+            </a>
+
+            <a href="{% url 'kanban' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'kanban' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-square-poll-horizontal text-lg"></i>
+                <span>CRM Kanban Pipeline</span>
+            </a>
+
+            <a href="{% url 'template_list' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'contracts' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-file-contract text-lg"></i>
+                <span>Gerador de Contratos</span>
+            </a>
+
+            <a href="{% url 'chat' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'chat' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-robot text-lg"></i>
+                <span>Atendente IA</span>
+            </a>
+
+            <div class="pt-4 pb-2">
+                <span class="px-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">Minha Conta</span>
+            </div>
+
+            <a href="{% url 'profile' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'profile' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-user-gear text-lg"></i>
+                <span>Configurações</span>
+            </a>
+            {% else %}
+            <a href="{% url 'login' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <i class="fa-solid fa-right-to-bracket text-lg"></i>
+                <span>Entrar</span>
+            </a>
+            <a href="{% url 'register' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <i class="fa-solid fa-user-plus text-lg"></i>
+                <span>Cadastrar</span>
+            </a>
+            {% endif %}
+        </nav>
+
+        <!-- Sidebar Footer & Theme Toggle -->
+        {% if user.is_authenticated %}
+        <div class="px-4 py-4 border-t border-slate-100 dark:border-slate-800 flex flex-col space-y-3 shrink-0">
+            <div class="flex items-center justify-between px-2">
+                <span class="text-xs text-slate-400 dark:text-slate-500 font-semibold uppercase">Interface</span>
+                <button @click="toggleTheme()" class="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition focus:outline-none">
+                    <i class="fa-solid" :class="darkMode ? 'fa-sun text-yellow-400' : 'fa-moon'"></i>
+                </button>
+            </div>
+            
+            <div class="flex items-center space-x-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40">
+                <div class="relative w-9 h-9 rounded-lg overflow-hidden bg-indigo-500 flex items-center justify-center text-white font-semibold shadow-inner shrink-0">
+                    {% if user.profile_picture %}
+                        <img src="{{ user.profile_picture.url }}" alt="Profile" class="w-full h-full object-cover">
+                    {% else %}
+                        {{ user.first_name|default:user.username|slice:":1"|upper }}
+                    {% endif %}
+                </div>
+                <div class="flex flex-col min-w-0 flex-1">
+                    <span class="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{{ user.first_name }} {{ user.last_name }}</span>
+                    <span class="text-[10px] text-slate-400 dark:text-slate-500 truncate leading-none mt-0.5">{{ user.email }}</span>
+                </div>
+                <a href="{% url 'logout' %}" class="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1 rounded transition" title="Sair">
+                    <i class="fa-solid fa-right-from-bracket text-sm"></i>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+        <!-- Top Navigation (Desktop) -->
+        <header class="hidden md:flex items-center justify-between px-8 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+            <div class="flex items-center space-x-2">
+                <span class="text-xs font-semibold px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-md">Nuviie Workspace</span>
+                <span class="text-slate-300 dark:text-slate-700">/</span>
+                <span class="text-xs font-medium text-slate-500 dark:text-slate-400 capitalize">
+                    {% if current_page == 'dashboard' %}Dashboard
+                    {% elif current_page == 'maps_scraper' %}Maps Lead Generator
+                    {% elif current_page == 'instagram_scraper' %}Instagram Scraper
+                    {% elif current_page == 'kanban' %}CRM Kanban
+                    {% elif current_page == 'contracts' %}Gerador de Contratos
+                    {% elif current_page == 'chat' %}Atendente IA
+                    {% else %}Minha Conta{% endif %}
+                </span>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <span class="text-xs text-slate-400 dark:text-slate-500">Último acesso: {% now "d/m/Y H:i" %}</span>
+                <div class="h-4 w-px bg-slate-200 dark:bg-slate-800"></div>
+                <a href="{% url 'profile' %}" class="flex items-center space-x-2 hover:opacity-85 transition">
+                    <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700">
+                        {% if user.profile_picture %}
+                            <img src="{{ user.profile_picture.url }}" alt="Profile" class="w-full h-full object-cover">
+                        {% else %}
+                            <i class="fa-solid fa-user text-slate-400 text-xs"></i>
+                        {% endif %}
+                    </div>
+                </a>
+            </div>
+        </header>
+
+        <!-- Main Page Container -->
+        <div class="flex-1 overflow-y-auto p-6 md:p-8 relative">
+            
+            <!-- Toast Notification Messages -->
+            {% if messages %}
+            <div class="fixed top-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none" x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 4500)">
+                {% for message in messages %}
+                <div class="pointer-events-auto flex items-center p-4 rounded-xl shadow-lg border backdrop-blur-md transition duration-300 
+                            {% if message.tags == 'success' %} bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400
+                            {% elif message.tags == 'error' %} bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400
+                            {% elif message.tags == 'warning' %} bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400
+                            {% else %} bg-indigo-500/10 border-indigo-500/20 text-indigo-600 dark:text-indigo-400 {% endif %}">
+                    <div class="mr-3">
+                        {% if message.tags == 'success' %}
+                            <i class="fa-solid fa-circle-check text-lg"></i>
+                        {% elif message.tags == 'error' %}
+                            <i class="fa-solid fa-circle-exclamation text-lg"></i>
+                        {% elif message.tags == 'warning' %}
+                            <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                        {% else %}
+                            <i class="fa-solid fa-circle-info text-lg"></i>
+                        {% endif %}
+                    </div>
+                    <div class="text-sm font-medium mr-8 leading-tight">{{ message }}</div>
+                    <button @click="show = false" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-auto focus:outline-none">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Dynamic Body Block -->
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
