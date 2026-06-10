@@ -1,7 +1,10 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-8">
+<div class="max-w-5xl mx-auto space-y-8" x-data="{ async confirmDelete(url, msg) {
+    const ok = await NuviieModal.confirm(msg, 'Confirmar exclusão', { danger: true, confirmLabel: 'Excluir' });
+    if (ok) window.location.href = url;
+}}">
     <!-- Header Section -->
     <div class="flex items-center space-x-3">
         <a href="{% url 'template_list' %}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition">
@@ -67,9 +70,9 @@
                                     <span>Download</span>
                                 </a>
                                 
-                                <a href="{% url 'delete_contract' contract.id %}" class="p-1 text-slate-400 hover:text-red-500 transition" onclick="return confirm('Tem certeza de que deseja remover este documento do histórico?')" title="Remover registro">
+                                <button type="button" @click="confirmDelete('{% url 'delete_contract' contract.id %}', 'Tem certeza de que deseja remover este documento do histórico?')" class="p-1 text-slate-400 hover:text-red-500 transition" title="Remover registro">
                                     <i class="fa-solid fa-trash-can"></i>
-                                </a>
+                                </button>
                             </div>
                         </td>
                     </tr>

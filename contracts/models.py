@@ -6,6 +6,8 @@ class ContractTemplate(models.Model):
     name = models.CharField(max_length=255)
     pdf_file = models.FileField(upload_to='contract_templates/')
     detected_fields = models.JSONField(default=list, help_text="List of placeholder keys detected in the PDF (e.g. ['nome', 'cnpj'])")
+    structure = models.JSONField(default=dict, blank=True, help_text="Segmented blocks: static vs variable")
+    field_schema = models.JSONField(default=list, blank=True, help_text="Form field definitions for the template")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

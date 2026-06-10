@@ -1,95 +1,145 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto" x-data="{ generating: false }">
-    <!-- Header Navigation Section -->
-    <div class="mb-8 flex items-center space-x-3">
-        <a href="{% url 'template_list' %}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition">
-            <i class="fa-solid fa-arrow-left text-sm"></i>
-        </a>
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Preencher Modelo</h1>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Preencha as variáveis abaixo para gerar o PDF final do contrato.</p>
-        </div>
-    </div>
-
-    <!-- Form Panel -->
-    <div class="glass-panel rounded-2xl p-8 shadow-md relative overflow-hidden">
-        <div class="absolute top-0 left-0 right-0 h-1.5 gradient-bg-primary"></div>
-        
-        <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800/80 mb-6">
-            <h3 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Dados do Contrato</h3>
-            <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Modelo: <span class="text-slate-800 dark:text-slate-200 font-bold" x-text="'{{ template.name }}'"></span></span>
-        </div>
-
-        <form method="POST" action="{% url 'fill_template' template.id %}" @submit="generating = true" class="space-y-6">
-            {% csrf_token %}
-
-            <!-- Contract title naming -->
+<div class="flex flex-col h-[calc(100vh-120px)]" x-data="contractFill()" x-init="init()">
+    <div class="mb-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-3">
+            <a href="{% url 'template_list' %}" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition">
+                <i class="fa-solid fa-arrow-left text-sm"></i>
+            </a>
             <div>
-                <label for="contract_name" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">Nome do Documento Gerado *</label>
-                <input type="text" name="contract_name" id="contract_name" required value="Contrato de Prestação de Serviços - {{ template.name }}"
-                       class="block w-full px-4 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition text-slate-900 dark:text-white">
-                <span class="text-[9px] text-slate-400 dark:text-slate-500 mt-1 block">Identificação interna para rastrear no histórico.</span>
+                <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Gerar Contrato</h1>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ template.name }} — preview ao vivo</p>
             </div>
-
-            <div class="border-t border-slate-100 dark:border-slate-800/80 pt-6">
-                <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 mb-4 tracking-wider">Variáveis Detectadas no PDF</h4>
-
-                {% if template.detected_fields %}
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {% for field in template.detected_fields %}
-                    <div>
-                        <!-- Capitalize and clean for labels -->
-                        <label for="field_{{ field }}" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">{{ field }}</label>
-                        <input type="text" name="field_{{ field }}" id="field_{{ field }}" required placeholder="Digite o valor para {{ field }}"
-                               class="block w-full px-4 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition text-slate-900 dark:text-white font-medium">
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800 text-center text-xs text-slate-400">
-                    <i class="fa-solid fa-triangle-exclamation text-amber-500 mr-1.5"></i>
-                    <span>Nenhuma variável detectada no PDF base. O contrato será gerado idêntico ao original.</span>
-                </div>
-                {% endif %}
-            </div>
-
-            <!-- Submit buttons -->
-            <div class="flex justify-end space-x-3 pt-6 border-t border-slate-100 dark:border-slate-800">
-                <a href="{% url 'template_list' %}" class="px-5 py-2.5 border border-slate-250 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-                    Cancelar
-                </a>
-                
-                <button type="submit" :disabled="generating"
-                        class="py-2.5 px-6 font-semibold text-xs text-white rounded-xl gradient-bg-primary hover:opacity-95 shadow-md shadow-indigo-500/10 active:scale-[0.99] transition duration-150 flex items-center space-x-2">
-                    <i class="fa-solid fa-file-pdf text-xs"></i>
-                    <span>Gerar PDF e Salvar</span>
-                </button>
-            </div>
-        </form>
+        </div>
     </div>
 
-    <!-- GENERATING CONTRACT OVERLAY (Alpine Controlled) -->
-    <div x-show="generating" 
-         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md"
-         style="display: none;">
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-8 text-center space-y-6 shadow-2xl">
-            <!-- Animated Spinner -->
-            <div class="relative flex items-center justify-center">
-                <div class="w-16 h-16 rounded-full border-4 border-slate-100 dark:border-slate-800 border-t-indigo-600 animate-spin"></div>
-                <i class="fa-solid fa-file-contract text-lg text-indigo-500 absolute animate-pulse-soft"></i>
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-0">
+        <!-- Preview (60%) -->
+        <div class="lg:col-span-3 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden">
+            <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <h3 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Preview do Contrato</h3>
+                <span class="text-[10px] text-slate-400">Atualiza em tempo real</span>
             </div>
-            
-            <div class="space-y-2">
-                <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Gerando Contrato PDF</h3>
-                <p class="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
-                    Estamos injetando as variáveis no modelo base, ajustando margens, alinhando cláusulas e gerando a folha de assinaturas oficial.
-                </p>
+            <div class="flex-1 overflow-y-auto p-8 bg-white dark:bg-slate-950/40">
+                <h2 class="text-center text-lg font-bold text-slate-900 dark:text-white mb-6 uppercase tracking-wide" x-text="contractName"></h2>
+                <template x-for="(block, idx) in previewBlocks" :key="idx">
+                    <p class="text-[11px] leading-relaxed mb-3 text-slate-700 dark:text-slate-300"
+                       :class="block.isHeading ? 'font-bold text-slate-900 dark:text-white mt-4' : ''">
+                        <template x-for="(part, pi) in block.parts" :key="pi">
+                            <span :class="part.highlight ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-200 px-1 rounded font-semibold' : ''" x-text="part.text"></span>
+                        </template>
+                    </p>
+                </template>
+                <div x-show="previewBlocks.length === 0" class="text-center text-xs text-slate-400 py-12">
+                    Nenhum bloco detectado. Use "Reanalisar modelo" na lista de templates.
+                </div>
             </div>
-            
-            <div class="skeleton-box h-1.5 rounded-full w-full"></div>
+        </div>
+
+        <!-- Form (40%) -->
+        <div class="lg:col-span-2 glass-panel rounded-2xl p-6 shadow-md overflow-y-auto">
+            <form method="POST" @submit="generating = true" class="space-y-5">
+                {% csrf_token %}
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">Nome do Documento *</label>
+                    <input type="text" name="contract_name" x-model="contractName" required
+                           class="block w-full px-4 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                </div>
+
+                <template x-if="fields.length > 0">
+                    <div class="space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+                        <h4 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Campos do Contrato</h4>
+                        <template x-for="field in fields" :key="field.key">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase" x-text="field.label"></label>
+                                <input :type="field.type === 'number' ? 'number' : (field.type === 'date' ? 'date' : 'text')"
+                                       :name="'field_' + field.key"
+                                       x-model="values[field.key]"
+                                       @input="updatePreview()"
+                                       :placeholder="field.label"
+                                       class="block w-full px-4 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="fields.length === 0">
+                    <div class="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-xs text-amber-700 dark:text-amber-400">
+                        Nenhum campo variável detectado. O PDF será gerado com o texto original.
+                    </div>
+                </template>
+
+                <div class="flex flex-col gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <button type="submit" name="export_format" value="pdf" :disabled="generating"
+                            class="w-full py-2.5 px-4 font-semibold text-xs text-white rounded-xl gradient-bg-primary hover:opacity-95 flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-file-pdf"></i><span>Baixar PDF e Salvar</span>
+                    </button>
+                    <button type="submit" name="export_format" value="docx" :disabled="generating"
+                            class="w-full py-2.5 px-4 font-semibold text-xs text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-file-word text-blue-500"></i><span>Baixar DOCX</span>
+                    </button>
+                    <a href="{% url 'template_list' %}" class="w-full py-2.5 text-center text-xs text-slate-500 hover:underline">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div x-show="generating" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md" style="display:none;">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center">
+            <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Gerando documento...</p>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function contractFill() {
+    return {
+        generating: false,
+        contractName: 'Contrato de Prestação de Serviços - {{ template.name|escapejs }}',
+        structure: {{ structure_json|safe }},
+        fields: {{ field_schema_json|safe }},
+        values: {},
+        previewBlocks: [],
+
+        init() {
+            this.fields.forEach(f => { this.values[f.key] = f.default || ''; });
+            this.updatePreview();
+        },
+
+        renderBlock(block) {
+            if (block.type === 'static') {
+                const text = block.text || '';
+                return {
+                    isHeading: /^(CLÁUSULA|SEÇÃO|CAPÍTULO|\d+\.)/i.test(text) || (text.length < 60 && text === text.toUpperCase()),
+                    parts: [{ text, highlight: false }],
+                };
+            }
+            const key = block.field_key || '';
+            const val = this.values[key] || '';
+            let text = block.text || '';
+            const placeholder = val || `[${block.label || key}]`;
+            text = text.replace(/\{\{\s*[\w]+\s*\}\}/g, placeholder);
+            text = text.replace(/\[\s*[\w]+\s*\]/g, placeholder);
+            text = text.replace(/_{3,}/g, placeholder);
+            text = text.replace(/\.{5,}/g, placeholder);
+            return {
+                isHeading: false,
+                parts: val
+                    ? [{ text: text.replace(placeholder, ''), highlight: false }, { text: val, highlight: true }]
+                    : [{ text, highlight: false }],
+            };
+        },
+
+        updatePreview() {
+            const blocks = (this.structure.blocks || []);
+            this.previewBlocks = blocks.map(b => this.renderBlock(b));
+        },
+    };
+}
+</script>
 {% endblock %}

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Lead, LeadNote
+from .website_utils import detect_website_type
 
 class LeadNoteSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
@@ -43,7 +44,6 @@ class LeadSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'normalized_phone', 'quality_score',
-            'website_detected_type',   # detectado automaticamente no scraper
             'created_at', 'updated_at'
         ]
 
@@ -62,14 +62,22 @@ class LeadSerializer(serializers.ModelSerializer):
             return cleaned
         return None
 
+    def _apply_website_type(self, validated_data):
+        website = validated_data.get('website')
+        if website and 'website_detected_type' not in validated_data:
+            validated_data['website_detected_type'] = detect_website_type(website)
+
     def create(self, validated_data):
         phone = validated_data.get('phone_number')
         if phone:
             validated_data['normalized_phone'] = self._normalize_phone(phone)
+        self._apply_website_type(validated_data)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         phone = validated_data.get('phone_number', instance.phone_number)
         if phone != instance.phone_number:
             validated_data['normalized_phone'] = self._normalize_phone(phone)
+        if 'website' in validated_data:
+            self._apply_website_type(validated_data)
         return super().update(instance, validated_data)

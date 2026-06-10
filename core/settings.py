@@ -36,16 +36,33 @@ def _load_env(base_dir):
 _load_env(BASE_DIR)
 
 
+def _env_bool(key: str, default: bool = False) -> bool:
+    val = os.environ.get(key, '').strip().lower()
+    if not val:
+        return default
+    return val in ('1', 'true', 'yes', 'on')
+
+
+def _env_list(key: str, default: list[str] | None = None) -> list[str]:
+    raw = os.environ.get(key, '').strip()
+    if not raw:
+        return default or []
+    return [item.strip() for item in raw.split(',') if item.strip()]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-0yr9pvn2a4w*4s*5ig=@y!ffk)u3r&22*vy_d^p8ec(wo2uqn-'
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-dev-only-change-in-production',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = _env_bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
 
 
 # Application definition
@@ -67,6 +84,8 @@ INSTALLED_APPS = [
     'leads',
     'contracts',
     'chat',
+    'audit',
+    'monitoring',
 ]
 
 MIDDLEWARE = [
@@ -169,17 +188,35 @@ REST_FRAMEWORK = {
 }
 
 # CORS Configuration
-CORS_ALLOW_ALL_ORIGINS = True
+_cors_origins = _env_list('CORS_ALLOWED_ORIGINS')
+if _cors_origins:
+    CORS_ALLOWED_ORIGINS = _cors_origins
+    CORS_ALLOW_ALL_ORIGINS = False
+else:
+    CORS_ALLOW_ALL_ORIGINS = _env_bool('CORS_ALLOW_ALL_ORIGINS', default=DEBUG)
 
-# Login redirects
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^chrome-extension://.*$',
+]
+
+# ── Extensão Chrome Maps Extractor ───────────────────────────────────────────
+NUVIIE_EXTENSION_TOKEN = os.environ.get('NUVIIE_EXTENSION_TOKEN', '')
+NUVIIE_EXTENSION_USER  = os.environ.get('NUVIIE_EXTENSION_USER', 'admin')
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
 
+# ── Integrações externas ─────────────────────────────────────────────────────
+EVOLUTION_API_URL      = os.environ.get('EVOLUTION_API_URL', '')
+EVOLUTION_API_KEY      = os.environ.get('EVOLUTION_API_KEY', '')
+EVOLUTION_INSTANCE     = os.environ.get('EVOLUTION_INSTANCE', '')
+OLLAMA_URL             = os.environ.get('OLLAMA_URL', 'http://localhost:11434/api/chat')
+OLLAMA_MODEL           = os.environ.get('OLLAMA_MODEL', 'qwen2.5:7b')
+
 # ── Playwright / Scraper ─────────────────────────────────────────────────────
-# Lido do .env via _load_env() acima
 PLAYWRIGHT_BROWSERS_PATH = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '')
-MAPS_SCRAPER_TIMEOUT     = int(os.environ.get('MAPS_SCRAPER_TIMEOUT', 360))
+MAPS_SCRAPER_TIMEOUT     = int(os.environ.get('MAPS_SCRAPER_TIMEOUT', 600))
+NUVIIE_SCREENSHOT_DIR    = os.environ.get('NUVIIE_SCREENSHOT_DIR', '')
 
 # Propaga PLAYWRIGHT_BROWSERS_PATH para subprocessos lançados pelo Django
 if PLAYWRIGHT_BROWSERS_PATH:

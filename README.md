@@ -1,160 +1,453 @@
-# Nuviie SaaS Tools Hub
+# 🚀 Nuviie Hub
 
-## 📖 Visão Geral
+> **Plataforma completa para prospecção local** — extraia leads do Google Maps no Chrome, gerencie vendas no Kanban, gere contratos em PDF e simule atendimento comercial com IA.
 
-O **Nuviie Hub de Ferramentas SaaS** é uma plataforma completa para agências digitais, desenvolvida com **Python + Django + Django REST Framework** no backend e **Django Templates + Tailwind CSS** no frontend. Foi projetada para ser **modular, escalável e de alta performance**, pronta para evoluir rumo a uma arquitetura de micro‑services.
+![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django-6.0-green?logo=django&logoColor=white)
+![Chrome](https://img.shields.io/badge/Chrome_Extension-MV3-yellow)
+![Ollama](https://img.shields.io/badge/Ollama-IA_Local-purple)
 
 ---
 
-## 🚀 Como Instalar
+## ✨ O que é o Nuviie?
 
-1. **Pré‑requisitos**
-   - Python 3.10+ (recomendado 3.13)
-   - PostgreSQL (ou SQLite para testes rápidos)
-   - Git (para clonar o repositório)
+O **Nuviie Hub** é um monólito Django modular para uso **local** (você e sua equipe):
 
-2. **Clonar o repositório**
-   ```bash
-   git clone https://github.com/yourorg/nuviie.git
-   cd nuviie
-   ```
+- 🗺️ **Extrair leads do Google Maps** via extensão Chrome (recomendado) — sem CAPTCHA, no navegador logado
+- 📊 **Organizar oportunidades** num CRM Kanban visual
+- 📄 **Gerar contratos** a partir de templates PDF
+- 💬 **Simular atendimento** com IA local (Ollama)
+- 🔐 **Autenticar com segurança** — e-mail, WhatsApp OTP e login facial
 
-3. **Criar e ativar o ambiente virtual**
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate  # Windows
-   ```
+Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
 
-4. **Instalar dependências**
-   ```bash
-   pip install -r requirements.txt
-   ```
+---
 
-5. **Configurar o banco de dados**
-   - Crie um banco PostgreSQL e um usuário.
-   - Copie o arquivo `.env.example` para `.env` e ajuste as variáveis:
-     ```text
-     DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/nuviie
-     SECRET_KEY=uma_chave_secreta_aleatoria
-     DEBUG=True
-     ```
+## 🧩 Módulos do Sistema
 
-6. **Aplicar migrações**
-   ```bash
-   python manage.py migrate
-   ```
+| Módulo | O que faz | Onde |
+|--------|-----------|------|
+| 📈 **Dashboard** | Métricas, gráficos e leads recentes | `/dashboard/` |
+| 🗺️ **Extensão Maps** | Extração completa no Chrome (**recomendado**) | pasta `extension/` |
+| 📥 **Importar Leads** | Upload JSON/CSV exportado pela extensão | `/leads/import/` |
+| 📸 **Scraper Instagram** | Busca perfis por nicho e cidade | `/scraper/instagram/` |
+| 📋 **CRM Kanban** | Pipeline de vendas com drag-and-drop e exclusão em massa | `/kanban/` |
+| 📑 **Contratos** | Templates PDF + preview ao vivo + export PDF/DOCX | `/contracts/templates/` |
+| 📊 **Analytics Servidor** | CPU, RAM, disco, rede (psutil) | `/monitoring/analytics/` |
+| 📜 **Histórico** | Auditoria de ações no sistema | `/audit/history/` |
+| 💬 **Chat IA** | Assistente comercial com Ollama | `/chat/` |
+| 👤 **Autenticação** | Login, registro, face, OTP WhatsApp | `/auth/login/` |
 
-7. **Criar super‑usuário (admin)**
-   ```bash
-   python manage.py createsuperuser
-   ```
+---
 
-8. **Iniciar o servidor**
+## ⚡ Início Rápido
 
-### Desenvolvimento
-```bash
-python manage.py runserver 0.0.0.0:8000
-```
-Abra o navegador em `http://127.0.0.1:8000/`.
+### 1️⃣ Pré-requisitos
 
-### Produção (Windows)
-Instale um servidor WSGI nativo, como **waitress**:
+- Python **3.12+**
+- **Google Chrome** (para a extensão Maps)
+- **Ollama** (opcional, só para o chat IA)
+
+### 2️⃣ Instalar o Nuviie
 
 ```bash
-pip install waitress
-python manage.py collectstatic --noinput   # opcional, mas recomendado
-waitress-serve --listen=0.0.0.0:8000 nuviie.wsgi:application
+cd Nuviie
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # Linux/Mac
+pip install -r requirements.txt
+copy .env.example .env        # Windows
+# cp .env.example .env        # Linux/Mac
 ```
 
-> `gunicorn` não funciona no Windows pois depende do módulo `fcntl`. Use `waitress` (ou `uvicorn`/`daphne` para ASGI) em produção.
+### 3️⃣ Configurar o `.env`
+
+Mínimo para rodar localmente:
+
+```env
+SECRET_KEY=sua-chave-secreta-aqui
+DEBUG=true
+ALLOWED_HOSTS=127.0.0.1,localhost
+
+# Extensão Chrome (recomendado para Maps)
+NUVIIE_EXTENSION_TOKEN=seu-token-secreto-aqui
+NUVIIE_EXTENSION_USER=admin
+```
+
+> `NUVIIE_EXTENSION_USER` deve ser o **username** de um usuário Django existente (ex.: o criado com `createsuperuser`).
+
+### 4️⃣ Banco e usuário
+
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+### 5️⃣ Rodar o servidor
+
+```bash
+python manage.py runserver
+```
+
+Acesse: **http://127.0.0.1:8000/**
+
+### 6️⃣ Instalar a extensão Chrome
+
+1. Abra `chrome://extensions/`
+2. Ative **Modo do desenvolvedor**
+3. Clique em **Carregar sem compactação**
+4. Selecione a pasta `Nuviie/extension/`
+
+Pronto — o ícone **Nuviie Maps Extractor** aparece na barra do Chrome.
 
 ---
 
-## 🛠️ Como Usar
+## 📖 Guia Completo por Funcionalidade
 
-A aplicação está organizada em três módulos principais:
+### 🗺️ Extensão Chrome — Nuviie Maps Extractor (recomendado)
 
-### 1. **Leads**
-- **Coleta**: Scrapers (Google Maps, Instagram) usando *dorks* e fallback determinístico.
-- **Qualidade**: Scoring automático com deduplicação e normalização de telefones.
-- **Interface**: Dashboard com gráficos animados (Tailwind + Alpine.js) e visualização em Kanban (SortableJS).
+**O que faz:** extrai leads completos do Google Maps **no seu Chrome logado**, sem Playwright e com muito menos bloqueio. Para cada lugar da lista, a extensão:
 
-### 2. **CRM (Kanban Pipeline)**
-- Gestão de oportunidades por estágio (Lead → Qualificado → Proposta → Fechado).
-- Modal de criação/edição rápido, arrastar‑e‑soltar de cards.
-- API RESTful para integração externa.
+1. Clica na ficha no painel lateral
+2. Faz scroll para carregar conteúdo lazy
+3. Expande horários de funcionamento
+4. Visita a aba **Sobre** (amenidades)
+5. Visita a aba **Avaliações** (até 10 reviews recentes)
+6. Revela telefone/endereço ocultos
+7. Extrai todos os campos e segue para o próximo (com delay humano)
 
-### 3. **Contratos**
-- **Geração**: PDFs customizados via ReportLab a partir de templates com placeholders `{{variavel}}`.
-- **Leitura**: Extração de dados com pdfplumber.
-- Histórico de documentos vinculados ao lead.
+**Dados coletados por lead:**
 
-Acesse cada módulo pelo menu superior após fazer login.
+| Campo | Exemplo |
+|-------|---------|
+| Nome, categoria, cidade | Escritório Silva, Advogado |
+| Telefone / WhatsApp | (16) 99999-8888 |
+| Site, Instagram, Facebook, YouTube, LinkedIn | @escritorio, URLs |
+| Endereço, rating, nº de avaliações | Av. Paulista, 4.8, 127 |
+| Horários (JSON) | seg–sex, aberto/fechado |
+| Reviews recentes (JSON) | autor, nota, texto |
+| Amenidades, Plus Code, faixa de preço | Wi-Fi, estacionamento |
+| Link Google Maps | maps.google.com/... |
+
+**Fluxo de uso:**
+
+1. Abra [Google Maps](https://www.google.com/maps)
+2. Busque (ex: `advogado Ribeirão Preto`)
+3. **Role a lista** até carregar todos os resultados desejados
+4. Clique no ícone **Nuviie Maps Extractor**
+5. Preencha **Cidade** (obrigatório) e **Nicho** (opcional)
+6. Clique em **Extrair completo**
+7. Aguarde — ~2–4 s por lugar (50 lugares ≈ 2–3 min)
+8. Escolha uma opção:
+   - **Export JSON** ou **Export CSV** — salva arquivo local
+   - **Enviar ao Nuviie** — envia direto pro CRM (configure token abaixo)
+
+**Enviar direto ao Nuviie:**
+
+1. No popup da extensão, abra **Nuviie local (opcional)**
+2. URL: `http://127.0.0.1:8000`
+3. Token: mesmo valor de `NUVIIE_EXTENSION_TOKEN` no `.env`
+4. Com o servidor rodando, clique **Enviar ao Nuviie**
+
+**Estrutura da extensão:**
+
+```
+extension/
+├── manifest.json       → Manifest V3
+├── popup.html/js/css   → Interface do popup
+├── content.js          → Orquestrador no Maps
+├── extract-all.js      → Extração principal (port do scraper)
+├── extract-hours.js    → Horários de funcionamento
+├── extract-reviews.js  → Avaliações recentes
+├── extract-about.js    → Amenidades (aba Sobre)
+├── navigate.js         → Cliques em abas, scroll, delays
+├── mapper.js           → Converte dados → formato Lead
+└── utils.js            → Helpers (dedup, telefone, etc.)
+```
+
+**Dicas:**
+
+- Uma busca no Maps costuma mostrar até ~120 resultados — role bastante ou faça buscas por bairro/nicho
+- Use **Parar** no popup se quiser interromper no meio
+- **Limite 0** = extrai todos os lugares visíveis na lista
+- Grátis para uso local — não precisa publicar na Chrome Web Store
 
 ---
 
-## 🧰 Ferramentas Utilizadas
+### 📥 Importar Leads (arquivo)
 
-| Camada | Tecnologia |
-|--------|------------|
-| Backend | Python 3.13, Django 4.x, Django‑REST‑Framework |
-| Banco de Dados | PostgreSQL (ou SQLite) |
-| Frontend | Django Templates, Tailwind CSS, Alpine.js, SortableJS |
-| Scraping | requests, beautifulsoup4, duckduckgo‑html‑dorks |
-| PDF | reportlab, pdfplumber |
-| Deploy | gunicorn, whitenoise (static files) |
+**O que faz:** importa JSON ou CSV exportado pela extensão para o CRM.
+
+**Como usar:**
+
+1. Acesse `/leads/import/` (ou **Importar Leads** no dashboard)
+2. Selecione o arquivo `.json` ou `.csv` exportado
+3. Clique em **Importar leads**
+4. Leads duplicados (mesmo telefone, nome ou Instagram) são ignorados automaticamente
 
 ---
 
-## ⚠️ Limitações Conhecidas
+### 📸 Scraper Instagram
 
-- **Scrapers baseados em dorks** podem ser bloqueados por rate‑limit ou CAPTCHAs; o fallback simulado garante funcionalidade de teste, mas não substitui scraping real em produção.
-- **Tailwind CSS** está configurado para *just‑in‑time* compilation; mudanças de estilo podem exigir recompilação do CSS.
-- O módulo de **autenticação por WhatsApp** depende de uma API externa; disponibilidade da API afeta a verificação de números.
-- O projeto atualmente roda como **monólito**; embora a estrutura modular facilite a extração para micro‑services, isso ainda não foi implementado.
+**O que faz:** busca perfis do Instagram via DuckDuckGo usando nicho e localização.
+
+**Como usar:** `/scraper/instagram/` — informe nicho, localização e filtros.
+
+> Resultados dependem do DuckDuckGo — pode retornar zero em alguns nichos.
+
+---
+
+### 📋 CRM Kanban
+
+**Status:** Novo Lead → Contatado → Em Negociação → Retornou → Fechado / Perdido
+
+**Como usar:**
+
+1. Acesse `/kanban/`
+2. Arraste cards entre colunas
+3. Clique em um card para editar, ver notas ou abrir WhatsApp/Maps
+4. Exporte em CSV/JSON, crie leads manualmente ou exclua em massa (selecionados / todos)
+
+Cada lead tem **score de qualidade (0–100)** calculado automaticamente.
+
+---
+
+### 📑 Contratos PDF
+
+Upload de templates com placeholders `{{ campo }}` ou `[CAMPO]`, preenchimento e download do PDF gerado.
+
+Acesse: `/contracts/templates/`
+
+---
+
+### 💬 Chat IA (Ollama)
+
+```bash
+ollama pull qwen2.5:7b
+ollama serve
+```
+
+Configure no `.env` (opcional):
+
+```env
+OLLAMA_URL=http://localhost:11434/api/chat
+OLLAMA_MODEL=qwen2.5:7b
+```
+
+Acesse `/chat/` — o Ollama **não é obrigatório** para leads e Kanban.
+
+---
+
+### 🔐 Autenticação
+
+- Login/cadastro: `/auth/login/` e `/auth/register/`
+- Login facial: `/auth/face-register/` + `/auth/face-login/`
+- Reset de senha via WhatsApp: `/auth/password-reset/` (Evolution API ou simulado no console)
+
+---
+
+## 🔌 API REST
+
+Base: `http://127.0.0.1:8000/api/leads/`
+
+### Importação em lote (extensão Chrome)
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/leads/bulk-import/ \
+  -H "Content-Type: application/json" \
+  -H "X-Nuviie-Token: seu-token-secreto-aqui" \
+  -d '{
+    "city": "Ribeirão Preto",
+    "leads": [
+      {
+        "name": "Escritório Exemplo",
+        "category": "Advogado",
+        "phone_number": "(16) 99999-8888",
+        "source": "google_maps"
+      }
+    ]
+  }'
+```
+
+Resposta: `{"saved": 1, "skipped": 0, "errors": []}`
+
+### Listar / filtrar leads (requer login)
+
+```bash
+curl -u email@exemplo.com:senha http://127.0.0.1:8000/api/leads/
+curl -u email@exemplo.com:senha "http://127.0.0.1:8000/api/leads/?status=novo"
+curl -u email@exemplo.com:senha "http://127.0.0.1:8000/api/leads/?search=advogado"
+```
+
+### Atualizar status (Kanban)
+
+```bash
+curl -X PATCH -u email@exemplo.com:senha \
+  -H "Content-Type: application/json" \
+  -d '{"status": "contatado"}' \
+  http://127.0.0.1:8000/api/leads/1/update-status/
+```
+
+### Exportar leads
+
+- CSV: `/leads/export/?format=csv`
+- JSON: `/leads/export/?format=json`
+
+### Health check
+
+```bash
+curl http://127.0.0.1:8000/health/
+# {"status": "ok"}
+```
+
+---
+
+## ⚙️ Variáveis de Ambiente
+
+Copie `.env.example` para `.env`:
+
+| Variável | Obrigatório | Descrição | Padrão |
+|----------|-------------|-----------|--------|
+| `SECRET_KEY` | Produção | Chave secreta Django | dev fallback |
+| `DEBUG` | Não | `true` / `false` | `true` |
+| `ALLOWED_HOSTS` | Produção | Hosts separados por vírgula | `127.0.0.1,localhost` |
+| `NUVIIE_EXTENSION_TOKEN` | Extensão | Token para `X-Nuviie-Token` | vazio |
+| `NUVIIE_EXTENSION_USER` | Extensão | Username Django que recebe os leads | `admin` |
+| `CORS_ALLOWED_ORIGINS` | Não | Origens CORS permitidas | vazio (DEBUG = aberto) |
+| `OLLAMA_URL` | Não | URL da API Ollama | `localhost:11434` |
+| `OLLAMA_MODEL` | Não | Modelo Ollama | `qwen2.5:7b` |
+| `EVOLUTION_API_URL` | Não | API WhatsApp | simulado no console |
+| `EVOLUTION_API_KEY` | Não | Chave Evolution API | — |
+| `EVOLUTION_INSTANCE` | Não | Instância WhatsApp | — |
 
 ---
 
 ## 🏗️ Arquitetura
 
+```mermaid
+flowchart TB
+    subgraph browser [Navegador do usuario]
+        maps[Google Maps]
+        ext[Extensao Chrome Nuviie]
+    end
+
+    subgraph frontend [Frontend Django]
+        templates[Django Templates]
+        tailwind[Tailwind + Alpine.js]
+    end
+
+    subgraph apps [Apps Django]
+        auth[authentication]
+        leads[leads]
+        contracts[contracts]
+        chat[chat]
+        audit[audit]
+        monitoring[monitoring]
+    end
+
+    subgraph external [Servicos opcionais]
+        ddg[DuckDuckGo HTML]
+        ollama[Ollama Local]
+        whatsapp[Evolution API]
+    end
+
+    maps --> ext
+    ext -->|POST bulk-import| leads
+    ext -->|JSON CSV| leads
+    templates --> apps
+    leads --> ddg
+    monitoring --> psutil[psutil]
+    chat --> ollama
+    auth --> whatsapp
+```
+
 ```
 Nuviie/
-├─ core/                # Configurações globais (settings, urls)
-├─ authentication/      # Login, WhatsApp verification, JWT
-├─ leads/               # Scrapers, modelo Lead, API & UI
-├─ crm/                 # Kanban pipeline, cards, API
-├─ contracts/           # PDF generator/reader, modelo Contract
-├─ static/ & templates/ # Tailwind, Alpine, UI components
-└─ manage.py            # CLI do Django
+├── core/              → settings, urls, wsgi
+├── authentication/    → login, OTP, face recognition
+├── leads/             → import_utils, instagram_scraper, Lead model, Kanban, API
+├── extension/         → Extensão Chrome Maps Extractor (MV3)
+├── contracts/         → PDF/DOCX templates, parser inteligente, geração
+├── audit/             → ActivityLog e histórico de auditoria
+├── monitoring/        → Analytics do servidor (psutil)
+├── chat/              → conversas com Ollama
+├── templates/         → HTML (auth, leads, contracts, chat)
+├── static/css/        → estilos customizados
+├── .env.example       → template de configuração
+└── manage.py
 ```
 
-- Cada app segue a **filosofia “thin models, fat services”**: lógica de negócio encapsulada em `services.py`.
-- As APIs são versionadas (`/api/v1/…`) para facilitar a evolução.
-- **Segurança**: CSRF, CORS configurados; senhas e chaves nunca são versionadas (arquivo `.env`).
+---
+
+## 🖥️ Deploy local (Windows)
+
+Para uso entre 2 pessoas na mesma rede local:
+
+```bash
+python manage.py runserver 0.0.0.0:8000
+```
+
+No `.env`, adicione o IP da máquina em `ALLOWED_HOSTS`. Cada pessoa instala a extensão e aponta a URL do Nuviie para `http://IP:8000`.
+
+Para produção com Waitress:
+
+```bash
+pip install waitress
+python manage.py collectstatic --noinput
+waitress-serve --listen=0.0.0.0:8000 core.wsgi:application
+```
 
 ---
 
-## 🎨 Design & Experiência
+## 🧪 Testes
 
-- Tema escuro/premium com paleta de cores azul‑cobalto e acentos neon.
-- Micro‑interações: transições suaves, animações de carregamento “skeleton” nos dashboards.
-- Responsivo: mobile‑first, utilizando Tailwind utilities.
+```bash
+python manage.py test
+```
+
+Testes rodam offline — scrapers são mockados, sem depender de Playwright ou rede.
 
 ---
 
-## 📚 Contribuindo
+## ❓ FAQ
 
-1. Fork o repositório
-2. Crie uma branch `feature/SEU_TEMA`
-3. Submeta um Pull Request
-4. Siga o padrão de linting (`flake8`, `black`)
+**Qual a melhor forma de extrair leads do Maps?**
+Use a **extensão Chrome** (`extension/`). É mais estável, roda no navegador logado e não precisa de Playwright.
+
+**Preciso do Playwright?**
+Não, se usar a extensão. Playwright só é necessário para o scraper legado em `/scraper/maps/`.
+
+**Preciso do Ollama?**
+Não. Só o módulo de Chat IA depende dele.
+
+**Como compartilhar leads entre duas pessoas?**
+Cada um instala a extensão. Exporte JSON/CSV e compartilhe o arquivo, ou apontem a extensão para o mesmo Nuviie local na rede.
+
+**Por que o scraper Playwright retornou zero leads?**
+Use a extensão Chrome. O scraper legado sofre com CAPTCHA, cookies e instabilidade do headless.
+
+**A extensão é grátis?**
+Sim, para uso local. Carregue sem compactação no Chrome — não precisa publicar na loja (~US$ 5 só se quiser distribuir publicamente).
+
+---
+
+## 🗺️ Roadmap
+
+- [x] Extensão Chrome Maps Extractor (MV3)
+- [x] Importação bulk via API token + upload CSV/JSON
+- [ ] Fila de tarefas (Celery) para scrapers longos
+- [ ] Suporte PostgreSQL via `DATABASE_URL`
+- [ ] Vincular contratos gerados a leads do CRM
+- [ ] Tailwind compilado localmente (sem CDN)
 
 ---
 
 ## 📄 Licença
 
-Este projeto está licenciado sob a **MIT License** – sinta‑se livre para usar, modificar e distribuir.
+MIT License — use, modifique e distribua livremente.
 
 ---
 
-*Feito com ❤️ pela equipe Nuviie*
+<p align="center">
+  Feito com 💙 pela equipe <strong>Nuviie</strong>
+</p>

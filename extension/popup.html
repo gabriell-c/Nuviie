@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=360">
+  <title>Nuviie Maps Extractor</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Nuviie Maps</h1>
+    <p class="sub">Extração completa de leads</p>
+  </header>
+
+  <section class="stats">
+    <div><span id="placeCount">0</span> lugares na lista</div>
+    <div><span id="leadCount">0</span> leads extraídos</div>
+  </section>
+
+  <div class="progress-wrap">
+    <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+    <span id="progressText" class="progress-text">—</span>
+  </div>
+  <p id="status" class="status">Abra o Google Maps, busque, role a lista e clique Extrair.</p>
+
+  <div class="field">
+    <label for="city">Cidade *</label>
+    <input id="city" type="text" placeholder="Ex: Ribeirão Preto">
+  </div>
+  <div class="field">
+    <label for="niche">Nicho / segmento</label>
+    <input id="niche" type="text" placeholder="Ex: advogado">
+  </div>
+  <div class="field">
+    <label for="limit">Limite (0 = todos visíveis)</label>
+    <input id="limit" type="number" min="0" placeholder="0">
+  </div>
+
+  <div class="actions">
+    <button id="btnStart" class="btn primary">Extrair completo</button>
+    <button id="btnStop" class="btn secondary">Parar</button>
+  </div>
+
+  <div class="actions">
+    <button id="btnExportJson" class="btn">Export JSON</button>
+    <button id="btnExportCsv" class="btn">Export CSV</button>
+  </div>
+
+  <details class="settings">
+    <summary>Nuviie local (opcional)</summary>
+    <div class="field">
+      <label for="nuviieUrl">URL</label>
+      <input id="nuviieUrl" type="text">
+    </div>
+    <div class="field">
+      <label for="nuviieToken">Token (NUVIIE_EXTENSION_TOKEN)</label>
+      <input id="nuviieToken" type="password" autocomplete="off">
+    </div>
+    <button id="btnSendNuviie" class="btn primary full">Enviar ao Nuviie</button>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>

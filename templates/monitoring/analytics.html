@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="space-y-6" x-data="serverAnalytics()" x-init="startPolling()">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Analytics do Servidor</h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Métricas em tempo real — atualiza a cada 5 segundos</p>
+        </div>
+        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span x-text="lastUpdate ? 'Atualizado: ' + lastUpdate : 'Carregando...'"></span>
+        </div>
+    </div>
+
+    <div x-show="error" class="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-xs text-red-600" x-text="error"></div>
+
+    <template x-if="metrics">
+        <div class="space-y-6">
+            <!-- CPU + RAM -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">CPU</h3>
+                    <div class="flex items-end justify-between mb-3">
+                        <span class="text-3xl font-bold text-slate-900 dark:text-white" x-text="metrics.cpu.percent + '%'"></span>
+                        <span class="text-[10px] text-slate-400" x-text="metrics.cpu.count_physical + ' físicos / ' + metrics.cpu.count_logical + ' lógicos'"></span>
+                    </div>
+                    <div class="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-indigo-500 rounded-full transition-all duration-500" :style="'width:' + metrics.cpu.percent + '%'"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-2" x-show="metrics.cpu.freq_mhz" x-text="'Freq: ' + metrics.cpu.freq_mhz + ' MHz'"></p>
+                </div>
+
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Memória RAM</h3>
+                    <div class="flex items-end justify-between mb-3">
+                        <span class="text-3xl font-bold text-slate-900 dark:text-white" x-text="metrics.memory.percent + '%'"></span>
+                        <span class="text-[10px] text-slate-400" x-text="metrics.memory.used_h + ' / ' + metrics.memory.total_h"></span>
+                    </div>
+                    <div class="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-emerald-500 rounded-full transition-all duration-500" :style="'width:' + metrics.memory.percent + '%'"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-400 mt-2" x-text="'Swap: ' + metrics.memory.swap_used_h + ' (' + metrics.memory.swap_percent + '%)'"></p>
+                </div>
+            </div>
+
+            <!-- Sistema + Processo -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass-panel rounded-2xl p-6 md:col-span-2">
+                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Sistema</h3>
+                    <dl class="grid grid-cols-2 gap-3 text-xs">
+                        <div><dt class="text-slate-400">Hostname</dt><dd class="font-semibold text-slate-800 dark:text-slate-200" x-text="metrics.system.hostname"></dd></div>
+                        <div><dt class="text-slate-400">SO</dt><dd class="font-semibold" x-text="metrics.system.os + ' ' + metrics.system.os_release"></dd></div>
+                        <div><dt class="text-slate-400">Uptime</dt><dd class="font-semibold" x-text="metrics.system.uptime_h"></dd></div>
+                        <div><dt class="text-slate-400">Python / Django</dt><dd class="font-semibold" x-text="metrics.system.python_version + ' / ' + metrics.system.django_version"></dd></div>
+                    </dl>
+                </div>
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Processo Django</h3>
+                    <dl class="space-y-2 text-xs">
+                        <div><span class="text-slate-400">PID </span><span class="font-semibold" x-text="metrics.process.pid"></span></div>
+                        <div><span class="text-slate-400">Threads </span><span class="font-semibold" x-text="metrics.process.threads"></span></div>
+                        <div><span class="text-slate-400">RAM </span><span class="font-semibold" x-text="metrics.process.memory_rss_h"></span></div>
+                        <div><span class="text-slate-400">CPU proc. </span><span class="font-semibold" x-text="metrics.process.cpu_percent + '%'"></span></div>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- Discos -->
+            <div class="glass-panel rounded-2xl p-6">
+                <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Discos</h3>
+                <div class="space-y-4">
+                    <template x-for="disk in metrics.disks" :key="disk.mountpoint">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="font-semibold" x-text="disk.device + ' (' + disk.mountpoint + ')'"></span>
+                                <span class="text-slate-400" x-text="disk.used_h + ' / ' + disk.total_h + ' (' + disk.percent + '%)'"></span>
+                            </div>
+                            <div class="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full transition-all duration-500"
+                                     :class="disk.percent > 90 ? 'bg-red-500' : 'bg-blue-500'"
+                                     :style="'width:' + disk.percent + '%'"></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Rede -->
+            <div class="glass-panel rounded-2xl p-6">
+                <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Rede</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4">
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Enviados</span><span class="font-bold" x-text="metrics.network.bytes_sent_h"></span></div>
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Recebidos</span><span class="font-bold" x-text="metrics.network.bytes_recv_h"></span></div>
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Pacotes ↑</span><span class="font-bold" x-text="metrics.network.packets_sent"></span></div>
+                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Pacotes ↓</span><span class="font-bold" x-text="metrics.network.packets_recv"></span></div>
+                </div>
+                <div class="space-y-2">
+                    <template x-for="iface in metrics.network.interfaces" :key="iface.name">
+                        <div class="flex items-center justify-between text-[10px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/40">
+                            <span class="font-semibold" x-text="iface.name"></span>
+                            <span :class="iface.is_up ? 'text-emerald-500' : 'text-red-400'" x-text="iface.is_up ? 'Ativa' : 'Inativa'"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function serverAnalytics() {
+    return {
+        metrics: null,
+        error: '',
+        lastUpdate: '',
+        _timer: null,
+        async fetchMetrics() {
+            try {
+                const resp = await fetch('{% url "monitoring_api" %}');
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                this.metrics = await resp.json();
+                this.error = '';
+                const d = new Date();
+                this.lastUpdate = d.toLocaleTimeString('pt-BR');
+            } catch (e) {
+                this.error = 'Erro ao carregar métricas: ' + e.message;
+            }
+        },
+        startPolling() {
+            this.fetchMetrics();
+            this._timer = setInterval(() => this.fetchMetrics(), 5000);
+        },
+    };
+}
+</script>
+{% endblock %}

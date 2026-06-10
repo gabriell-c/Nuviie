@@ -4,223 +4,26 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Q
 from django.utils import timezone
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from authentication.whatsapp import clean_phone_number
 
 from .models import Lead, LeadNote
 from .serializers import LeadSerializer, LeadNoteSerializer
-from .scraper import run_google_maps_scraper, run_instagram_scraper
+from audit.services import log_activity
+from .import_utils import save_leads_from_dicts, parse_leads_upload
+from .instagram_scraper import run_instagram_scraper
 
 
 # ---------------------------------------------------------------------------
-# Browser Preview — abre URL com Playwright e retorna screenshot base64
+# Dashboard & Kanban
 # ---------------------------------------------------------------------------
-
-@login_required
-def browser_preview_view(request):
-    """
-    GET /leads/preview/?url=<encoded_url>
-    Executa preview_runner.py como subprocesso, tira screenshot com Playwright
-    e retorna JSON: { 'image': 'data:image/png;base64,...' } ou { 'error': '...' }
-    """
-    import base64 as _b64
-    import json as _json
-    import subprocess
-    import sys as _sys
-    from pathlib import Path
-
-    url = request.GET.get('url', '').strip()
-    if not url:
-        return JsonResponse({'error': 'URL não fornecida'}, status=400)
-
-    if not url.startswith(('http://', 'https://')):
-        return JsonResponse({'error': 'URL inválida'}, status=400)
-
-    # Monta args para o runner
-    args = {
-        'url': url,
-        'viewport_width': 1280,
-        'timeout_ms': 25000,
-    }
-    args_b64 = _b64.b64encode(_json.dumps(args).encode('utf-8')).decode('ascii')
-
-    # Localiza preview_runner.py (na mesma pasta de scraper_runner.py)
-    runner_path = Path(__file__).resolve().parent / 'preview_runner.py'
-    if not runner_path.exists():
-        return JsonResponse({'error': f'preview_runner.py não encontrado em {runner_path}'}, status=500)
-
-    # Repassa PLAYWRIGHT_BROWSERS_PATH se definido
-    env = dict(__import__('os').environ)
-    pw_path_env = env.get('PLAYWRIGHT_BROWSERS_PATH')
-    if not pw_path_env:
-        # tenta detectar automaticamente
-        import pathlib
-        home = pathlib.Path.home()
-        for candidate in [
-            home / 'AppData' / 'Local' / 'ms-playwright',
-            home / '.cache' / 'ms-playwright',
-        ]:
-            if candidate.exists() and list(candidate.glob('firefox-*')):
-                env['PLAYWRIGHT_BROWSERS_PATH'] = str(candidate)
-                break
-
-    try:
-        proc = subprocess.run(
-            [_sys.executable, str(runner_path), args_b64],
-            capture_output=True,
-            text=True,
-            timeout=45,
-            env=env,
-            cwd=str(runner_path.parent),
-        )
-    except subprocess.TimeoutExpired:
-        return JsonResponse({'error': 'Timeout ao carregar a página (45s)'}, status=504)
-    except Exception as e:
-        return JsonResponse({'error': f'Erro ao iniciar subprocesso: {e}'}, status=500)
-
-    # Procura o marcador no stdout
-    stdout = proc.stdout or ''
-    for line in stdout.splitlines():
-        if line.startswith('__PREVIEW_RESULT__'):
-            img_b64 = line[len('__PREVIEW_RESULT__'):]
-            return JsonResponse({
-                'image': f'data:image/png;base64,{img_b64}'
-            })
-        if line.startswith('__PREVIEW_ERROR__'):
-            error_msg = line[len('__PREVIEW_ERROR__'):]
-            return JsonResponse({'error': error_msg}, status=502)
-
-    # Nenhum marcador encontrado
-    stderr_snippet = (proc.stderr or '')[-800:]
-    return JsonResponse({
-        'error': 'Nenhum resultado do runner',
-        'stderr': stderr_snippet,
-    }, status=502)
-
-
-@login_required
-def open_browser_view(request):
-    """
-    GET /leads/open-browser/?url=<encoded_url>
-
-    Abre o Firefox real do Playwright na URL solicitada via subprocess.Popen.
-    Retorna JSON: { 'ok': true } ou { 'error': '...' }
-
-    Lógica:
-    1. Localiza o executável do Firefox instalado pelo Playwright
-    2. Abre com subprocess.Popen (não-bloqueante) passando a URL
-    3. Retorna imediatamente — a janela Firefox aparece para o usuário
-    """
-    import subprocess
-    import pathlib
-    import os as _os
-
-    url = request.GET.get('url', '').strip()
-    if not url:
-        return JsonResponse({'error': 'URL não fornecida'}, status=400)
-
-    if not url.startswith(('http://', 'https://')):
-        return JsonResponse({'error': 'URL inválida — apenas http/https'}, status=400)
-
-    # ── Encontra o Firefox do Playwright ─────────────────────────────────────
-    def _find_firefox_bin() -> str | None:
-        """Localiza o executável do Firefox instalado pelo Playwright."""
-        import sys as _sys
-
-        home = pathlib.Path.home()
-        username = _os.environ.get('USERNAME') or _os.environ.get('USER') or ''
-
-        # Diretórios candidatos do ms-playwright
-        pw_env = _os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '')
-        candidates_dirs = [
-            pathlib.Path(pw_env) if pw_env else None,
-            home / 'AppData' / 'Local' / 'ms-playwright',   # Windows
-            home / '.cache' / 'ms-playwright',               # Linux/Mac
-            pathlib.Path('/root/.cache/ms-playwright'),
-        ]
-        if username:
-            candidates_dirs.append(pathlib.Path(f'/home/{username}/.cache/ms-playwright'))
-
-        for base in candidates_dirs:
-            if not base or not base.exists():
-                continue
-
-            firefox_dirs = sorted(base.glob('firefox-*'), reverse=True)
-            for ff_dir in firefox_dirs:
-                # Windows: firefox.exe dentro de firefox\
-                for exe_path in [
-                    ff_dir / 'firefox' / 'firefox.exe',       # Windows
-                    ff_dir / 'firefox' / 'firefox',            # Linux
-                    ff_dir / 'firefox.exe',                    # Windows alt
-                    ff_dir / 'firefox',                        # Linux alt
-                    ff_dir / 'Firefox.app' / 'Contents' / 'MacOS' / 'firefox',  # Mac
-                ]:
-                    if exe_path.exists():
-                        return str(exe_path)
-
-        return None
-
-    firefox_bin = _find_firefox_bin()
-
-    if not firefox_bin:
-        # Fallback: tenta o Firefox do sistema operacional
-        import shutil
-        for candidate in ('firefox', 'firefox-esr', 'firefox-bin'):
-            found = shutil.which(candidate)
-            if found:
-                firefox_bin = found
-                break
-
-    if not firefox_bin:
-        return JsonResponse({
-            'error': (
-                'Firefox não encontrado. '
-                'Execute "playwright install firefox" para instalar, '
-                'ou instale o Firefox no sistema.'
-            )
-        }, status=500)
-
-    # ── Abre o Firefox com a URL ──────────────────────────────────────────────
-    try:
-        env = dict(_os.environ)
-
-        # Define PLAYWRIGHT_BROWSERS_PATH se não estiver definido
-        pw_path = env.get('PLAYWRIGHT_BROWSERS_PATH')
-        if not pw_path:
-            home = pathlib.Path.home()
-            for candidate in [
-                home / 'AppData' / 'Local' / 'ms-playwright',
-                home / '.cache' / 'ms-playwright',
-            ]:
-                if candidate.exists() and list(candidate.glob('firefox-*')):
-                    env['PLAYWRIGHT_BROWSERS_PATH'] = str(candidate)
-                    break
-
-        # Abre Firefox de forma não-bloqueante (Popen, não run/wait)
-        proc = subprocess.Popen(
-            [firefox_bin, '--new-window', url],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            # No Windows: não abre janela de console extra
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0,
-        )
-
-        return JsonResponse({
-            'ok': True,
-            'firefox_bin': firefox_bin,
-            'pid': proc.pid,
-        })
-
-    except Exception as e:
-        return JsonResponse({'error': f'Erro ao abrir Firefox: {e}'}, status=500)
-
-
-# --- STANDARD TEMPLATE VIEWS ---
 
 @login_required
 def dashboard_view(request):
@@ -283,48 +86,6 @@ def kanban_view(request):
     return render(request, 'leads/kanban.html', context)
 
 @login_required
-def maps_scraper_view(request):
-    if request.method == 'POST':
-        city = request.POST.get('city', '').strip()
-        niche = request.POST.get('niche', '').strip()
-        limit = int(request.POST.get('limit', 10))
-        only_without_website = request.POST.get('only_without_website') == 'on'
-        only_with_instagram = request.POST.get('only_with_instagram') == 'on'
-        only_with_facebook = request.POST.get('only_with_facebook') == 'on'
-
-        min_rating_raw = request.POST.get('min_rating', '').strip()
-        min_rating = float(min_rating_raw) if min_rating_raw else None
-
-        min_reviews_raw = request.POST.get('min_reviews', '').strip()
-        min_reviews = int(min_reviews_raw) if min_reviews_raw else None
-
-        if not city or not niche:
-            messages.error(request, "Por favor, preencha a cidade e o nicho.")
-            return render(request, 'leads/maps_scraper.html')
-
-        try:
-            saved, skipped = run_google_maps_scraper(
-                user=request.user,
-                city=city,
-                niche=niche,
-                limit=limit,
-                only_without_website=only_without_website,
-                min_rating=min_rating,
-                min_reviews=min_reviews,
-                only_with_instagram=only_with_instagram,
-                only_with_facebook=only_with_facebook,
-            )
-            messages.success(
-                request, 
-                f"Scraping concluído! {saved} novos leads importados. {skipped} duplicados ignorados."
-            )
-            return redirect('kanban')
-        except Exception as e:
-            messages.error(request, f"Erro na extração: {str(e)}")
-            
-    return render(request, 'leads/maps_scraper.html', {'current_page': 'maps_scraper'})
-
-@login_required
 def instagram_scraper_view(request):
     if request.method == 'POST':
         niche = request.POST.get('niche', '').strip()
@@ -345,6 +106,13 @@ def instagram_scraper_view(request):
                 limit=limit,
                 only_verified=only_verified,
                 only_with_bio_link=only_with_bio_link
+            )
+            log_activity(
+                'instagram_scrape',
+                f'Extração Instagram: {saved} salvos, {skipped} duplicados — nicho "{niche}".',
+                user=request.user,
+                metadata={'niche': niche, 'location': location, 'saved': saved, 'skipped': skipped},
+                request=request,
             )
             messages.success(
                 request, 
@@ -374,6 +142,13 @@ def export_leads_view(request):
         user_leads = user_leads.filter(name__icontains=search_query) | user_leads.filter(category__icontains=search_query)
         
     if export_format == 'json':
+        log_activity(
+            'lead_export',
+            f'Exportação JSON de {user_leads.count()} leads.',
+            user=request.user,
+            metadata={'format': 'json', 'count': user_leads.count()},
+            request=request,
+        )
         data = []
         for lead in user_leads:
             data.append({
@@ -397,7 +172,14 @@ def export_leads_view(request):
         response['Content-Disposition'] = 'attachment; filename="leads_nuviie.json"'
         return response
         
-    else: # Default CSV
+    else:  # Default CSV
+        log_activity(
+            'lead_export',
+            f'Exportação CSV de {user_leads.count()} leads.',
+            user=request.user,
+            metadata={'format': 'csv', 'count': user_leads.count()},
+            request=request,
+        )
         response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
         response['Content-Disposition'] = 'attachment; filename="leads_nuviie.csv"'
         
@@ -442,15 +224,15 @@ class LeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(source=source_param)
         if search_param:
             queryset = queryset.filter(
-                models.Q(name__icontains=search_param) | 
-                models.Q(category__icontains=search_param) |
-                models.Q(city__icontains=search_param)
+                Q(name__icontains=search_param) |
+                Q(category__icontains=search_param) |
+                Q(city__icontains=search_param)
             )
         if has_site_param:
             if has_site_param == 'true':
                 queryset = queryset.exclude(website='').exclude(website__isnull=True)
             elif has_site_param == 'false':
-                queryset = queryset.filter(models.Q(website='') | models.Q(website__isnull=True))
+                queryset = queryset.filter(Q(website='') | Q(website__isnull=True))
                 
         if ordering_param:
             queryset = queryset.order_by(ordering_param)
@@ -459,12 +241,32 @@ class LeadViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         lead = serializer.save(user=self.request.user)
-        # Add system log
         LeadNote.objects.create(
             lead=lead,
             user=self.request.user,
             note="Lead criado manualmente no sistema.",
             action_type='creation'
+        )
+        log_activity(
+            'lead_create',
+            f'Lead criado: {lead.name}',
+            user=self.request.user,
+            entity_type='lead',
+            entity_id=lead.pk,
+            request=self.request,
+        )
+
+    def perform_destroy(self, instance):
+        name = instance.name
+        pk = instance.pk
+        instance.delete()
+        log_activity(
+            'lead_delete',
+            f'Lead excluído: {name}',
+            user=self.request.user,
+            entity_type='lead',
+            entity_id=pk,
+            request=self.request,
         )
 
     def perform_update(self, serializer):
@@ -533,3 +335,122 @@ class LeadViewSet(viewsets.ModelViewSet):
         )
         
         return Response(LeadNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        ids = request.data.get('ids', [])
+        if not isinstance(ids, list) or not ids:
+            return Response({'error': 'Informe uma lista de IDs.'}, status=status.HTTP_400_BAD_REQUEST)
+        qs = Lead.objects.filter(user=request.user, id__in=ids)
+        count = qs.count()
+        names = list(qs.values_list('name', flat=True)[:5])
+        qs.delete()
+        log_activity(
+            'lead_bulk_delete',
+            f'{count} leads excluídos em massa.',
+            user=request.user,
+            metadata={'count': count, 'sample': names},
+            request=request,
+        )
+        return Response({'deleted': count})
+
+    @action(detail=False, methods=['post'], url_path='delete-all')
+    def delete_all(self, request):
+        if not request.data.get('confirm'):
+            return Response({'error': 'Confirmação necessária.'}, status=status.HTTP_400_BAD_REQUEST)
+        qs = Lead.objects.filter(user=request.user)
+        count = qs.count()
+        qs.delete()
+        log_activity(
+            'lead_delete_all',
+            f'Todos os leads excluídos ({count}).',
+            user=request.user,
+            metadata={'count': count},
+            request=request,
+        )
+        return Response({'deleted': count})
+
+
+# ---------------------------------------------------------------------------
+# Extensão Chrome — bulk import via token
+# ---------------------------------------------------------------------------
+
+def _extension_import_user():
+    username = getattr(settings, 'NUVIIE_EXTENSION_USER', '') or 'admin'
+    User = get_user_model()
+    return User.objects.filter(username=username).first()
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def bulk_import_leads_view(request):
+    expected = getattr(settings, 'NUVIIE_EXTENSION_TOKEN', '')
+    token = request.headers.get('X-Nuviie-Token', '')
+    if not expected or token != expected:
+        return Response({'error': 'Token inválido ou não configurado.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    user = _extension_import_user()
+    if not user:
+        return Response(
+            {'error': f'Usuário NUVIIE_EXTENSION_USER não encontrado.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    leads = request.data.get('leads', [])
+    if not isinstance(leads, list):
+        return Response({'error': 'Campo "leads" deve ser uma lista.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    city = (request.data.get('city') or '').strip()
+    normalized = []
+    for item in leads:
+        if not isinstance(item, dict):
+            continue
+        lead = dict(item)
+        if city and not lead.get('city'):
+            lead['city'] = city
+        if not lead.get('source'):
+            lead['source'] = 'google_maps'
+        normalized.append(lead)
+
+    saved, skipped = save_leads_from_dicts(user, normalized)
+    log_activity(
+        'lead_import',
+        f'Importação via extensão: {saved} salvos, {skipped} duplicados.',
+        user=user,
+        metadata={'saved': saved, 'skipped': skipped, 'source': 'extension'},
+        request=request,
+    )
+    return Response({'saved': saved, 'skipped': skipped, 'errors': []})
+
+
+@login_required
+def import_leads_view(request):
+    if request.method == 'POST':
+        upload = request.FILES.get('file')
+        if not upload:
+            messages.error(request, 'Selecione um arquivo JSON ou CSV.')
+            return render(request, 'leads/import_leads.html', {'current_page': 'import_leads'})
+
+        try:
+            content = upload.read().decode('utf-8-sig')
+            leads_data = parse_leads_upload(content, upload.name)
+            saved, skipped = save_leads_from_dicts(request.user, leads_data)
+            log_activity(
+                'lead_import',
+                f'Importação de arquivo: {saved} salvos, {skipped} duplicados.',
+                user=request.user,
+                metadata={'saved': saved, 'skipped': skipped, 'filename': upload.name},
+                request=request,
+            )
+            messages.success(
+                request,
+                f'Importação concluída! {saved} novos leads salvos. {skipped} duplicados ignorados.',
+            )
+            return redirect('kanban')
+        except (ValueError, json.JSONDecodeError) as e:
+            messages.error(request, f'Erro ao ler arquivo: {e}')
+        except Exception as e:
+            messages.error(request, f'Erro na importação: {e}')
+
+    return render(request, 'leads/import_leads.html', {'current_page': 'import_leads'})

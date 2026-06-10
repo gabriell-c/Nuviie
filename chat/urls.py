@@ -8,4 +8,5 @@ urlpatterns = [
     path('chat/<int:conv_id>/messages/', views.load_messages, name='chat_messages'),
     path('chat/<int:conv_id>/delete/', views.delete_conversation, name='chat_delete'),
     path('chat/send/', views.send_message, name='chat_send'),
+    path('chat/<int:conv_id>/poll/', views.poll_response, name='chat_poll'),
 ]

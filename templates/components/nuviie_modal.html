@@ -1,0 +1,97 @@
+<div id="nuviie-modal-root"
+     x-data="nuviieModalRoot()"
+     x-show="open"
+     x-cloak
+     @keydown.escape.window="cancel()"
+     class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+     style="display:none;">
+    <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="cancel()"></div>
+    <div class="relative w-full max-w-md glass-panel rounded-2xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 animate-[modalIn_0.2s_ease-out]"
+         @click.stop>
+        <div class="flex items-start gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                 :class="{
+                    'bg-indigo-500/15 text-indigo-500': mode === 'alert',
+                    'bg-amber-500/15 text-amber-500': mode === 'confirm',
+                    'bg-red-500/15 text-red-500': mode === 'danger'
+                 }">
+                <i class="fa-solid text-lg"
+                   :class="{
+                      'fa-circle-info': mode === 'alert',
+                      'fa-circle-question': mode === 'confirm',
+                      'fa-triangle-exclamation': mode === 'danger'
+                   }"></i>
+            </div>
+            <div class="min-w-0">
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white" x-text="title"></h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed whitespace-pre-line" x-text="message"></p>
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button x-show="mode !== 'alert'" @click="cancel()"
+                    class="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                Cancelar
+            </button>
+            <button @click="confirm()"
+                    class="px-4 py-2 text-xs font-semibold rounded-xl text-white transition"
+                    :class="mode === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'gradient-bg-primary hover:opacity-95'"
+                    x-text="confirmLabel"></button>
+        </div>
+    </div>
+</div>
+<script>
+function nuviieModalRoot() {
+    return {
+        open: false,
+        mode: 'alert',
+        title: 'Aviso',
+        message: '',
+        confirmLabel: 'OK',
+        _resolve: null,
+        confirm() {
+            this.open = false;
+            if (this._resolve) this._resolve(true);
+            this._resolve = null;
+        },
+        cancel() {
+            this.open = false;
+            if (this._resolve) this._resolve(false);
+            this._resolve = null;
+        },
+    };
+}
+
+window.NuviieModal = {
+    _show(opts) {
+        const root = document.getElementById('nuviie-modal-root');
+        if (!root || !root._x_dataStack) {
+            return Promise.resolve(opts.mode === 'alert');
+        }
+        const data = root._x_dataStack[0];
+        data.mode = opts.mode || 'alert';
+        data.title = opts.title || 'Aviso';
+        data.message = opts.message || '';
+        data.confirmLabel = opts.confirmLabel || (opts.mode === 'alert' ? 'OK' : 'Confirmar');
+        data.open = true;
+        return new Promise((resolve) => { data._resolve = resolve; });
+    },
+    alert(message, title = 'Aviso') {
+        return this._show({ mode: 'alert', message, title }).then(() => {});
+    },
+    confirm(message, title = 'Confirmar', opts = {}) {
+        return this._show({
+            mode: opts.danger ? 'danger' : 'confirm',
+            message,
+            title,
+            confirmLabel: opts.confirmLabel || 'Confirmar',
+        });
+    },
+};
+</script>
+<style>
+@keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+[x-cloak] { display: none !important; }
+</style>

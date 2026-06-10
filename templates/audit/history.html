@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="space-y-6">
+    <div>
+        <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Histórico de Auditoria</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Registro de ações no sistema — login, leads, contratos e mais.</p>
+    </div>
+
+    <form method="GET" class="glass-panel rounded-2xl p-4 flex flex-wrap items-end gap-4">
+        <div>
+            <label class="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Ação</label>
+            <select name="action" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs">
+                <option value="">Todas</option>
+                {% for code, label in action_choices %}
+                <option value="{{ code }}" {% if selected_action == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex-1 min-w-[200px]">
+            <label class="block text-[10px] font-semibold text-slate-400 uppercase mb-1">Buscar</label>
+            <input type="text" name="search" value="{{ search }}" placeholder="Usuário ou descrição..."
+                   class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs">
+        </div>
+        <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold">Filtrar</button>
+    </form>
+
+    <div class="glass-panel rounded-2xl overflow-hidden shadow-md">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-100 dark:border-slate-800">
+                        <th class="py-3 pl-4">Quem</th>
+                        <th class="py-3">O quê</th>
+                        <th class="py-3">Quando</th>
+                        <th class="py-3 pr-4">Detalhes</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800/40">
+                    {% for log in logs %}
+                    <tr class="hover:bg-slate-50/40 dark:hover:bg-slate-800/20" x-data="{ open: false }">
+                        <td class="py-3 pl-4 font-semibold text-slate-800 dark:text-slate-200">
+                            {{ log.user.username|default:"Sistema" }}
+                        </td>
+                        <td class="py-3">
+                            <span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">{{ log.get_action_display }}</span>
+                        </td>
+                        <td class="py-3 text-slate-500">{{ log.created_at|date:"d/m/Y H:i:s" }}</td>
+                        <td class="py-3 pr-4">
+                            <button @click="open = !open" class="text-indigo-500 hover:underline text-[10px]">Ver</button>
+                            <p class="text-slate-600 dark:text-slate-400 mt-1" x-show="!open">{{ log.description|truncatechars:80 }}</p>
+                            <div x-show="open" x-cloak class="mt-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-[10px] space-y-1">
+                                <p>{{ log.description }}</p>
+                                {% if log.metadata %}
+                                <pre class="text-slate-400 overflow-x-auto">{{ log.metadata }}</pre>
+                                {% endif %}
+                                {% if log.ip_address %}
+                                <p class="text-slate-400">IP: {{ log.ip_address }}</p>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="py-12 text-center text-slate-400">Nenhum registro encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if logs.has_other_pages %}
+        <div class="flex items-center justify-center gap-2 py-4 border-t border-slate-100 dark:border-slate-800">
+            {% if logs.has_previous %}
+            <a href="?page={{ logs.previous_page_number }}&action={{ selected_action }}&search={{ search }}" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">Anterior</a>
+            {% endif %}
+            <span class="text-xs text-slate-400">Página {{ logs.number }} de {{ logs.paginator.num_pages }}</span>
+            {% if logs.has_next %}
+            <a href="?page={{ logs.next_page_number }}&action={{ selected_action }}&search={{ search }}" class="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">Próxima</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

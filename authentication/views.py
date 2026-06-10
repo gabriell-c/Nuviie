@@ -14,11 +14,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.utils import timezone
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .models import CustomUser
 from .whatsapp import clean_phone_number, send_whatsapp_otp
+from audit.services import log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +202,15 @@ def face_register_view(request):
         user.face_login_enabled = True
         user.save()
 
+        log_activity(
+            'face_register',
+            f'Cadastro facial concluído ({len(vectors)} poses).',
+            user=user,
+            entity_type='user',
+            entity_id=user.pk,
+            request=request,
+        )
+
         messages.success(request, f"Reconhecimento facial cadastrado com {len(vectors)} poses! Login muito mais fácil agora.")
         return redirect('profile')
 
@@ -345,6 +354,14 @@ def register_view(request):
                 phone_number=cleaned_phone,
             )
             login(request, user)
+            log_activity(
+                'register',
+                f'Novo cadastro: {email}.',
+                user=user,
+                entity_type='user',
+                entity_id=user.pk,
+                request=request,
+            )
             messages.success(request, "Cadastro realizado com sucesso!")
             return redirect('face_register' if request.POST.get('enable_face') else 'dashboard')
         except Exception as e:

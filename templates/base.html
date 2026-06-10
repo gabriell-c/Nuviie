@@ -114,9 +114,9 @@
                 <span class="px-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">Ferramentas</span>
             </div>
             
-            <a href="{% url 'maps_scraper' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'maps_scraper' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
-                <i class="fa-solid fa-map-location-dot text-lg"></i>
-                <span>Maps Lead Generator</span>
+            <a href="{% url 'import_leads' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'import_leads' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-file-import text-lg"></i>
+                <span>Importar Leads</span>
             </a>
             
             <a href="{% url 'instagram_scraper' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'instagram_scraper' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
@@ -137,6 +137,20 @@
             <a href="{% url 'chat' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'chat' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
                 <i class="fa-solid fa-robot text-lg"></i>
                 <span>Atendente IA</span>
+            </a>
+
+            <div class="pt-4 pb-2">
+                <span class="px-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">Sistema</span>
+            </div>
+
+            <a href="{% url 'monitoring_analytics' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'monitoring' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-server text-lg"></i>
+                <span>Analytics Servidor</span>
+            </a>
+
+            <a href="{% url 'audit_history' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'audit_history' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-clock-rotate-left text-lg"></i>
+                <span>Histórico</span>
             </a>
 
             <div class="pt-4 pb-2">
@@ -198,11 +212,13 @@
                 <span class="text-slate-300 dark:text-slate-700">/</span>
                 <span class="text-xs font-medium text-slate-500 dark:text-slate-400 capitalize">
                     {% if current_page == 'dashboard' %}Dashboard
-                    {% elif current_page == 'maps_scraper' %}Maps Lead Generator
+                    {% elif current_page == 'import_leads' %}Importar Leads
                     {% elif current_page == 'instagram_scraper' %}Instagram Scraper
                     {% elif current_page == 'kanban' %}CRM Kanban
                     {% elif current_page == 'contracts' %}Gerador de Contratos
                     {% elif current_page == 'chat' %}Atendente IA
+                    {% elif current_page == 'monitoring' %}Analytics Servidor
+                    {% elif current_page == 'audit_history' %}Histórico
                     {% else %}Minha Conta{% endif %}
                 </span>
             </div>
@@ -258,6 +274,8 @@
             {% block content %}{% endblock %}
         </div>
     </main>
+
+    {% include 'components/nuviie_modal.html' %}
 
     {% block extra_scripts %}{% endblock %}
 </body>

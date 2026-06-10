@@ -19,6 +19,10 @@ from django.urls import path, include
 from django.shortcuts import redirect
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
+
+def health_check(request):
+    return JsonResponse({'status': 'ok'})
 
 def root_redirect(request):
     if request.user.is_authenticated:
@@ -26,12 +30,15 @@ def root_redirect(request):
     return redirect('login')
 
 urlpatterns = [
+    path('health/', health_check, name='health'),
     path('admin/', admin.site.urls),
     path('', root_redirect, name='root_redirect'),
     path('auth/', include('authentication.urls')),
     path('', include('leads.urls')),
     path('contracts/', include('contracts.urls')),
     path('', include('chat.urls')),
+    path('audit/', include('audit.urls')),
+    path('monitoring/', include('monitoring.urls')),
 ]
 
 if settings.DEBUG:

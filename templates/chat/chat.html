@@ -1370,20 +1370,12 @@
 
       if (data.error) {
         showToast('Erro: ' + data.error, 'error');
+      } else if (data.pending) {
+        const provisionalText = stripMarkdown(data.reply || '');
+        appendMessage('assistant', provisionalText, data.time || now);
+        await pollForFinalReply(data.last_assistant_id, data.time || now);
       } else {
-        const finalText = stripMarkdown(data.reply || '');
-        const chunks = splitIntoMessages(finalText);
-        const msgTime = data.time || now;
-
-        for (let i = 0; i < chunks.length; i++) {
-          if (i > 0) {
-            showTyping();
-            await delay(600 + Math.random() * 400);
-            hideTyping();
-            await delay(150);
-          }
-          appendMessage('assistant', chunks[i], msgTime);
-        }
+        await appendAssistantChunks(data.reply || '', data.time || now);
 
         if (data.title) {
           document.getElementById('conv-title-display').textContent = data.title;
@@ -1403,6 +1395,51 @@
 
   function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function appendAssistantChunks(text, msgTime) {
+    const finalText = stripMarkdown(text);
+    const chunks = splitIntoMessages(finalText);
+    for (let i = 0; i < chunks.length; i++) {
+      if (i > 0) {
+        showTyping();
+        await delay(600 + Math.random() * 400);
+        hideTyping();
+        await delay(150);
+      }
+      appendMessage('assistant', chunks[i], msgTime);
+    }
+  }
+
+  async function pollForFinalReply(afterId, fallbackTime) {
+    const maxAttempts = 20;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await delay(3000);
+      showTyping();
+      try {
+        const url = `/chat/${currentConvId}/poll/` + (afterId ? `?after=${afterId}` : '');
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data.ready && data.reply) {
+          hideTyping();
+          const msgs = document.querySelectorAll('#messages-container .msg-assistant');
+          const lastMsg = msgs[msgs.length - 1];
+          if (lastMsg) lastMsg.remove();
+          await appendAssistantChunks(data.reply, data.time || fallbackTime);
+          if (data.title) {
+            document.getElementById('conv-title-display').textContent = data.title;
+            const sideItem = document.querySelector(`.conv-item[data-id="${currentConvId}"] .conv-title`);
+            if (sideItem) sideItem.textContent = data.title;
+          }
+          return;
+        }
+      } catch (_) {
+        /* retry */
+      }
+      hideTyping();
+    }
+    showToast('A resposta está demorando mais que o esperado. Atualize a página em instantes.', 'warning');
   }
 
   // ── New conversation ──

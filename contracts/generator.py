@@ -63,37 +63,60 @@ class NumberedCanvas(canvas.Canvas):
         self.restoreState()
 
 
-def generate_contract_pdf(template_path, filled_data, output_path, contract_title):
+def _replace_field_in_text(text: str, key: str, value: str) -> str:
+    val_str = str(value or '')
+    text = re.sub(r'\{\{\s*' + re.escape(key) + r'\s*\}\}', val_str, text)
+    text = re.sub(r'\[\s*' + re.escape(key) + r'\s*\]', val_str, text)
+    if val_str:
+        text = re.sub(r'_{3,}', val_str, text, count=1)
+        text = re.sub(r'\.{5,}', val_str, text, count=1)
+    return text
+
+
+def _blocks_to_paragraphs(structure: dict, filled_data: dict) -> list[str]:
+    paragraphs: list[str] = []
+    for block in structure.get('blocks', []):
+        if block.get('type') == 'variable':
+            text = _replace_field_in_text(
+                block.get('text', ''),
+                block.get('field_key', ''),
+                filled_data.get(block.get('field_key', ''), ''),
+            )
+        else:
+            text = block.get('text', '')
+        if text.strip():
+            paragraphs.append(text.strip())
+    return paragraphs
+
+
+def generate_contract_pdf(template_path, filled_data, output_path, contract_title, structure=None):
     """
     Reads the base template text, replaces placeholders with filled_data, 
     and constructs a premium styled PDF using ReportLab Platypus.
     """
-    # 1. Extract base text from template
-    raw_text = ""
-    try:
-        with pdfplumber.open(template_path) as pdf:
-            for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    raw_text += text + "\n\n"
-    except Exception as e:
-        raw_text = f"Erro ao ler modelo original: {str(e)}"
+    # 1. Extract base text from template or use structure blocks
+    raw_paragraphs: list[str] = []
+    if structure and structure.get('blocks'):
+        raw_paragraphs = _blocks_to_paragraphs(structure, filled_data)
+        processed_text = '\n\n'.join(raw_paragraphs)
+    else:
+        raw_text = ""
+        try:
+            with pdfplumber.open(template_path) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        raw_text += text + "\n\n"
+        except Exception as e:
+            raw_text = f"Erro ao ler modelo original: {str(e)}"
 
-    # 2. Perform Replacements
-    # Support both {{ placeholder }} and [PLACEHOLDER]
-    processed_text = raw_text
-    for key, value in filled_data.items():
-        val_str = str(value)
-        # Replace {{ key }}
-        processed_text = re.sub(r'\{\{\s*' + re.escape(key) + r'\s*\}\}', val_str, processed_text)
-        # Replace [key]
-        processed_text = re.sub(r'\[\s*' + re.escape(key) + r'\s*\]', val_str, processed_text)
+        # 2. Perform Replacements
+        processed_text = raw_text
+        for key, value in filled_data.items():
+            processed_text = _replace_field_in_text(processed_text, key, value)
 
-    # Clean redundant whitespaces
-    processed_text = processed_text.replace('\r', '')
-    
-    # Split into paragraphs by blank lines
-    raw_paragraphs = [p.strip() for p in processed_text.split('\n\n') if p.strip()]
+        processed_text = processed_text.replace('\r', '')
+        raw_paragraphs = [p.strip() for p in processed_text.split('\n\n') if p.strip()]
 
     # 3. Build the PDF Document
     doc = SimpleDocTemplate(

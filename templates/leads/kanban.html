@@ -56,6 +56,25 @@
                 <i class="fa-solid fa-plus text-[10px]"></i>
                 <span>Criar Lead</span>
             </button>
+
+            <button @click="confirmDeleteAll()" class="px-3 py-2 bg-red-600/10 hover:bg-red-600/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-xl text-xs font-semibold transition">
+                <i class="fa-solid fa-trash-can text-[10px] mr-1"></i>Excluir todos
+            </button>
+        </div>
+    </div>
+
+    <!-- Bulk selection toolbar -->
+    <div x-show="selectedIds.length > 0" x-cloak
+         class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/50 shrink-0">
+        <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+            <span x-text="selectedIds.length"></span> selecionado(s)
+        </span>
+        <div class="flex items-center gap-2">
+            <button @click="selectAllVisible()" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">Selecionar todos visíveis</button>
+            <button @click="selectedIds = []" class="text-xs text-slate-500 hover:underline">Limpar</button>
+            <button @click="confirmDeleteSelected()" class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold">
+                Excluir selecionados
+            </button>
         </div>
     </div>
 
@@ -95,7 +114,13 @@
                     <!-- Cards -->
                     <template x-for="lead in getLeadsByStatus('{{ code }}')" :key="lead.id">
                         <div :data-id="lead.id" @click="openDetails(lead.id)"
-                             class="bg-white dark:bg-slate-850 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm cursor-grab hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition duration-150 relative group">
+                             class="bg-white dark:bg-slate-850 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm cursor-grab hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition duration-150 relative group"
+                             :class="selectedIds.includes(lead.id) ? 'ring-2 ring-indigo-500 border-indigo-400' : ''">
+
+                            <input type="checkbox"
+                                   :checked="selectedIds.includes(lead.id)"
+                                   @click.stop="toggleSelect(lead.id)"
+                                   class="absolute top-2 right-2 w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer z-10">
                             
                             <!-- Rating / Quality indicator -->
                             <div class="flex items-center justify-between mb-2">
@@ -164,15 +189,12 @@
                     <h2 class="text-base font-bold text-slate-800 dark:text-slate-200" x-text="currentLead.name">Lead Details</h2>
                 </div>
                 <div class="flex items-center space-x-2">
-                    <!-- Botão: Abrir no Firefox real (Playwright) -->
                     <button x-show="currentLead.maps_link"
-                            @click="openInFirefox(currentLead.maps_link)"
-                            :disabled="firefoxOpening"
-                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-orange-50 dark:hover:bg-orange-950/40 text-slate-600 dark:text-slate-300 hover:text-orange-600 dark:hover:text-orange-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-orange-200 dark:hover:border-orange-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                            :title="firefoxOpening ? 'Abrindo Firefox...' : 'Abrir no Firefox (Playwright)'"
-                            title="Abrir no Firefox">
-                        <i class="fa-brands fa-firefox-browser text-xs" :class="firefoxOpening ? 'animate-pulse text-orange-500' : ''"></i>
-                        <span x-text="firefoxOpening ? 'Abrindo...' : 'Abrir Firefox'"></span>
+                            @click="openExternalUrl(currentLead.maps_link)"
+                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
+                            title="Abrir no Google Maps">
+                        <i class="fa-solid fa-map-location-dot text-xs"></i>
+                        <span>Abrir Maps</span>
                     </button>
                     <button @click="editMode = !editMode" class="text-slate-400 hover:text-indigo-500 p-1.5 rounded-lg transition" :title="editMode ? 'Visualizar' : 'Editar dados'">
                         <i class="fa-solid" :class="editMode ? 'fa-eye' : 'fa-pen-to-square'"></i>
@@ -444,132 +466,6 @@
             </div>
         </div>
     </div>
-    
-    <!-- MODAL: Navegador Embutido (Browser Preview via Playwright) -->
-    <div x-show="browserModalOpen"
-         class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm"
-         x-transition:enter="transition ease-out duration-200"
-         x-transition:enter-start="opacity-0 scale-95"
-         x-transition:enter-end="opacity-100 scale-100"
-         x-transition:leave="transition ease-in duration-150"
-         x-transition:leave-start="opacity-100 scale-100"
-         x-transition:leave-end="opacity-0 scale-95"
-         style="display: none;">
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col overflow-hidden"
-             style="height: 88vh;"
-             @click.away="closeBrowserPreview()">
-
-            <!-- Barra do navegador fake -->
-            <div class="flex items-center space-x-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 shrink-0">
-                <!-- Dots estilo macOS -->
-                <div class="flex items-center space-x-1.5">
-                    <button @click="closeBrowserPreview()" class="w-3 h-3 rounded-full bg-red-400 hover:bg-red-500 transition flex items-center justify-center group" title="Fechar">
-                        <i class="fa-solid fa-xmark text-[6px] text-red-800 opacity-0 group-hover:opacity-100"></i>
-                    </button>
-                    <div class="w-3 h-3 rounded-full bg-amber-400"></div>
-                    <div class="w-3 h-3 rounded-full bg-emerald-400"></div>
-                </div>
-
-                <!-- URL bar -->
-                <div class="flex-1 flex items-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 space-x-2 min-w-0">
-                    <i class="fa-solid fa-lock text-emerald-500 text-[10px] shrink-0"></i>
-                    <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate font-mono" x-text="browserUrl"></span>
-                </div>
-
-                <!-- Botões de ação -->
-                <div class="flex items-center space-x-1 shrink-0">
-                    <!-- Badge de tempo -->
-                    <span x-show="browserLoadTime" class="text-[9px] font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg mr-1"
-                          x-text="browserLoadTime + 's'"></span>
-                    <button @click="reloadBrowserPreview()"
-                            class="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition" title="Tirar novo screenshot">
-                        <i class="fa-solid fa-rotate-right text-xs" :class="browserLoading ? 'animate-spin text-indigo-500' : ''"></i>
-                    </button>
-                    <a :href="browserUrl" target="_blank"
-                       class="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition" title="Abrir em nova aba real">
-                        <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
-                    </a>
-                    <button @click="closeBrowserPreview()"
-                            class="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition" title="Fechar">
-                        <i class="fa-solid fa-xmark text-xs"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Corpo do modal -->
-            <div class="flex-1 relative bg-slate-100 dark:bg-slate-950 overflow-auto">
-
-                <!-- Loading overlay -->
-                <div x-show="browserLoading"
-                     class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-slate-900 space-y-5">
-                    <div class="relative w-14 h-14">
-                        <div class="w-14 h-14 rounded-full border-4 border-slate-100 dark:border-slate-800 border-t-indigo-600 animate-spin"></div>
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <i class="fa-solid fa-map-location-dot text-indigo-500 text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="text-center space-y-1">
-                        <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Abrindo com Playwright...</p>
-                        <p class="text-xs text-slate-400">O Firefox está carregando a página. Pode levar até 30s.</p>
-                    </div>
-                    <!-- Barra de progresso animada -->
-                    <div class="w-48 h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-indigo-500 rounded-full animate-pulse" style="width: 60%"></div>
-                    </div>
-                    <p class="text-[10px] text-slate-400 font-mono" x-text="browserElapsed > 0 ? browserElapsed + 's...' : ''"></p>
-                </div>
-
-                <!-- Erro -->
-                <div x-show="browserError && !browserLoading"
-                     class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-slate-900 space-y-5 px-8 text-center">
-                    <div class="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/30 flex items-center justify-center">
-                        <i class="fa-solid fa-triangle-exclamation text-red-400 text-2xl"></i>
-                    </div>
-                    <div class="space-y-2">
-                        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Falha ao capturar screenshot</h3>
-                        <p class="text-xs text-slate-400 leading-relaxed max-w-sm" x-text="browserError"></p>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <button @click="reloadBrowserPreview()"
-                                class="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition">
-                            <i class="fa-solid fa-rotate-right text-xs"></i>
-                            <span>Tentar novamente</span>
-                        </button>
-                        <a :href="browserUrl" target="_blank"
-                           class="flex items-center space-x-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl transition">
-                            <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
-                            <span>Abrir em nova aba</span>
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Screenshot renderizado -->
-                <div x-show="browserImage && !browserLoading && !browserError"
-                     class="min-h-full flex flex-col">
-                    <!-- Banner informativo -->
-                    <div class="px-4 py-2 bg-indigo-50 dark:bg-indigo-950/40 border-b border-indigo-100 dark:border-indigo-900/50 flex items-center justify-between shrink-0">
-                        <div class="flex items-center space-x-2 text-[10px] text-indigo-600 dark:text-indigo-400">
-                            <i class="fa-solid fa-camera text-[10px]"></i>
-                            <span>Screenshot capturado pelo Playwright — página real, não um iframe. Clique em <strong>"↗ Abrir"</strong> para interagir.</span>
-                        </div>
-                        <a :href="browserUrl" target="_blank"
-                           class="flex items-center space-x-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 transition shrink-0 ml-3">
-                            <i class="fa-solid fa-arrow-up-right-from-square"></i>
-                            <span>Abrir e interagir</span>
-                        </a>
-                    </div>
-                    <!-- Imagem -->
-                    <div class="flex-1 overflow-auto bg-slate-200 dark:bg-slate-950 flex items-start justify-center p-4">
-                        <img :src="browserImage"
-                             alt="Screenshot da página"
-                             class="max-w-full shadow-2xl rounded-lg border border-slate-300 dark:border-slate-700"
-                             style="cursor: zoom-in;"
-                             @click="toggleZoom($event)">
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- MODAL: Create Lead Manually -->
     <div x-show="createModalOpen" 
@@ -635,15 +531,7 @@
             loading: true,
             detailsModalOpen: false,
             createModalOpen: false,
-            browserModalOpen: false,
-            browserUrl: '',
-            browserLoading: false,
-            browserError: '',
-            browserImage: '',
-            browserLoadTime: 0,
-            browserElapsed: 0,
-            _browserElapsedTimer: null,
-            firefoxOpening: false,
+            selectedIds: [],
             editMode: false,
             currentLead: {},
             newNoteText: '',
@@ -765,97 +653,65 @@
                 }
             },
             
-            async openBrowserPreview(url) {
-                if (!url) return;
-                this.browserUrl = url;
-                this.browserLoading = true;
-                this.browserError = '';
-                this.browserImage = '';
-                this.browserLoadTime = 0;
-                this.browserElapsed = 0;
-                this.browserModalOpen = true;
+            openExternalUrl(url) {
+                if (url) window.open(url, '_blank');
+            },
 
-                // Contador de tempo decorrido
-                const startTime = Date.now();
-                this._browserElapsedTimer = setInterval(() => {
-                    this.browserElapsed = Math.floor((Date.now() - startTime) / 1000);
-                }, 1000);
+            toggleSelect(id) {
+                const idx = this.selectedIds.indexOf(id);
+                if (idx === -1) this.selectedIds.push(id);
+                else this.selectedIds.splice(idx, 1);
+            },
 
+            selectAllVisible() {
+                this.selectedIds = this.leads.map(l => l.id);
+            },
+
+            async confirmDeleteSelected() {
+                const ok = await NuviieModal.confirm(
+                    `Excluir permanentemente ${this.selectedIds.length} lead(s) selecionado(s)?`,
+                    'Excluir selecionados',
+                    { danger: true, confirmLabel: 'Excluir' }
+                );
+                if (!ok) return;
                 try {
-                    const encodedUrl = encodeURIComponent(url);
-                    const resp = await fetch(`/leads/preview/?url=${encodedUrl}`, {
-                        headers: { 'X-CSRFToken': this.getCookie('csrftoken') }
+                    const response = await fetch('/api/leads/bulk-delete/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
+                        body: JSON.stringify({ ids: this.selectedIds })
                     });
-                    const data = await resp.json();
-
-                    clearInterval(this._browserElapsedTimer);
-                    this.browserLoadTime = Math.floor((Date.now() - startTime) / 1000);
-
-                    if (data.image) {
-                        this.browserImage = data.image;
-                        this.browserError = '';
-                    } else {
-                        this.browserError = data.error || 'Erro desconhecido ao capturar screenshot.';
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.leads = this.leads.filter(l => !this.selectedIds.includes(l.id));
+                        this.selectedIds = [];
+                        await NuviieModal.alert(`${data.deleted} lead(s) excluído(s).`, 'Concluído');
                     }
                 } catch (e) {
-                    clearInterval(this._browserElapsedTimer);
-                    this.browserError = 'Falha na requisição ao servidor: ' + e.message;
-                } finally {
-                    this.browserLoading = false;
+                    await NuviieModal.alert('Erro ao excluir: ' + e.message, 'Erro');
                 }
             },
 
-            async openInFirefox(url) {
-                if (!url) return;
-                this.firefoxOpening = true;
+            async confirmDeleteAll() {
+                const ok = await NuviieModal.confirm(
+                    `ATENÇÃO: Isso vai apagar TODOS os seus ${this.leads.length} leads permanentemente. Tem certeza absoluta?`,
+                    'Excluir todos os leads',
+                    { danger: true, confirmLabel: 'Sim, excluir tudo' }
+                );
+                if (!ok) return;
                 try {
-                    const encodedUrl = encodeURIComponent(url);
-                    const resp = await fetch(`/leads/open-browser/?url=${encodedUrl}`, {
-                        headers: { 'X-CSRFToken': this.getCookie('csrftoken') }
+                    const response = await fetch('/api/leads/delete-all/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
+                        body: JSON.stringify({ confirm: true })
                     });
-                    const data = await resp.json();
-                    if (data.ok) {
-                        console.log(`[Nuviie] Firefox aberto (PID ${data.pid}): ${url}`);
-                        setTimeout(() => { this.firefoxOpening = false; }, 2000);
-                    } else {
-                        alert('Erro ao abrir Firefox: ' + data.error);
-                        this.firefoxOpening = false;
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.leads = [];
+                        this.selectedIds = [];
+                        await NuviieModal.alert(`${data.deleted} lead(s) excluído(s).`, 'Concluído');
                     }
                 } catch (e) {
-                    alert('Falha na requisição: ' + e.message);
-                    this.firefoxOpening = false;
-                }
-            },
-
-            closeBrowserPreview() {
-                this.browserModalOpen = false;
-                this.browserLoading = false;
-                this.browserError = '';
-                this.browserImage = '';
-                clearInterval(this._browserElapsedTimer);
-                setTimeout(() => {
-                    this.browserUrl = '';
-                    this.browserLoadTime = 0;
-                    this.browserElapsed = 0;
-                }, 300);
-            },
-
-            async reloadBrowserPreview() {
-                if (!this.browserUrl) return;
-                const url = this.browserUrl;
-                this.browserImage = '';
-                this.browserError = '';
-                await this.openBrowserPreview(url);
-            },
-
-            toggleZoom(event) {
-                const img = event.target;
-                if (img.style.maxWidth === 'none') {
-                    img.style.maxWidth = '100%';
-                    img.style.cursor = 'zoom-in';
-                } else {
-                    img.style.maxWidth = 'none';
-                    img.style.cursor = 'zoom-out';
+                    await NuviieModal.alert('Erro ao excluir: ' + e.message, 'Erro');
                 }
             },
 
@@ -918,22 +774,24 @@
             },
             
             async deleteLead(id) {
-                if (!confirm("Tem certeza que deseja excluir permanentemente este lead?")) return;
-                
+                const ok = await NuviieModal.confirm(
+                    'Tem certeza que deseja excluir permanentemente este lead?',
+                    'Excluir lead',
+                    { danger: true, confirmLabel: 'Excluir' }
+                );
+                if (!ok) return;
                 try {
                     const response = await fetch(`/api/leads/${id}/`, {
                         method: 'DELETE',
-                        headers: {
-                            'X-CSRFToken': this.getCookie('csrftoken')
-                        }
+                        headers: { 'X-CSRFToken': this.getCookie('csrftoken') }
                     });
-                    
                     if (response.ok) {
                         this.leads = this.leads.filter(l => l.id !== id);
+                        this.selectedIds = this.selectedIds.filter(i => i !== id);
                         this.closeDetailsModal();
                     }
                 } catch (e) {
-                    console.error("Erro ao deletar lead:", e);
+                    await NuviieModal.alert('Erro ao deletar lead: ' + e.message, 'Erro');
                 }
             },
             
