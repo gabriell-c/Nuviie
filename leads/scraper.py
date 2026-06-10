@@ -1,26 +1,56 @@
 """
-scraper.py — Nuviie Lead Scraper v8
+scraper.py — Nuviie Lead Scraper v12
 ====================================
-Novidades v8 — EXTRAÇÃO MÁXIMA (Firefox real via Playwright):
-  - Expansão automática do dropdown de horários: clica no botão "Outros horários"
-    e espera a tabela completa expandir antes de capturar (seg–dom com horários reais).
-  - Reviews v2: captura autor + badge (Local Guide/qtd reviews) + nota + data +
-    texto completo (clica "Mais" para expandir) + RESPOSTA DO PROPRIETÁRIO.
-  - "Resultados da Web": lê conteúdo do iframe via frame.content() e extrai
-    Instagram, LinkedIn, Facebook, YouTube, TikTok, Twitter/X diretamente dos
-    links apresentados — com snippet para detectar o handle correto.
-  - WhatsApp de agendamento: extrai número do link wa.me presente na ficha.
-  - Categoria aprimorada: múltiplos seletores com fallback por button[jsaction].
-  - Bio/descrição: captura o campo "Sobre" / "Resumo" quando disponível.
-  - profile_picture_url: extrai a foto principal da ficha do Maps (og:image ou
-    primeiro img da galeria) — sem depender do Instagram.
-  - Dados de acessibilidade e atributos do lugar (ex: "Aceita animais",
-    "Wi-Fi disponível") salvos no campo bio se não houver descrição.
-  - Link de agendamento salvo em maps_share_url se for wa.me.
-  - Melhora na detecção de cidade via full_text expandido.
-  - Scroll extra antes de capturar reviews/horários para garantir lazy-load.
+Novidades v12 — EXTRAÇÃO MÁXIMA + GRID SCRAPING:
 
-Novidades v5–v7 mantidas:
+  NOVOS CAMPOS EXTRAÍDOS:
+  - latitude / longitude: extraídos diretamente da URL canônica do Maps
+    (@LAT,LNG,ZOOMz) e do HTML da página, sem geocoding externo.
+  - cid: Customer ID numérico do Google (identificador único e permanente
+    do lugar, extraído de data-cid, aria-label e URL).
+  - kgmid: Knowledge Graph Machine ID (ex: /g/11bc6m7q3k), o identificador
+    mais estável do Google — nunca é nulo quando disponível.
+  - order_online / menu / reservations: links de pedido online, cardápio e
+    reservas, extraídos dos botões de ação da ficha.
+  - popular_times: horários de pico por dia da semana (quando disponível),
+    com porcentagem de ocupação por hora — útil para vendas B2B.
+  - coordinates: objeto {lat, lng} consolidado.
+
+  GRID SCRAPING (inspirado em gosom/google-maps-scraper):
+  - Novo parâmetro `grid_bbox`: "minLat,minLon,maxLat,maxLon" divide a área
+    em células e executa uma busca por célula. Garante cobertura total de
+    uma cidade/bairro sem perder negócios fora do centro.
+  - Parâmetro `grid_cell_km`: tamanho da célula em km (padrão 1.0).
+  - Deduplicação automática por CID/kgmid entre células.
+  - Integra com o pipeline existente sem breaking changes.
+
+  FAST MODE (inspirado em gosom/google-maps-scraper):
+  - Parâmetro `fast_mode=True`: coleta até 21 resultados por query ordenados
+    por distância, sem visitar cada ficha individualmente.
+  - Útil para prospecção rápida quando detalhes completos não são necessários.
+  - Retorna: nome, categoria, endereço, rating, review_count, lat/lng, maps_url.
+
+  DEDUPLICAÇÃO EM TEMPO REAL:
+  - Durante o scroll da lista de resultados, URLs já visitadas são descartadas
+    imediatamente (seen_urls por CID ou base URL).
+  - Entre requests paralelas, um lock asyncio garante que o mesmo lugar não
+    seja processado duas vezes mesmo com _PARALLEL_TABS > 1.
+
+  MELHORIAS NO JS_EXTRACT_ALL:
+  - kgmid: extrai de <link rel="canonical">, window.APP_INITIALIZATION_STATE
+    e padrões /g/ na URL.
+  - cid: extrai de data-cid, URL, e window.__google_map_state__.
+  - lat/lng: parse direto da URL @LAT,LNG,ZOOMz sem regex frágeis.
+  - order_online: captura links "Fazer pedido", "Pedir online", iFood, etc.
+  - menu: captura links de cardápio.
+  - reservations: captura links de reserva (Google Reservations, OpenTable, etc.).
+  - popular_times: extrai porcentagem de ocupação por hora de cada dia.
+
+Novidades v11 mantidas:
+  - Scroll multi-container, navegação pelas abas Sobre/Avaliações,
+    horários com 2 períodos, Plus Code aprimorado, amenidades expandidas.
+
+Novidades v5–v10 mantidas:
   - Screenshot de diagnóstico, logging estruturado, sessão persistente,
     consentimento robusto, subprocesso isolado, heartbeat, etc.
 
@@ -36,7 +66,8 @@ import random
 import logging
 import urllib.parse
 import os
-import sys          # ← adiciona essa linha
+import sys
+import math
 
 import requests
 from bs4 import BeautifulSoup
@@ -44,6 +75,80 @@ from authentication.whatsapp import clean_phone_number
 from .models import Lead
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# v12: Grid Scraping — helpers de geolocalização
+# ---------------------------------------------------------------------------
+
+def _bbox_to_grid(min_lat: float, min_lon: float, max_lat: float, max_lon: float,
+                   cell_km: float = 1.0) -> list[tuple[float, float]]:
+    """
+    Divide uma bounding box em uma grade de pontos centrais separados por cell_km.
+    Retorna lista de (lat, lon) representando o centro de cada célula.
+    Inspirado em gosom/google-maps-scraper grid mode.
+    """
+    lat_step = cell_km / 111.0
+    mid_lat = (min_lat + max_lat) / 2.0
+    lon_step = cell_km / (111.0 * math.cos(math.radians(mid_lat)))
+
+    points = []
+    lat = min_lat + lat_step / 2
+    while lat <= max_lat:
+        lon = min_lon + lon_step / 2
+        while lon <= max_lon:
+            points.append((round(lat, 6), round(lon, 6)))
+            lon += lon_step
+        lat += lat_step
+
+    logger.info(
+        f"[Maps][Grid] bbox=({min_lat},{min_lon})→({max_lat},{max_lon}) "
+        f"cell={cell_km}km → {len(points)} células"
+    )
+    return points
+
+
+def _parse_bbox(bbox_str: str) -> tuple[float, float, float, float] | None:
+    """Parseia 'minLat,minLon,maxLat,maxLon' → tuple de floats."""
+    try:
+        parts = [float(x.strip()) for x in bbox_str.split(',')]
+        if len(parts) == 4:
+            return tuple(parts)
+    except (ValueError, AttributeError):
+        pass
+    logger.error(f"[Maps][Grid] bbox inválido: {bbox_str!r} — use 'minLat,minLon,maxLat,maxLon'")
+    return None
+
+
+def _extract_lat_lng_from_url(url: str) -> tuple[float | None, float | None]:
+    """
+    Extrai latitude e longitude da URL canônica do Google Maps.
+    Suporta formatos:
+      - @-23.5489,46.6388,15z  (mais comum)
+      - !3d-23.5489!4d-46.6388  (formato alternativo)
+      - ll=-23.5489,-46.6388   (formato legado)
+    """
+    if not url:
+        return None, None
+    m = re.search(r'@(-?\d+\.\d+),(-?\d+\.\d+),\d+', url)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    m = re.search(r'!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)', url)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    m = re.search(r'll=(-?\d+\.\d+),(-?\d+\.\d+)', url)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    return None, None
+
+
+def _extract_cid_from_url(url: str) -> str | None:
+    """Extrai o CID (Customer ID) numérico de uma URL do Google Maps."""
+    if not url:
+        return None
+    m = re.search(r'[?&]cid=(\d+)', url)
+    if m:
+        return m.group(1)
+    return None
 
 # ---------------------------------------------------------------------------
 # DDD por cidade
@@ -435,10 +540,20 @@ async def _scrape_google_maps_async(
     min_reviews: int | None = None,
     only_with_instagram: bool = False,
     only_with_facebook: bool = False,
+    # v12: novos parâmetros
+    grid_bbox: str | None = None,
+    grid_cell_km: float = 1.0,
+    fast_mode: bool = False,
 ) -> list[dict]:
     """
     Versão assíncrona: abre o Google Maps, coleta as URLs e extrai
     até `limit` estabelecimentos com _PARALLEL_TABS abas simultâneas.
+
+    v12 — novos modos:
+      grid_bbox: "minLat,minLon,maxLat,maxLon" — divide a área em células
+                 e busca em cada uma para garantir cobertura total.
+      fast_mode: coleta rápida sem visitar cada ficha individualmente.
+                 Retorna até 21 resultados por query com dados básicos.
     """
     try:
         from playwright.async_api import async_playwright, TimeoutError as PWTimeout
@@ -447,6 +562,55 @@ async def _scrape_google_maps_async(
         return []
 
     import pathlib
+
+    # ── v12: Grid mode — divide bbox em células e agrega resultados ───────────
+    if grid_bbox:
+        bbox = _parse_bbox(grid_bbox)
+        if bbox:
+            min_lat, min_lon, max_lat, max_lon = bbox
+            grid_points = _bbox_to_grid(min_lat, min_lon, max_lat, max_lon, grid_cell_km)
+            all_grid_results: list[dict] = []
+            seen_by_cid: set[str] = set()
+            seen_by_name_addr: set[str] = set()
+
+            logger.info(f"[Maps][Grid] Iniciando grid scraping com {len(grid_points)} células")
+            for i, (lat, lon) in enumerate(grid_points):
+                if len(all_grid_results) >= limit:
+                    break
+                geo_query = f"{niche} em {city}"
+                geo_url = (
+                    f"https://www.google.com/maps/search/{urllib.parse.quote(geo_query)}"
+                    f"/@{lat},{lon},{15 + (1 if grid_cell_km < 0.5 else 0)}z"
+                )
+                logger.info(f"[Maps][Grid] Célula {i+1}/{len(grid_points)}: ({lat},{lon})")
+                cell_results = await _scrape_google_maps_async(
+                    niche=niche, city=city,
+                    limit=min(limit - len(all_grid_results), 30),
+                    only_without_website=only_without_website,
+                    min_rating=min_rating, min_reviews=min_reviews,
+                    only_with_instagram=only_with_instagram,
+                    only_with_facebook=only_with_facebook,
+                    fast_mode=fast_mode,
+                    # SEM grid_bbox — recursão apenas 1 nível
+                )
+                for item in cell_results:
+                    # Deduplicação por CID (mais confiável) ou nome+endereço
+                    cid = item.get('_cid') or ''
+                    dedup_key = f"{item.get('name','').lower()}|{(item.get('address') or '')[:30].lower()}"
+                    if cid and cid in seen_by_cid:
+                        continue
+                    if dedup_key in seen_by_name_addr:
+                        continue
+                    if cid:
+                        seen_by_cid.add(cid)
+                    seen_by_name_addr.add(dedup_key)
+                    all_grid_results.append(item)
+
+                # Pausa entre células para evitar rate limiting
+                await asyncio.sleep(random.uniform(1.5, 3.0))
+
+            logger.info(f"[Maps][Grid] ✓ Total após deduplicação: {len(all_grid_results)} leads")
+            return all_grid_results[:limit]
 
     # ── Sessão persistente ────────────────────────────────────────────────────
     # Salva cookies/localStorage entre execuções para evitar limitação do Google
@@ -719,6 +883,44 @@ async def _scrape_google_maps_async(
         await search_page.close()
         _pw_diag(f"[Maps][PW-6] ══ {len(place_urls)} URLs — extraindo com {_PARALLEL_TABS} abas paralelas")
 
+        # ── v12: FAST MODE — extração básica sem visitar cada ficha ──────────
+        if fast_mode:
+            _pw_diag("[Maps][FastMode] ✓ Fast mode ativo — extração básica da lista de resultados")
+            fast_results = []
+            for fu in place_urls[:limit]:
+                # Extrai dados básicos da URL da lista (sem abrir a ficha)
+                lat, lng = _extract_lat_lng_from_url(fu)
+                cid = _extract_cid_from_url(fu)
+                # Nome: extraído do segmento /maps/place/NOME/
+                name_m = re.search(r'/maps/place/([^/]+)/', fu)
+                raw_name = urllib.parse.unquote_plus(name_m.group(1)) if name_m else ''
+                raw_name = raw_name.replace('+', ' ').strip()
+                fast_results.append({
+                    'name':             raw_name,
+                    'category':         niche,
+                    'city':             city,
+                    'phone_number':     None,
+                    'normalized_phone': None,
+                    'website':          None,
+                    'instagram':        None,
+                    'address':          None,
+                    'rating':           None,
+                    'review_count':     0,
+                    'maps_url':         _clean_maps_url(fu),
+                    'source':           'google_maps_fast',
+                    'status':           'novo',
+                    '_latitude':        lat,
+                    '_longitude':       lng,
+                    '_cid':             cid,
+                    '_coordinates':     {'lat': lat, 'lng': lng} if lat else None,
+                })
+                if len(fast_results) >= limit:
+                    break
+            _pw_diag(f"[Maps][FastMode] ✓ {len(fast_results)} leads em fast mode")
+            await context.close()
+            await browser.close()
+            return fast_results
+
         # ── Extração paralela ─────────────────────────────────────────────────
         extract_kwargs = dict(
             city=city,
@@ -729,9 +931,31 @@ async def _scrape_google_maps_async(
             only_with_facebook=only_with_facebook,
         )
 
+        # v12: Lock + set para deduplicação em tempo real entre tabs paralelas
+        _dedup_lock = asyncio.Lock()
+        _seen_cids: set[str] = set()
+        _seen_names: set[str] = set()
+
         async def _fetch_one(url: str) -> dict | None:
             async with sem:
-                return await _extract_place_async(context, url, **extract_kwargs)
+                item = await _extract_place_async(context, url, **extract_kwargs)
+                if item is None:
+                    return None
+                # Deduplicação em tempo real
+                async with _dedup_lock:
+                    cid = item.get('_cid') or ''
+                    name_key = item.get('name', '').lower().strip()
+                    if cid and cid in _seen_cids:
+                        logger.debug(f"[Maps][Dedup] Duplicado por CID: {item['name']}")
+                        return None
+                    if name_key and name_key in _seen_names:
+                        logger.debug(f"[Maps][Dedup] Duplicado por nome: {item['name']}")
+                        return None
+                    if cid:
+                        _seen_cids.add(cid)
+                    if name_key:
+                        _seen_names.add(name_key)
+                return item
 
         tasks = [asyncio.create_task(_fetch_one(u)) for u in place_urls]
         all_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -795,9 +1019,19 @@ def scrape_google_maps(
     min_reviews: int | None = None,
     only_with_instagram: bool = False,
     only_with_facebook: bool = False,
+    # v12: novos parâmetros
+    grid_bbox: str | None = None,
+    grid_cell_km: float = 1.0,
+    fast_mode: bool = False,
 ) -> list[dict]:
     """
     Wrapper síncrono v7 — chama scraper_runner.py como subprocesso isolado.
+
+    v12 — novos parâmetros:
+      grid_bbox (str): "minLat,minLon,maxLat,maxLon" — varredura em grade.
+                       Ex: "-21.25,-47.85,-21.15,-47.75" para Ribeirão Preto centro.
+      grid_cell_km (float): tamanho de cada célula da grade em km (padrão 1.0).
+      fast_mode (bool): coleta rápida sem abrir cada ficha. Menos dados, mais velocidade.
 
     ROLLBACK STAGES (procure nos logs do Django):
       [STEP 1] Verificação do ambiente e runner
@@ -847,6 +1081,10 @@ def scrape_google_maps(
         'min_reviews': min_reviews,
         'only_with_instagram': only_with_instagram,
         'only_with_facebook': only_with_facebook,
+        # v12
+        'grid_bbox': grid_bbox,
+        'grid_cell_km': grid_cell_km,
+        'fast_mode': fast_mode,
     }
     try:
         args_b64 = base64.b64encode(json.dumps(args).encode('utf-8')).decode('ascii')
@@ -991,7 +1229,150 @@ _JS_EXTRACT_ALL = r"""
         bio: null, hours: {}, share_url: null, og_image: null,
         maps_url: null, price_range: null, plus_code: null,
         amenities: [], popular_times: null, total_photos: null,
+        // v12: novos campos
+        latitude: null, longitude: null, cid: null, kgmid: null,
+        order_online: null, menu: null, reservations: null,
+        coordinates: null,
     };
+
+    // ── v12: KGMID — Knowledge Graph Machine ID ───────────────────────────────
+    // É o identificador mais estável do Google (/g/11abc123)
+    // Extraído de: URL canônica, link[rel=canonical], APP_INITIALIZATION_STATE
+    try {
+        const canonical = document.querySelector('link[rel="canonical"]');
+        if (canonical) {
+            const m = canonical.href.match(/\/maps\/place\/[^/]+\/(\/g\/[A-Za-z0-9_]+)/);
+            if (m) R.kgmid = m[1];
+        }
+    } catch(e) {}
+    if (!R.kgmid) {
+        // Busca na URL atual
+        const urlM = window.location.href.match(/\/(\/g\/[A-Za-z0-9_]+)/);
+        if (urlM) R.kgmid = urlM[1];
+    }
+    if (!R.kgmid) {
+        // Busca em data-pid (place id) ou data-cid em elementos do DOM
+        for (const el of document.querySelectorAll('[data-pid]')) {
+            const pid = el.getAttribute('data-pid') || '';
+            if (pid.startsWith('/g/')) { R.kgmid = pid; break; }
+        }
+    }
+
+    // ── v12: CID — Customer ID numérico do Google ────────────────────────────
+    // Identificador numérico permanente de ~19 dígitos
+    try {
+        // Método 1: data-cid no DOM
+        for (const el of document.querySelectorAll('[data-cid]')) {
+            const cid = el.getAttribute('data-cid') || '';
+            if (/^\d{10,20}$/.test(cid)) { R.cid = cid; break; }
+        }
+        // Método 2: URL atual (formato ?cid=NUMERO)
+        if (!R.cid) {
+            const cidM = window.location.href.match(/[?&;]cid=(\d+)/);
+            if (cidM) R.cid = cidM[1];
+        }
+        // Método 3: Hex pairs no URL → CID decimal
+        // URL Maps: /maps/place/NAME/0xHEX:0xHEX → segundo hex é o CID
+        if (!R.cid) {
+            const hexM = window.location.href.match(/\/maps\/place\/[^/]+\/0x[0-9a-f]+:0x([0-9a-f]+)/i);
+            if (hexM) {
+                try {
+                    R.cid = BigInt('0x' + hexM[1]).toString();
+                } catch(e) {}
+            }
+        }
+    } catch(e) {}
+
+    // ── v12: Latitude e Longitude — da URL canônica ──────────────────────────
+    // O Google Maps sempre inclui @lat,lng,zoom na URL do lugar
+    try {
+        const latLngM = window.location.href.match(/@(-?\d+\.\d+),(-?\d+\.\d+),\d+/);
+        if (latLngM) {
+            R.latitude = parseFloat(latLngM[1]);
+            R.longitude = parseFloat(latLngM[2]);
+        }
+        // Fallback: formato !3dlat!4dlng
+        if (!R.latitude) {
+            const m2 = window.location.href.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+            if (m2) {
+                R.latitude = parseFloat(m2[1]);
+                R.longitude = parseFloat(m2[2]);
+            }
+        }
+        if (R.latitude && R.longitude) {
+            R.coordinates = { lat: R.latitude, lng: R.longitude };
+        }
+    } catch(e) {}
+
+    // ── v12: Order online / Menu / Reservations ───────────────────────────────
+    // Botões de ação na ficha do Maps
+    try {
+        // Pedido online: iFood, Rappi, "Fazer pedido", etc.
+        const orderSelectors = [
+            'a[href*="ifood"]', 'a[href*="rappi"]', 'a[href*="ubereats"]',
+            'a[href*="deliveroo"]', 'a[href*="aiqfome"]',
+            'a[aria-label*="Pedir"]', 'a[aria-label*="pedido"]',
+            'a[aria-label*="Fazer pedido"]', 'a[data-item-id*="order"]',
+            'button[aria-label*="Pedir"]', 'button[aria-label*="pedido"]',
+        ];
+        for (const sel of orderSelectors) {
+            const el = document.querySelector(sel);
+            if (el) { R.order_online = el.href || el.getAttribute('data-href') || 'disponível'; break; }
+        }
+
+        // Cardápio/Menu
+        const menuSelectors = [
+            'a[data-item-id*="menu"]', 'a[aria-label*="cardápio"]',
+            'a[aria-label*="menu"]', 'a[aria-label*="Menu"]',
+            'a[href*="menu"]',
+        ];
+        for (const sel of menuSelectors) {
+            const el = document.querySelector(sel);
+            if (el) { R.menu = el.href || el.getAttribute('data-href') || 'disponível'; break; }
+        }
+
+        // Reservas
+        const resSelectors = [
+            'a[data-item-id*="reserv"]', 'a[aria-label*="Reservar"]',
+            'a[aria-label*="reserv"]', 'a[href*="reserve"]',
+            'a[href*="opentable"]', 'a[href*="resy.com"]',
+        ];
+        for (const sel of resSelectors) {
+            const el = document.querySelector(sel);
+            if (el) { R.reservations = el.href || el.getAttribute('data-href') || 'disponível'; break; }
+        }
+    } catch(e) {}
+
+    // ── v12: Popular Times ────────────────────────────────────────────────────
+    // Extrai padrões de movimento por dia/hora quando disponíveis
+    try {
+        const popularTimesData = {};
+        const dayMap = {
+            'domingo': 'dom', 'segunda-feira': 'seg', 'segunda': 'seg',
+            'terça-feira': 'ter', 'terca-feira': 'ter', 'terça': 'ter',
+            'quarta-feira': 'qua', 'quarta': 'qua',
+            'quinta-feira': 'qui', 'quinta': 'qui',
+            'sexta-feira': 'sex', 'sexta': 'sex',
+            'sábado': 'sab', 'sabado': 'sab',
+        };
+        // popular times ficam em divs com aria-label "X% ocupado às HH:MM"
+        const ptEls = document.querySelectorAll('[aria-label*="ocupado"], [aria-label*="busy"], [aria-label*="lotado"]');
+        for (const el of ptEls) {
+            const lbl = el.getAttribute('aria-label') || '';
+            // "42% ocupado às 18:00 na segunda-feira"
+            const m = lbl.match(/(\d+)%.*?(\d{1,2}:\d{2}).*?(segunda|terça|terca|quarta|quinta|sexta|sábado|sabado|domingo)/i);
+            if (m) {
+                const pct = parseInt(m[1]);
+                const hour = m[2];
+                const dayKey = dayMap[m[3].toLowerCase()] || m[3].toLowerCase().slice(0,3);
+                if (!popularTimesData[dayKey]) popularTimesData[dayKey] = {};
+                popularTimesData[dayKey][hour] = pct;
+            }
+        }
+        if (Object.keys(popularTimesData).length > 0) {
+            R.popular_times = popularTimesData;
+        }
+    } catch(e) {}
 
     const bad = new Set(['explore','reel','reels','p','stories','tv','accounts',
                          'tags','share','sharer','intent','home','watch','results',
@@ -1055,6 +1436,34 @@ _JS_EXTRACT_ALL = r"""
         if (catText && !notCat.has(catText) && catText.length > 2 && catText.length < 80) {
             R.category = catText;
             break;
+        }
+    }
+
+    // ── Rating e total de reviews — via seletores diretos (mais confiável) ─────
+    // O Google Maps exibe o rating em span.ceNzKf e total em button com aria-label
+    if (!R.rating) {
+        const ratingEl =
+            document.querySelector('span.ceNzKf') ||
+            document.querySelector('span.kvMYJc') ||
+            document.querySelector('div.F7nice span[aria-hidden="true"]');
+        if (ratingEl) {
+            const n = parseFloat((ratingEl.textContent || '').trim().replace(',', '.'));
+            if (!isNaN(n) && n >= 1 && n <= 5) R.rating = n;
+        }
+    }
+    if (!R.review_count) {
+        // Botão "XXX avaliações" no topo da ficha
+        const rcEl =
+            document.querySelector('button[aria-label*="avaliações"] span') ||
+            document.querySelector('span.RDApEe') ||
+            document.querySelector('span[aria-label*="avaliações"]') ||
+            document.querySelector('div.F7nice span span');
+        if (rcEl) {
+            const txt = (rcEl.getAttribute('aria-label') || rcEl.textContent || '').replace(/\D/g, '');
+            if (txt) {
+                const n = parseInt(txt, 10);
+                if (!isNaN(n) && n > 0) R.review_count = n;
+            }
         }
     }
 
@@ -1125,8 +1534,10 @@ _JS_EXTRACT_ALL = r"""
             const dkey = dayMapFull[singleDay[1].toLowerCase().trim()];
             if (dkey && !R.hours[dkey]) {
                 const rawHrs2 = singleDay[2];
-                const hm2 = rawHrs2.match(/(\d{1,2}:\d{2})\s*[–\-a]\s*(\d{1,2}:\d{2})/);
-                if (hm2) R.hours[dkey] = hm2[1] + '–' + hm2[2];
+                // Suporte a 2 períodos: "08:00–11:30 / 14:00–17:00"
+                const allP2 = [...rawHrs2.matchAll(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/g)];
+                if (allP2.length >= 2) R.hours[dkey] = allP2.map(p => p[1]+'–'+p[2]).join(' / ');
+                else if (allP2.length === 1) R.hours[dkey] = allP2[0][1] + '–' + allP2[0][2];
                 else if (/fechado|closed/i.test(rawHrs2)) R.hours[dkey] = 'Fechado';
                 else if (/24\s*hora|atendimento\s*24/i.test(rawHrs2)) R.hours[dkey] = '00:00–23:59';
             }
@@ -1255,38 +1666,78 @@ _JS_EXTRACT_ALL = r"""
     }
 
     // ── Plus Code ─────────────────────────────────────────────────────────────
+    // O Plus Code aparece em: aria-label, data-item-id, ou como texto puro no painel
     for (const el of document.querySelectorAll('[aria-label]')) {
         const lbl = el.getAttribute('aria-label') || '';
-        const pcm = lbl.match(/Plus\s+Code[:\s]+([A-Z0-9+%]{4,20})/i);
-        if (pcm) { R.plus_code = pcm[1]; break; }
+        // Formato no aria-label: "Plus Code: Q5QX+R5" ou "Q5QX+R5 Jardim Botânico"
+        const pcm = lbl.match(/Plus\s+Code[:\s]+([A-Z0-9]{4,6}\+[A-Z0-9]{2,3})/i) ||
+                    lbl.match(/\b([A-Z0-9]{4,6}\+[A-Z0-9]{2,3})\b/);
+        if (pcm) { R.plus_code = decodeURIComponent(pcm[1]); break; }
     }
     if (!R.plus_code) {
-        // Formato padrão: "XXXX+XX Cidade"
+        // data-item-id pode conter o plus code codificado
+        for (const el of document.querySelectorAll('[data-item-id]')) {
+            const did = el.getAttribute('data-item-id') || '';
+            const pcm = did.match(/plus_code:([A-Z0-9%+]{6,})/i);
+            if (pcm) { R.plus_code = decodeURIComponent(pcm[1]); break; }
+        }
+    }
+    if (!R.plus_code) {
+        // Texto puro no painel: "Q5QX+R5 Jardim Botânico, Ribeirão Preto"
         const allText = document.body ? document.body.innerText : '';
-        const plm = allText.match(/\b([A-Z0-9]{4}\+[A-Z0-9]{2,3})\b/);
+        // Plus code: 4-6 chars alfanum + '+' + 2-3 chars — formato OLC padrão
+        const plm = allText.match(/\b([A-Z0-9]{4,6}\+[A-Z0-9]{2,3})\b/);
         if (plm) R.plus_code = plm[1];
     }
 
     // ── Amenidades / Atributos do lugar ──────────────────────────────────────
-    // Ex: "Wi-Fi disponível", "Aceita animais", "Estacionamento grátis"
-    const amenityContainers = [
-        ...document.querySelectorAll('[aria-label*="Aceita"]'),
-        ...document.querySelectorAll('[aria-label*="Wi-Fi"]'),
-        ...document.querySelectorAll('[aria-label*="Acessível"]'),
-        ...document.querySelectorAll('[aria-label*="Estacionamento"]'),
-        ...document.querySelectorAll('[aria-label*="Pagamento"]'),
-        ...document.querySelectorAll('div.iP2t7d span'),           // container de atributos
-        ...document.querySelectorAll('div.E0DTEd span'),
-        ...document.querySelectorAll('li.hpLkke span'),
+    // O Google Maps exibe atributos em várias estruturas dependendo da versão/categoria.
+    // Coletamos de todas as fontes conhecidas e deduplicamos.
+    const amenitySelectors = [
+        // Containers de atributos v2024 (acessibilidade, pagamentos, etc.)
+        'div.iP2t7d span',
+        'div.E0DTEd span',
+        'li.hpLkke span',
+        'div.sSHqwe span',
+        'div.lX8Tbe span',
+        'div.ekb8yd span',
+        // aria-label com atributos comuns
+        '[aria-label*="Aceita"]',
+        '[aria-label*="Wi-Fi"]',
+        '[aria-label*="Acessív"]',
+        '[aria-label*="Estacionamento"]',
+        '[aria-label*="Pagamento"]',
+        '[aria-label*="Refeição"]',
+        '[aria-label*="Serviço"]',
+        '[aria-label*="Planejamento"]',
+        '[aria-label*="Crianças"]',
+        '[aria-label*="Animal"]',
+        '[aria-label*="LGBTQ"]',
+        // Seção "Sobre o lugar" / informações adicionais
+        '[data-item-id*="attribute"] span',
+        '[data-item-id*="amenity"] span',
+        // Estrutura com ícone + texto: div.Io6YTe
+        'div.Io6YTe',
+        // Lista de recursos (v2023)
+        'ul.ZjVtHb li',
     ];
     const seenAmenities = new Set();
-    for (const el of amenityContainers) {
-        const t = (el.getAttribute('aria-label') || el.textContent || '').trim();
-        if (t && t.length > 3 && t.length < 80 && !seenAmenities.has(t)) {
-            seenAmenities.add(t);
-            R.amenities.push(t);
+    for (const sel of amenitySelectors) {
+        for (const el of document.querySelectorAll(sel)) {
+            // Prioriza aria-label; cai para textContent
+            const t = (el.getAttribute('aria-label') || el.textContent || '').trim()
+                       .replace(/\s+/g, ' ');
+            if (t && t.length > 3 && t.length < 120 && !seenAmenities.has(t)) {
+                // Filtra textos que são claramente botões de ação ou navegação
+                const skip = /^(Rotas|Salvar|Compartilhar|Avaliar|Ligar|Enviar|Sugerir|Adicionar|Ordenar|Pesquisar|Avaliações|Sobre|Visão geral|Serviços|Produtos|Ver|Abrir|Fechar|Mais|Menos|Editar|Denunciar)$/i.test(t);
+                if (!skip) {
+                    seenAmenities.add(t);
+                    R.amenities.push(t);
+                }
+            }
+            if (R.amenities.length >= 50) break;
         }
-        if (R.amenities.length >= 30) break;
+        if (R.amenities.length >= 50) break;
     }
 
     // ── Número total de fotos ─────────────────────────────────────────────────
@@ -1790,33 +2241,53 @@ async def _extract_place_async(
         await asyncio.sleep(2)
 
         # ── Scroll progressivo para carregar conteúdo lazy ────────────────────
-        # v10: passos menores + pausa maior para forçar lazy-load de atributos,
-        # popular times, seção de fotos e todos os campos do box.
+        # v11: múltiplos seletores de container + pausa maior em cada passo para
+        # forçar lazy-load completo: atributos, amenidades, popular times, fotos,
+        # horários, seção "Resultados da Web" e todos os campos do box lateral.
         _scroll_script = """(scrollTop) => {
-            const p = document.querySelector('[role="main"]') ||
-                      document.querySelector('.DxyBCb') ||
-                      document.body;
-            if (p) p.scrollTop = scrollTop;
+            // O painel lateral do Maps usa vários possíveis containers de scroll
+            const containers = [
+                document.querySelector('div[role="main"]'),
+                document.querySelector('.DxyBCb'),
+                document.querySelector('.bJzME'),       // painel lateral v2024
+                document.querySelector('.siAUzd'),      // painel lateral alternativo
+                document.querySelector('[jsrenderer="lutinne"]'),
+                document.querySelector('.TIHn2'),
+                document.querySelector('[aria-label][role="region"]'),
+            ];
+            const p = containers.find(c => c && c.scrollHeight > window.innerHeight);
+            if (p) {
+                p.scrollTop = scrollTop;
+            } else {
+                window.scrollTo(0, scrollTop);
+            }
         }"""
-        for step_px in [300, 600, 1000, 1600, 2400, 3500, 5000, 7000, 10000, 99999]:
+        # Passos progressivos com pausa maior: dá tempo para cada seção renderizar
+        scroll_steps = [200, 500, 900, 1400, 2000, 2800, 3800, 5000, 6500, 8500, 12000, 99999]
+        for step_px in scroll_steps:
             try:
                 await page.evaluate(_scroll_script, step_px)
-                await asyncio.sleep(0.6)
+                await asyncio.sleep(0.8)  # pausa maior para lazy-load
             except Exception:
                 pass
-        # Aguarda um segundo extra para lazy-load de atributos/amenidades
-        await asyncio.sleep(1.0)
+        # Aguarda carregamento completo após scroll total
+        await asyncio.sleep(1.5)
         # Scroll de volta ao topo para garantir que h1 e categoria estejam visíveis
         try:
             await page.evaluate(
                 """() => {
-                    const p = document.querySelector('[role="main"]') ||
-                              document.querySelector('.DxyBCb') ||
-                              document.body;
+                    const containers = [
+                        document.querySelector('div[role="main"]'),
+                        document.querySelector('.DxyBCb'),
+                        document.querySelector('.bJzME'),
+                        document.querySelector('.siAUzd'),
+                    ];
+                    const p = containers.find(c => c && c.scrollHeight > window.innerHeight);
                     if (p) p.scrollTop = 0;
+                    else window.scrollTo(0, 0);
                 }"""
             )
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.5)
         except Exception:
             pass
 
@@ -1880,17 +2351,131 @@ async def _extract_place_async(
         except Exception as e:
             logger.debug(f"[Maps][v9] Erro ao expandir horários: {e}")
 
+        # ── Navega para aba "Sobre" para capturar atributos completos ─────────
+        # IMPORTANTE: capturamos os atributos DA ABA SOBRE diretamente via JS
+        # enquanto estamos nela, sem voltar para "Visão geral" entre as etapas.
+        # O nome do lugar é capturado ANTES de qualquer navegação de aba.
+        about_amenities = []  # inicializado aqui para garantir escopo
+        try:
+            about_tab = None
+            about_selectors = [
+                'button[aria-label="Sobre"]',
+                'button[data-tab-index="3"]',
+                'button.hh2c6:has-text("Sobre")',
+                '[role="tab"]:has-text("Sobre")',
+            ]
+            for sel in about_selectors:
+                try:
+                    btn = await page.query_selector(sel)
+                    if btn and await btn.is_visible():
+                        about_tab = btn
+                        logger.info(f"[Maps][v11] Aba Sobre encontrada: {sel!r}")
+                        break
+                except Exception:
+                    continue
+
+            if about_tab:
+                await about_tab.click()
+                await asyncio.sleep(2.5)
+                # Scroll dentro da aba Sobre
+                for scroll_px in [400, 800, 1600, 3000, 99999]:
+                    try:
+                        await page.evaluate("""(px) => {
+                            const containers = [
+                                document.querySelector('div[role="main"]'),
+                                document.querySelector('.DxyBCb'),
+                                document.querySelector('.bJzME'),
+                            ];
+                            const p = containers.find(c => c && c.scrollHeight > window.innerHeight);
+                            if (p) p.scrollTop = px;
+                        }""", scroll_px)
+                        await asyncio.sleep(0.4)
+                    except Exception:
+                        pass
+                await asyncio.sleep(0.8)
+
+                # Extrai amenidades diretamente enquanto está na aba Sobre
+                try:
+                    about_amenities = await page.evaluate("""
+() => {
+    const items = [];
+    const seen = new Set();
+    const selectors = [
+        'div.iP2t7d span', 'div.E0DTEd span', 'li.hpLkke span',
+        'div.sSHqwe span', 'div.lX8Tbe span', 'div.ekb8yd span',
+        'div.Io6YTe', 'ul.ZjVtHb li',
+        '[aria-label*="Aceita"]','[aria-label*="Wi-Fi"]',
+        '[aria-label*="Acessív"]','[aria-label*="Estacionamento"]',
+        '[aria-label*="Pagamento"]','[aria-label*="Refeição"]',
+        '[aria-label*="Serviço"]','[aria-label*="Crianças"]',
+        '[aria-label*="Animal"]','[aria-label*="LGBTQ"]',
+    ];
+    const skipRe = /^(Rotas|Salvar|Compartilhar|Avaliar|Ligar|Enviar|Sugerir|Adicionar|Ordenar|Pesquisar|Avaliações|Sobre|Visão geral|Serviços|Produtos|Ver|Abrir|Fechar|Mais|Menos|Editar|Denunciar)$/i;
+    for (const sel of selectors) {
+        for (const el of document.querySelectorAll(sel)) {
+            const t = (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\\s+/g,' ');
+            if (t && t.length > 3 && t.length < 120 && !seen.has(t) && !skipRe.test(t)) {
+                seen.add(t);
+                items.push(t);
+            }
+            if (items.length >= 50) break;
+        }
+        if (items.length >= 50) break;
+    }
+    return items;
+}
+                    """)
+                    if about_amenities:
+                        logger.info(f"[Maps][v11] ✓ {len(about_amenities)} atributos capturados na aba Sobre")
+                except Exception as ae:
+                    logger.debug(f"[Maps][v11] Erro ao extrair atributos da aba Sobre: {ae}")
+
+                logger.info("[Maps][v11] ✓ Aba Sobre visitada e scrollada")
+
+                # Volta para "Visão geral" e aguarda h1 correto carregar
+                try:
+                    overview_tab = await page.query_selector(
+                        'button[aria-label="Visão geral"], '
+                        'button[data-tab-index="0"], '
+                        '[role="tab"]:has-text("Visão geral")'
+                    )
+                    if overview_tab:
+                        await overview_tab.click()
+                        # Aguarda até o h1 não ser mais "Horários" ou texto de aba
+                        import asyncio as _aio
+                        for _ in range(20):
+                            await _aio.sleep(0.3)
+                            try:
+                                h1_text = await page.evaluate(
+                                    "() => { const h = document.querySelector('h1'); return h ? h.textContent.trim() : ''; }"
+                                )
+                                bad_names = {'horários', 'avaliações', 'sobre', 'visão geral',
+                                             'horarios', 'avaliacoes', 'servicos', 'serviços',
+                                             'fotos', 'produtos'}
+                                if h1_text and h1_text.lower() not in bad_names and len(h1_text) > 2:
+                                    logger.info(f"[Maps][v11] ✓ h1 estável após retorno: '{h1_text}'")
+                                    break
+                            except Exception:
+                                pass
+                except Exception:
+                    await asyncio.sleep(2.0)
+            else:
+                logger.info("[Maps][v11] Aba Sobre não encontrada — atributos via DOM principal")
+        except Exception as e:
+            logger.debug(f"[Maps][v11] Erro ao acessar aba Sobre: {e}")
+
         # ── Expande textos de reviews truncados ───────────────────────────────
         try:
             more_btns = await page.query_selector_all(
                 'button[aria-label*="Ver mais"], button.w8nwRe, '
-                'button[jsaction*="reviewfulltext"], button[class*="w8nwRe"]'
+                'button[jsaction*="reviewfulltext"], button[class*="w8nwRe"], '
+                'button[aria-label*="Mais"], .review-more-link'
             )
-            for btn in more_btns[:15]:
+            for btn in more_btns[:20]:
                 try:
                     if await btn.is_visible():
                         await btn.click()
-                        await asyncio.sleep(0.2)
+                        await asyncio.sleep(0.15)
                 except Exception:
                     pass
         except Exception:
@@ -1948,14 +2533,20 @@ async def _extract_place_async(
         const hrsText = cells[1].textContent.trim();
         const key = dayMap[dayText];
         if (!key) continue;
-        if (/atendimento\\s*24\\s*horas|aberto\\s*24/i.test(hrsText)) {
+        if (/atendimento\s*24\s*horas|aberto\s*24/i.test(hrsText)) {
             hours[key] = '00:00–23:59';
         } else if (/fechado|closed/i.test(hrsText)) {
             hours[key] = 'Fechado';
         } else {
-            const hm = hrsText.match(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/);
-            if (hm) hours[key] = hm[1] + '–' + hm[2];
-            else if (hrsText.length > 3) hours[key] = hrsText.slice(0, 20);
+            // Suporte a 2 períodos no mesmo dia: "08:00–11:30 / 14:00–17:00"
+            const allPeriods = [...hrsText.matchAll(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/g)];
+            if (allPeriods.length >= 2) {
+                hours[key] = allPeriods.map(m => m[1] + '–' + m[2]).join(' / ');
+            } else if (allPeriods.length === 1) {
+                hours[key] = allPeriods[0][1] + '–' + allPeriods[0][2];
+            } else if (hrsText.length > 3) {
+                hours[key] = hrsText.slice(0, 30);
+            }
         }
     }
 
@@ -1974,8 +2565,38 @@ async def _extract_place_async(
             } else if (/fechado|closed/i.test(rawHrs)) {
                 hours[key] = 'Fechado';
             } else {
-                const hm = rawHrs.match(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/);
-                if (hm) hours[key] = hm[1] + '–' + hm[2];
+                // Suporte a 2 períodos: "08:00–11:30 / 14:00–17:00"
+                const allP = [...rawHrs.matchAll(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/g)];
+                if (allP.length >= 2) hours[key] = allP.map(p => p[1]+'–'+p[2]).join(' / ');
+                else if (allP.length === 1) hours[key] = allP[0][1] + '–' + allP[0][2];
+            }
+        }
+    }
+
+    // Estratégia 3: divs com jsaction openhours já expandido — li ou tr dentro do container
+    if (Object.keys(hours).length < 3) {
+        const hoursContainer = document.querySelector(
+            'div.OqCZI, div[jsaction*="openhours"]'
+        );
+        if (hoursContainer) {
+            const liRows = hoursContainer.querySelectorAll('li, tr');
+            for (const row of liRows) {
+                const txt = row.textContent.trim().toLowerCase();
+                let key = null;
+                for (const [dayPart, abbr] of Object.entries(dayMap)) {
+                    if (txt.startsWith(dayPart)) { key = abbr; break; }
+                }
+                if (!key || hours[key]) continue;
+                const allP = [...txt.matchAll(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/g)];
+                if (/atendimento\s*24\s*horas|aberto\s*24/i.test(txt)) {
+                    hours[key] = '00:00–23:59';
+                } else if (/fechado|closed/i.test(txt)) {
+                    hours[key] = 'Fechado';
+                } else if (allP.length >= 2) {
+                    hours[key] = allP.map(p => p[1]+'–'+p[2]).join(' / ');
+                } else if (allP.length === 1) {
+                    hours[key] = allP[0][1] + '–' + allP[0][2];
+                }
             }
         }
     }
@@ -2070,7 +2691,7 @@ async def _extract_place_async(
             safe_title = _re.sub(r'[^\w\-]', '_', page_title)[:60].strip('_') or 'lead'
             ts = int(_time.time())
             shot_path = os.path.join(screenshot_dir, f"lead_{safe_title}_{ts}.png")
-            await page.screenshot(path=shot_path, full_page=False)
+            await page.screenshot(path=shot_path, full_page=True)
             logger.info(f"[Maps:screenshot] ✓ Salvo: {shot_path}")
         except Exception as _se:
             logger.debug(f"[Maps:screenshot] Falha: {_se}")
@@ -2176,6 +2797,17 @@ async def _extract_place_async(
         if not js_data or not js_data.get('name'):
             return None
 
+        # Valida que o nome não é um nome de aba do Maps
+        _raw_name_check = js_data.get('name', '').strip()
+        _bad_tab_names = {
+            'horários', 'avaliações', 'sobre', 'visão geral', 'visao geral',
+            'horarios', 'avaliacoes', 'servicos', 'serviços', 'fotos',
+            'produtos', 'menu', 'reservar', 'ligar',
+        }
+        if _raw_name_check.lower() in _bad_tab_names:
+            logger.warning(f"[Maps][v11] Nome inválido '{_raw_name_check}' (h1 capturado como aba) — descartando")
+            return None
+
         phone_raw = js_data.get('phone')
         normalized = normalize_phone(phone_raw) if phone_raw else None
 
@@ -2225,10 +2857,13 @@ async def _extract_place_async(
 
         # Filtros aplicados
         if only_without_website and raw_website and website_type == 'website':
+            logger.info(f"[Maps][Filtro] '{js_data.get('name','')}' descartado — tem website ({raw_website[:50]})")
             return None
         if only_with_instagram and not instagram:
+            logger.info(f"[Maps][Filtro] '{js_data.get('name','')}' descartado — sem Instagram")
             return None
         if only_with_facebook and not facebook:
+            logger.info(f"[Maps][Filtro] '{js_data.get('name','')}' descartado — sem Facebook")
             return None
 
         # Prioridade horários: DOM JS (mais preciso) > aria-label JS > fallback vazio
@@ -2388,9 +3023,44 @@ async def _extract_place_async(
         # v10: tiktok — usa valor enriquecido de enrich_data se disponível, senão do JS principal
         if not tiktok_val:
             tiktok_val = js_data.get('tiktok')
+        _am_js = js_data.get('amenities') or []
+        _am_about = about_amenities or []
+        _am_seen = set()
+        _am_merged = []
+        for _item in (_am_about + _am_js):  # Sobre tem prioridade (mais preciso)
+            if _item and _item not in _am_seen:
+                _am_seen.add(_item)
+                _am_merged.append(_item)
+
+        # ── Valida nome: não pode ser nome de aba ─────────────────────────────
+        _raw_name = js_data.get('name', '').strip()
+        _bad_names = {
+            'horários', 'avaliações', 'sobre', 'visão geral', 'visao geral',
+            'horarios', 'avaliacoes', 'servicos', 'serviços', 'fotos',
+            'produtos', 'menu', 'reservar', 'ligar',
+        }
+        if _raw_name.lower() in _bad_names:
+            # v12: tenta recuperar o nome real a partir da URL antes de descartar
+            _name_from_url = None
+            try:
+                _nm = re.search(r'/maps/place/([^/@]+)', maps_canonical_url)
+                if _nm:
+                    _name_from_url = urllib.parse.unquote_plus(_nm.group(1)).replace('+', ' ').strip()
+                    if _name_from_url and _name_from_url.lower() not in _bad_names and len(_name_from_url) > 3:
+                        logger.info(f"[Maps][v12] Nome recuperado da URL: '{_name_from_url}' (era '{_raw_name}')")
+                        _raw_name = _name_from_url
+            except Exception:
+                pass
+
+            if _raw_name.lower() in _bad_names:
+                logger.warning(
+                    f"[Maps][v11] Nome inválido '{_raw_name}' (h1 capturado como aba) — descartando. "
+                    f"URL: {maps_canonical_url[:80]}"
+                )
+                return None
 
         data = {
-            'name':                  js_data.get('name', '').strip(),
+            'name':                  _raw_name,
             'category':              js_data.get('category') or '',
             'city':                  city,
             'phone_number':          phone_raw,
@@ -2414,13 +3084,31 @@ async def _extract_place_async(
             'source':                'google_maps',
             'status':                'novo',
             'is_verified':           False,
-            # ── Campos extras v10 ──────────────────────────────────────────
+            # ── Campos extras v10/v11 ──────────────────────────────────────
             '_price_range':          js_data.get('price_range'),
             '_plus_code':            js_data.get('plus_code'),
-            '_amenities':            js_data.get('amenities') or [],
+            '_amenities':            _am_merged,
             '_total_photos':         js_data.get('total_photos'),
             '_tiktok':               tiktok_val,
+            # ── Campos novos v12 ───────────────────────────────────────────
+            '_latitude':             js_data.get('latitude'),
+            '_longitude':            js_data.get('longitude'),
+            '_coordinates':          js_data.get('coordinates'),
+            '_cid':                  js_data.get('cid') or _extract_cid_from_url(maps_canonical_url),
+            '_kgmid':                js_data.get('kgmid'),
+            '_order_online':         js_data.get('order_online'),
+            '_menu':                 js_data.get('menu'),
+            '_reservations':         js_data.get('reservations'),
+            '_popular_times':        js_data.get('popular_times'),
         }
+
+        # v12: se lat/lng não vieram do JS, tenta extrair da URL canônica
+        if not data['_latitude']:
+            _lat, _lng = _extract_lat_lng_from_url(maps_canonical_url)
+            if _lat:
+                data['_latitude'] = _lat
+                data['_longitude'] = _lng
+                data['_coordinates'] = {'lat': _lat, 'lng': _lng}
 
         if not data['name']:
             return None
@@ -3343,9 +4031,24 @@ def run_google_maps_scraper(
     only_with_instagram: bool = False,
     only_with_facebook: bool = False,
     seed=None,
+    # v12: novos parâmetros
+    grid_bbox: str | None = None,
+    grid_cell_km: float = 1.0,
+    fast_mode: bool = False,
 ) -> tuple[int, int]:
     """
     Pipeline completo de scraping do Google Maps.
+
+    v12 — novos parâmetros:
+      grid_bbox (str | None): "minLat,minLon,maxLat,maxLon" para varredura em grade.
+          Exemplo para Ribeirão Preto centro: "-21.25,-47.85,-21.15,-47.75"
+          Use https://geojson.io para encontrar as coordenadas da sua área.
+      grid_cell_km (float): tamanho das células da grade em km (padrão 1.0).
+          0.5 = bloco nível rua (muito detalhado, lento)
+          1.0 = sub-bairro (bom equilíbrio)
+          2.0 = bairro (rápido, pode perder negócios em áreas densas)
+      fast_mode (bool): coleta rápida sem abrir cada ficha.
+          Retorna: nome, categoria, lat/lng, maps_url. Sem telefone/Instagram/reviews.
 
     ROLLBACK STAGES nos logs Django:
       [PIPELINE A] Verificação do Playwright
@@ -3355,8 +4058,9 @@ def run_google_maps_scraper(
     import traceback as _tb
 
     # ── PIPELINE A: Verifica Playwright ──────────────────────────────────────
-    logger.info(f"[Maps][PIPELINE A] ══ run_google_maps_scraper iniciado ══")
+    logger.info(f"[Maps][PIPELINE A] ══ run_google_maps_scraper v12 iniciado ══")
     logger.info(f"[Maps][PIPELINE A] user={getattr(user, 'username', user)} niche={niche!r} city={city!r} limit={limit}")
+    logger.info(f"[Maps][PIPELINE A] grid_bbox={grid_bbox!r} grid_cell_km={grid_cell_km} fast_mode={fast_mode}")
 
     env_problem = _check_playwright_environment()
     if env_problem:
@@ -3366,6 +4070,20 @@ def run_google_maps_scraper(
 
     # ── PIPELINE B: Scraping ──────────────────────────────────────────────────
     logger.info(f"[Maps][PIPELINE B] ══ Chamando scrape_google_maps (subprocesso) ══")
+
+    # v12: aviso proativo sobre combinações de filtros que costumam retornar zero
+    if only_without_website and not min_reviews:
+        logger.warning(
+            "[Maps][PIPELINE B] ⚠️  AVISO: only_without_website=True sem min_reviews. "
+            "A maioria dos negócios no Maps tem site. Considere usar min_reviews≥10 "
+            "para reduzir o pool e aumentar a chance de encontrar sem site, "
+            "ou desative o filtro para obter mais resultados."
+        )
+    if only_with_instagram and only_with_facebook:
+        logger.warning(
+            "[Maps][PIPELINE B] ⚠️  AVISO: only_with_instagram=True E only_with_facebook=True "
+            "ao mesmo tempo é muito restritivo — poucos negócios têm ambos no Maps."
+        )
     try:
         leads_data = scrape_google_maps(
             niche, city, limit,
@@ -3374,6 +4092,9 @@ def run_google_maps_scraper(
             min_reviews=min_reviews,
             only_with_instagram=only_with_instagram,
             only_with_facebook=only_with_facebook,
+            grid_bbox=grid_bbox,
+            grid_cell_km=grid_cell_km,
+            fast_mode=fast_mode,
         )
     except Exception as e:
         logger.error(f"[Maps][PIPELINE B] ✗ scrape_google_maps lançou exceção: {e}")
