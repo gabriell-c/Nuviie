@@ -48,13 +48,37 @@ def fetch_instagram_profile_pic(handle: str) -> str | None:
         resp = requests.get(url, headers=headers, timeout=8)
         if resp.status_code != 200:
             return None
-        soup = BeautifulSoup(resp.text, 'html.parser')
+        text = resp.text
+        soup = BeautifulSoup(text, 'html.parser')
         og = soup.find('meta', property='og:image')
         if og and og.get('content'):
-            return og['content']
-        m = re.search(r'"profile_pic_url_hd"\s*:\s*"([^"]+)"', resp.text)
+            og_url = og['content'].replace('\\u0026', '&').replace('&amp;', '&')
+            if '/static/' not in og_url:
+                return og_url
+        m = re.search(r'"profile_pic_url_hd"\s*:\s*"([^"]+)"', text)
         if m:
-            return m.group(1).replace('\\u0026', '&')
+            return m.group(1).replace('\\u0026', '&').replace('&amp;', '&')
+        m = re.search(r'"profile_pic_url"\s*:\s*"([^"]+)"', text)
+        if m:
+            return m.group(1).replace('\\u0026', '&').replace('&amp;', '&')
+        img_alt = re.search(
+            r'alt="Foto do perfil de [^"]*"[^>]*\ssrc="([^"]+)"',
+            text,
+            re.I,
+        ) or re.search(
+            r'src="([^"]+)"[^>]*alt="Foto do perfil de',
+            text,
+            re.I,
+        )
+        if img_alt:
+            return img_alt.group(1).replace('&amp;', '&')
+        fbcdn = re.search(
+            r'https://[^\s"\']*(?:fbcdn\.net|cdninstagram\.com)[^\s"\']*t51\.2885-19[^\s"\']*',
+            text,
+            re.I,
+        )
+        if fbcdn:
+            return fbcdn.group(0).replace('\\u0026', '&').replace('&amp;', '&')
     except Exception as e:
         logger.debug('[Instagram] Falha ao buscar foto de %s: %s', handle, e)
     return None

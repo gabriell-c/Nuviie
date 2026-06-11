@@ -27,6 +27,8 @@ class LeadSerializer(serializers.ModelSerializer):
     )
     whatsapp_link = serializers.SerializerMethodField()
     maps_link = serializers.SerializerMethodField()
+    instagram_link = serializers.SerializerMethodField()
+    profile_picture_display_url = serializers.SerializerMethodField()
     notes = LeadNoteSerializer(many=True, read_only=True)
 
     class Meta:
@@ -34,12 +36,14 @@ class LeadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'category', 'city', 'phone_number', 'normalized_phone',
             'website', 'website_detected_type', 'website_detected_type_display',
-            'instagram', 'facebook', 'youtube', 'twitter', 'linkedin',
+            'instagram', 'instagram_link', 'facebook', 'youtube', 'twitter', 'linkedin',
             'bio', 'address', 'rating', 'review_count',
             'recent_reviews', 'business_hours',
             'maps_url', 'maps_share_url', 'maps_link',
             'source', 'source_display', 'status', 'status_display',
             'quality_score', 'is_verified', 'whatsapp_link',
+            'price_range', 'plus_code', 'amenities', 'total_photos',
+            'profile_picture_url', 'profile_picture_display_url',
             'notes', 'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -52,6 +56,22 @@ class LeadSerializer(serializers.ModelSerializer):
 
     def get_maps_link(self, obj):
         return obj.get_maps_link()
+
+    def get_instagram_link(self, obj):
+        if obj.instagram:
+            handle = str(obj.instagram).strip().lstrip('@')
+            if handle:
+                return f'https://www.instagram.com/{handle}/'
+        if obj.source == 'instagram' and obj.maps_url and 'instagram.com' in (obj.maps_url or ''):
+            return obj.maps_url
+        if isinstance(obj.amenities, dict) and obj.amenities.get('instagram_url'):
+            return obj.amenities['instagram_url']
+        return None
+
+    def get_profile_picture_display_url(self, obj):
+        from .profile_picture_utils import get_profile_picture_display_url
+        request = self.context.get('request')
+        return get_profile_picture_display_url(obj, request)
 
     def _normalize_phone(self, phone):
         import re

@@ -4,157 +4,52 @@ import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import FileResponse, Http404
 from django.conf import settings
-from django.views.decorators.http import require_POST
 
 from audit.services import log_activity
 
-from .models import ContractTemplate, GeneratedContract
-from .parser import analyze_contract_pdf
-from .generator import generate_contract_pdf
-from .docx_generator import generate_contract_docx
-
-
-def _apply_analysis(template: ContractTemplate, pdf_path: str) -> int:
-    result = analyze_contract_pdf(pdf_path)
-    template.detected_fields = result['detected_fields']
-    template.structure = result['structure']
-    template.field_schema = result['field_schema']
-    template.save()
-    return len(result['detected_fields'])
-
-
-def _build_filled_data(template: ContractTemplate, post_data) -> dict:
-    filled_data = {}
-    schema = template.field_schema or []
-    if schema:
-        for field in schema:
-            key = field.get('key', '')
-            if key:
-                filled_data[key] = post_data.get(f'field_{key}', '').strip()
-    else:
-        for field in template.detected_fields:
-            filled_data[field] = post_data.get(f'field_{field}', '').strip()
-    return filled_data
+from .models import GeneratedContract
+from .nuviie_template import (
+    FIELD_SCHEMA,
+    PLACEHOLDER_LABELS,
+    default_values,
+    flat_field_schema,
+    build_filled_data_from_post,
+    preview_sections_for_js,
+)
+from .generator import generate_nuviie_contract_pdf
+from .docx_generator import generate_nuviie_contract_docx
 
 
 @login_required
-def template_list_view(request):
-    templates = ContractTemplate.objects.filter(user=request.user)
-
-    if request.method == 'POST' and 'upload_template' in request.POST:
-        name = request.POST.get('name', '').strip()
-        pdf_file = request.FILES.get('pdf_file')
-
-        if not name or not pdf_file:
-            messages.error(request, "Por favor, defina um nome e envie um arquivo PDF.")
-            return redirect('template_list')
-
-        if not pdf_file.name.endswith('.pdf'):
-            messages.error(request, "Apenas arquivos PDF são permitidos.")
-            return redirect('template_list')
-
-        template = ContractTemplate.objects.create(
-            user=request.user,
-            name=name,
-            pdf_file=pdf_file,
-        )
-
-        count = _apply_analysis(template, template.pdf_file.path)
-
-        log_activity(
-            'contract_template_upload',
-            f"Template '{name}' enviado ({count} campos detectados).",
-            user=request.user,
-            entity_type='template',
-            entity_id=template.pk,
-            request=request,
-        )
-
-        messages.success(request, f"Template '{name}' cadastrado! {count} campos dinâmicos identificados.")
-        return redirect('fill_template', template_id=template.id)
-
-    return render(request, 'contracts/templates_list.html', {
-        'templates': templates,
-        'current_page': 'contracts',
-    })
-
-
-@login_required
-@require_POST
-def reanalyze_template_view(request, template_id):
-    template = get_object_or_404(ContractTemplate, id=template_id, user=request.user)
-    count = _apply_analysis(template, template.pdf_file.path)
-    messages.success(request, f"Modelo reanalisado — {count} campos detectados.")
-    return redirect('template_list')
-
-
-@login_required
-def delete_template_view(request, template_id):
-    template = get_object_or_404(ContractTemplate, id=template_id, user=request.user)
-    name = template.name
-    if template.pdf_file and os.path.exists(template.pdf_file.path):
-        os.remove(template.pdf_file.path)
-
-    log_activity(
-        'contract_template_delete',
-        f"Template '{name}' excluído.",
-        user=request.user,
-        entity_type='template',
-        entity_id=template_id,
-        request=request,
-    )
-    template.delete()
-    messages.success(request, f"Template '{name}' removido com sucesso.")
-    return redirect('template_list')
-
-
-@login_required
-def fill_template_view(request, template_id):
-    template = get_object_or_404(ContractTemplate, id=template_id, user=request.user)
-    schema = template.field_schema or [
-        {'key': k, 'label': k.replace('_', ' ').title(), 'type': 'text', 'default': ''}
-        for k in template.detected_fields
-    ]
-
+def generate_view(request):
+    """Gerador de contrato — modelo fixo Nuviie com preview ao vivo."""
     if request.method == 'POST':
-        contract_name = request.POST.get('contract_name', '').strip() or f"Contrato - {template.name}"
-        filled_data = _build_filled_data(template, request.POST)
+        contract_name = request.POST.get('contract_name', '').strip() or 'Contrato de Prestação de Serviços'
+        filled_data = build_filled_data_from_post(request.POST)
         export_format = request.POST.get('export_format', 'pdf')
 
         gen_dir = os.path.join(settings.MEDIA_ROOT, 'generated_contracts')
         os.makedirs(gen_dir, exist_ok=True)
 
-        safe_name = "".join(x for x in contract_name if x.isalnum() or x in " -_").strip()
-        base_filename = f"{request.user.id}_{template.id}_{safe_name}"
+        safe_name = ''.join(x for x in contract_name if x.isalnum() or x in ' -_').strip()
+        base_filename = f'{request.user.id}_nuviie_{safe_name}'
 
         try:
             if export_format == 'docx':
-                filename = f"{base_filename}.docx"
+                filename = f'{base_filename}.docx'
                 output_filepath = os.path.join(gen_dir, filename)
-                generate_contract_docx(
-                    template.structure,
-                    filled_data,
-                    output_filepath,
-                    contract_name,
-                )
-                rel_file_path = f"generated_contracts/{filename}"
+                generate_nuviie_contract_docx(filled_data, output_filepath, contract_name)
             else:
-                filename = f"{base_filename}.pdf"
+                filename = f'{base_filename}.pdf'
                 output_filepath = os.path.join(gen_dir, filename)
-                generate_contract_pdf(
-                    template_path=template.pdf_file.path,
-                    filled_data=filled_data,
-                    output_path=output_filepath,
-                    contract_title=contract_name,
-                    structure=template.structure,
-                )
-                rel_file_path = f"generated_contracts/{filename}"
+                generate_nuviie_contract_pdf(filled_data, output_filepath, contract_name)
 
+            rel_file_path = f'generated_contracts/{filename}'
             contract = GeneratedContract.objects.create(
                 user=request.user,
-                template=template,
+                template=None,
                 name=contract_name,
                 filled_data=filled_data,
                 pdf_file=rel_file_path,
@@ -166,7 +61,7 @@ def fill_template_view(request, template_id):
                 user=request.user,
                 entity_type='contract',
                 entity_id=contract.pk,
-                metadata={'format': export_format, 'template': template.name},
+                metadata={'format': export_format, 'template': 'Nuviie padrão'},
                 request=request,
             )
 
@@ -176,12 +71,14 @@ def fill_template_view(request, template_id):
             return redirect('contracts_history')
 
         except Exception as e:
-            messages.error(request, f"Falha ao gerar contrato: {str(e)}")
+            messages.error(request, f'Falha ao gerar contrato: {e}')
 
-    return render(request, 'contracts/fill_template.html', {
-        'template': template,
-        'field_schema_json': json.dumps(schema),
-        'structure_json': json.dumps(template.structure or {'blocks': []}),
+    return render(request, 'contracts/generate.html', {
+        'field_schema': FIELD_SCHEMA,
+        'field_schema_json': json.dumps(FIELD_SCHEMA),
+        'sections_json': json.dumps(preview_sections_for_js()),
+        'defaults_json': json.dumps(default_values()),
+        'placeholder_labels_json': json.dumps(PLACEHOLDER_LABELS),
         'current_page': 'contracts',
     })
 
@@ -220,7 +117,7 @@ def download_contract_view(request, contract_id):
     contract = get_object_or_404(GeneratedContract, id=contract_id, user=request.user)
 
     if not contract.pdf_file or not os.path.exists(contract.pdf_file.path):
-        raise Http404("Arquivo de contrato não encontrado.")
+        raise Http404('Arquivo de contrato não encontrado.')
 
     log_activity(
         'contract_download',
@@ -232,8 +129,11 @@ def download_contract_view(request, contract_id):
     )
 
     ext = os.path.splitext(contract.pdf_file.path)[1].lower()
-    content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' if ext == '.docx' else 'application/pdf'
+    content_type = (
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        if ext == '.docx' else 'application/pdf'
+    )
     response = FileResponse(open(contract.pdf_file.path, 'rb'), content_type=content_type)
-    safe_filename = contract.name.replace(" ", "_") + ext
+    safe_filename = contract.name.replace(' ', '_') + ext
     response['Content-Disposition'] = f'attachment; filename="{safe_filename}"'
     return response

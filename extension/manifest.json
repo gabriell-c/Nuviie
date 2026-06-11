@@ -1,50 +1,127 @@
 {
+
   "manifest_version": 3,
-  "name": "Nuviie Maps Extractor",
-  "version": "1.0.4",
-  "description": "Extrai leads completos do Google Maps para o Nuviie CRM local",
-  "permissions": ["storage", "downloads", "activeTab"],
+
+  "name": "Nuviie Extractor",
+
+  "version": "1.2.7",
+
+  "description": "Extrai leads do Google Maps e Instagram para o Nuviie CRM local",
+
+  "permissions": ["storage", "downloads", "activeTab", "tabs", "scripting"],
+
   "host_permissions": [
+
     "https://www.google.com/maps/*",
+
     "https://google.com/maps/*",
+
+    "https://www.google.com/*",
+
+    "https://google.com/*",
+
+    "https://www.instagram.com/*",
+
+    "https://instagram.com/*",
+
+    "https://*.cdninstagram.com/*",
+
+    "https://*.fbcdn.net/*",
+
     "http://127.0.0.1:8000/*",
+
     "http://localhost:8000/*"
+
   ],
-  
+
   "action": {
+
     "default_popup": "popup.html",
-    "default_title": "Nuviie Maps Extractor",
+
+    "default_title": "Nuviie Extractor",
+
     "default_icon": {
+
       "16": "logo_fundo_azul.png",
+
       "48": "logo_fundo_azul.png",
+
       "128": "logo_fundo_azul.png"
+
     }
+
   },
+
   "icons": {
+
     "16": "logo_fundo_azul.png",
+
     "48": "logo_fundo_azul.png",
+
     "128": "logo_fundo_azul.png"
+
   },
+
   "background": {
+
     "service_worker": "background.js"
+
   },
+
   "content_scripts": [
+
     {
+
       "matches": [
-        "https://www.google.com/maps/*",
-        "https://google.com/maps/*"
+
+        "http://127.0.0.1:8000/*",
+
+        "http://localhost:8000/*"
+
       ],
-      "js": [
-        "utils.js",
-        "extract-all.js",
-        "extract-hours.js",
-        "extract-reviews.js",
-        "extract-about.js",
-        "navigate.js",
-        "mapper.js",
-        "content.js"
-      ],
+
+      "js": ["nuviie-bridge.js"],
+
       "run_at": "document_idle"
+
+    },
+
+    {
+
+      "matches": [
+
+        "https://www.google.com/maps/*",
+
+        "https://google.com/maps/*"
+
+      ],
+
+      "js": [
+
+        "utils.js",
+
+        "extract-all.js",
+
+        "extract-hours.js",
+
+        "extract-reviews.js",
+
+        "extract-about.js",
+
+        "navigate.js",
+
+        "mapper.js",
+
+        "content.js"
+
+      ],
+
+      "run_at": "document_idle"
+
     }
+
   ]
+
 }
+
+

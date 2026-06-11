@@ -131,6 +131,26 @@ NuviieMaps.visitReviewsTab = async () => {
   return reviews;
 };
 
+NuviieMaps.scrollToWebResults = async () => {
+  const scrollScript = (scrollTop) => {
+    const containers = [
+      document.querySelector('div[role="main"]'),
+      document.querySelector('.DxyBCb'),
+      document.querySelector('.bJzME'),
+      document.querySelector('.siAUzd'),
+    ];
+    const p = containers.find((c) => c && c.scrollHeight > window.innerHeight);
+    if (p) p.scrollTop = scrollTop;
+  };
+  // Força lazy-load da seção "Resultados da Web" após voltar da aba Avaliações
+  for (const step of [4000, 7000, 99999]) {
+    scrollScript(step);
+    await NuviieMaps.sleep(600);
+  }
+  scrollScript(99999);
+  await NuviieMaps.sleep(1200);
+};
+
 NuviieMaps.revealContactButtons = async () => {
   const selectors = [
     'button[data-item-id*="phone"]',

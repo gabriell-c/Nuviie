@@ -1,0 +1,226 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/contract-preview.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col h-[calc(100vh-100px)]" x-data="nuviieContract()" x-init="init()">
+    <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Gerador de Contratos</h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Modelo Nuviie — preview idêntico ao documento oficial</p>
+        </div>
+        <a href="{% url 'contracts_history' %}"
+           class="inline-flex items-center space-x-1.5 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition self-start">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>Histórico</span>
+        </a>
+    </div>
+
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-0">
+        <!-- Preview esquerda — página A4 igual ao PDF -->
+        <div class="lg:col-span-3 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden order-2 lg:order-1 p-0">
+            <div class="px-5 py-2.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/30">
+                <h3 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Preview do Contrato</h3>
+                <span class="text-[10px] text-emerald-500 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Tempo real
+                </span>
+            </div>
+            <div class="flex-1 overflow-y-auto contract-preview-scroll">
+                <template x-for="(page, pageIdx) in previewPages" :key="pageIdx">
+                    <div class="contract-page">
+                        <!-- Cabeçalho só na 1ª página -->
+                        <header x-show="pageIdx === 0" class="contract-page-header">
+                            <div class="contract-logo-box">
+                                <img src="{% static 'imgs/logo_branca.png' %}" alt="Nuviie">
+                            </div>
+                            <div class="contract-header-bar"></div>
+                        </header>
+
+                        <div class="contract-page-body" :class="pageIdx > 0 ? '!pt-8' : ''">
+                            <template x-for="(section, idx) in page" :key="pageIdx + '-' + idx">
+                                <div class="contract-block"
+                                     :class="{
+                                         'contract-doc-title': section.style === 'title',
+                                         'contract-intro': section.style === 'intro',
+                                         'contract-party-label': section.style === 'party_label',
+                                         'contract-clause': section.style === 'clause',
+                                         'contract-body': section.style === 'body',
+                                         'contract-signature': section.style === 'signature',
+                                     }">
+                                    <template x-for="(part, pi) in section.parts" :key="pi">
+                                        <span :class="part.empty ? 'contract-var-empty' : 'contract-var-filled'"
+                                              x-text="part.text"></span>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+
+                        <span class="contract-page-number" x-text="'Página ' + (pageIdx + 1) + ' de ' + previewPages.length"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Formulário direita -->
+        <div class="lg:col-span-2 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden order-1 lg:order-2">
+            <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                <h3 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Dados do Contrato</h3>
+            </div>
+            <div class="flex-1 overflow-y-auto p-5">
+                <form method="POST" @submit="generating = true" class="space-y-5">
+                    {% csrf_token %}
+
+                    <div>
+                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">Nome interno do documento *</label>
+                        <input type="text" name="contract_name" x-model="values.contract_name" required
+                               class="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                    </div>
+
+                    <template x-for="group in schema" :key="group.group">
+                        <div class="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3">
+                            <h4 class="text-[10px] font-bold uppercase text-indigo-500 dark:text-indigo-400 tracking-wider" x-text="group.group"></h4>
+                            <template x-for="field in group.fields" :key="field.key">
+                                <div x-show="field.key !== 'contract_name'">
+                                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase" x-text="field.label"></label>
+
+                                    <template x-if="field.type === 'select'">
+                                        <select :name="'field_' + field.key"
+                                                x-model="values[field.key]"
+                                                @change="updatePreview()"
+                                                class="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                                            <template x-for="opt in field.options" :key="opt">
+                                                <option :value="opt" x-text="opt"></option>
+                                            </template>
+                                        </select>
+                                    </template>
+
+                                    <template x-if="field.type !== 'select'">
+                                        <input :type="field.type === 'number' ? 'number' : 'text'"
+                                               :name="'field_' + field.key"
+                                               x-model="values[field.key]"
+                                               @input="updatePreview()"
+                                               :placeholder="field.placeholder || field.label"
+                                               :required="field.required || false"
+                                               class="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <div class="flex flex-col gap-2 pt-4 border-t border-slate-100 dark:border-slate-800 sticky bottom-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm pb-1">
+                        <button type="submit" name="export_format" value="pdf" :disabled="generating"
+                                class="w-full py-2.5 px-4 font-semibold text-xs text-white rounded-xl gradient-bg-primary hover:opacity-95 flex items-center justify-center gap-2 disabled:opacity-50">
+                            <i class="fa-solid fa-file-pdf"></i>
+                            <span>Baixar PDF e Salvar</span>
+                        </button>
+                        <button type="submit" name="export_format" value="docx" :disabled="generating"
+                                class="w-full py-2.5 px-4 font-semibold text-xs text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center gap-2 disabled:opacity-50">
+                            <i class="fa-solid fa-file-word text-blue-500"></i>
+                            <span>Baixar DOCX</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="generating" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center shadow-2xl">
+            <div class="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Gerando documento...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function nuviieContract() {
+    return {
+        generating: false,
+        schema: {{ field_schema_json|safe }},
+        sections: {{ sections_json|safe }},
+        placeholderLabels: {{ placeholder_labels_json|safe }},
+        values: {{ defaults_json|safe }},
+        previewSections: [],
+        previewPages: [],
+
+        init() {
+            this.updatePreview();
+        },
+
+        sectionWeight(section) {
+            const text = section.parts.map(p => p.text).join('');
+            let weight = text.length;
+            if (section.style === 'title') weight += 80;
+            if (section.style === 'clause') weight += 40;
+            if (section.style === 'party_label') weight += 20;
+            return weight;
+        },
+
+        paginateSections(sections) {
+            // ~6 páginas como o PDF original — limite de caracteres por página A4
+            const LIMIT = 2400;
+            const pages = [[]];
+            let used = 0;
+
+            for (const section of sections) {
+                const w = this.sectionWeight(section);
+                if (used + w > LIMIT && pages[pages.length - 1].length > 0) {
+                    pages.push([]);
+                    used = 0;
+                }
+                pages[pages.length - 1].push(section);
+                used += w;
+            }
+            return pages.length ? pages : [[]];
+        },
+
+        formatEmpty(key) {
+            const label = this.placeholderLabels[key] || key.replace(/_/g, ' ').toUpperCase();
+            return '!' + label + '!';
+        },
+
+        renderSection(section) {
+            const text = section.text || '';
+            const parts = [];
+            const re = /\{\{(\w+)\}\}/g;
+            let last = 0;
+            let match;
+
+            while ((match = re.exec(text)) !== null) {
+                if (match.index > last) {
+                    parts.push({ text: text.slice(last, match.index), empty: false });
+                }
+                const key = match[1];
+                const val = (this.values[key] || '').trim();
+                if (val) {
+                    parts.push({ text: val, empty: false });
+                } else {
+                    parts.push({ text: this.formatEmpty(key), empty: true });
+                }
+                last = match.index + match[0].length;
+            }
+            if (last < text.length) {
+                parts.push({ text: text.slice(last), empty: false });
+            }
+            if (parts.length === 0) {
+                parts.push({ text, empty: false });
+            }
+            return { style: section.style || 'body', parts };
+        },
+
+        updatePreview() {
+            this.previewSections = this.sections.map(s => this.renderSection(s));
+            this.previewPages = this.paginateSections(this.previewSections);
+        },
+    };
+}
+</script>
+{% endblock %}

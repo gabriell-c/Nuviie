@@ -3,29 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=360">
-  <title>Nuviie Maps Extractor</title>
+  <title>Nuviie Extractor</title>
   <link rel="shortcut icon" href="./logo_branca.png">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <header>
     <div class="logo-badge">
-      <!-- ícone mapa/pin -->
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/>
-        <circle cx="12" cy="10" r="3"/>
-      </svg>
+      <img src="logo_fundo_azul.png" alt="Nuviie" class="logo-img">
     </div>
     <div>
-      <h1>Nuviie Maps</h1>
-      <p class="sub">Extração completa de leads</p>
+      <h1>Nuviie Extractor</h1>
+      <p class="sub">Maps e Instagram para o CRM · <span id="extVersion" class="version-tag">v—</span></p>
     </div>
   </header>
 
+  <nav class="mode-tabs">
+    <button type="button" id="tabMaps" class="mode-tab active" data-mode="maps">Maps</button>
+    <button type="button" id="tabInstagram" class="mode-tab" data-mode="instagram">Instagram</button>
+  </nav>
+
   <section class="stats">
-    <div class="stat-card">
+    <div class="stat-card maps-only">
       <div class="stat-icon">
-        <!-- ícone lista -->
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="8" y1="6" x2="21" y2="6"/>
           <line x1="8" y1="12" x2="21" y2="12"/>
@@ -42,7 +42,6 @@
     </div>
     <div class="stat-card">
       <div class="stat-icon">
-        <!-- ícone usuários/leads -->
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
@@ -73,6 +72,10 @@
     <span id="statusText">Abra o Google Maps, busque, role a lista e clique Extrair.</span>
   </p>
 
+  <p id="instagramHint" class="hint instagram-only hidden">
+    Faça login no Instagram no Chrome antes de extrair.
+  </p>
+
   <div class="field">
     <label for="city">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -91,7 +94,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/>
       </svg>
-      Nicho / segmento
+      <span id="nicheLabel">Nicho / segmento</span>
     </label>
     <div class="input-wrap">
       <input id="niche" type="text" placeholder="Ex: advogado">
@@ -105,11 +108,23 @@
         <path d="M18 20V4"/>
         <path d="M6 20v-4"/>
       </svg>
-      Limite (0 = todos visíveis)
+      <span id="limitLabel">Limite (0 = todos visíveis)</span>
     </label>
     <div class="input-wrap">
       <input id="limit" type="number" min="0" placeholder="0">
     </div>
+  </div>
+
+  <div id="instagramFilters" class="filters instagram-only hidden">
+    <label class="checkbox-row">
+      <input type="checkbox" id="onlyVerified">
+      <span>Somente verificados</span>
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" id="onlyWithBioLink">
+      <span>Somente com link na bio</span>
+    </label>
+    <p id="filterBioLinkHint" class="filter-hint hidden">Perfis sem link, WhatsApp ou site na bio serão ignorados.</p>
   </div>
 
   <div class="actions">
@@ -117,7 +132,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
-      Extrair completo
+      <span id="btnStartLabel">Extrair completo</span>
     </button>
     <button id="btnStop" class="btn secondary">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -192,6 +207,8 @@
       </button>
     </div>
   </details>
+
+  <div id="toast" class="toast" role="alert" aria-live="polite" aria-atomic="true"></div>
 
   <script src="popup.js"></script>
 </body>

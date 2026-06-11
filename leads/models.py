@@ -133,19 +133,68 @@ class Lead(models.Model):
             score += 15
         elif self.website and self.website_detected_type in (None, 'website'):
             score += 15
-        if self.normalized_phone:   score += 20
-        if self.instagram:          score += 10
-        if self.facebook:           score += 5
-        if self.youtube:            score += 5
-        if self.twitter:            score += 5
-        if self.linkedin:           score += 5
-        if self.category:           score += 10
-        if self.address or self.rating: score += 10
-        if self.maps_url or self.maps_share_url: score += 10
-        if self.profile_picture_url: score += 5
-        # v10: bonus por dados extras
-        if self.amenities:          score += 3
-        if self.plus_code:          score += 2
+        elif self.website_detected_type in ('linktree', 'whatsapp', 'facebook', 'youtube', 'linkedin'):
+            score += 8
+        if self.normalized_phone:
+            score += 20
+        if self.instagram:
+            score += 10
+        if self.facebook:
+            score += 5
+        if self.youtube:
+            score += 5
+        if self.twitter:
+            score += 5
+        if self.linkedin:
+            score += 5
+        if self.category:
+            score += 10
+        if self.address or self.rating:
+            score += 10
+        if self.maps_url or self.maps_share_url:
+            score += 10
+        if self.profile_picture_url:
+            score += 5
+        if self.amenities:
+            score += 3
+        if self.plus_code:
+            score += 2
+
+        post_count = self.total_photos
+        if post_count is None and isinstance(self.amenities, dict):
+            post_count = self.amenities.get('post_count')
+        if post_count:
+            post_count = int(post_count)
+            if post_count >= 51:
+                score += 8
+            elif post_count >= 11:
+                score += 5
+            elif post_count >= 1:
+                score += 3
+
+        latest_post_at = None
+        if isinstance(self.amenities, dict):
+            latest_post_at = self.amenities.get('latest_post_at')
+        if latest_post_at:
+            from datetime import datetime, timezone
+            try:
+                ts = int(latest_post_at)
+                days_ago = (
+                    datetime.now(timezone.utc)
+                    - datetime.fromtimestamp(ts, tz=timezone.utc)
+                ).days
+                if days_ago <= 30:
+                    score += 10
+                elif days_ago <= 90:
+                    score += 5
+                elif days_ago <= 180:
+                    score += 2
+            except (TypeError, ValueError, OSError):
+                pass
+
+        if self.is_verified:
+            score += 5
+
         return min(score, 100)
 
     def save(self, *args, **kwargs):

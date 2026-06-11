@@ -1,0 +1,131 @@
+/* Preview fiel ao MODELO CONTRATO NUVIIE.pdf */
+
+.contract-preview-scroll {
+    background: #525659;
+    padding: 24px 16px 32px;
+}
+
+.contract-page {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto 20px;
+    background: #ffffff;
+    color: #1a1a1a;
+    font-family: Calibri, 'Segoe UI', Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.5;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    position: relative;
+    box-sizing: border-box;
+}
+
+.contract-page:last-child {
+    margin-bottom: 0;
+}
+
+/* Cabeçalho: logo + barra azul */
+.contract-page-header {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    height: 72px;
+    flex-shrink: 0;
+}
+
+.contract-logo-box {
+    width: 72px;
+    height: 72px;
+    background: #00758a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 14px;
+    box-sizing: border-box;
+}
+
+.contract-logo-box img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+}
+
+.contract-header-bar {
+    flex: 1;
+    height: 28px;
+    background: #00758a;
+    align-self: flex-start;
+}
+
+/* Conteúdo */
+.contract-page-body {
+    padding: 28px 56px 56px;
+}
+
+.contract-block {
+    margin: 0 0 10px;
+    color: #1a1a1a;
+}
+
+.contract-doc-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 13pt;
+    letter-spacing: 0.02em;
+    margin: 0 0 20px;
+    text-transform: uppercase;
+}
+
+.contract-intro {
+    margin: 0 0 16px;
+    text-align: left;
+}
+
+.contract-party-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    margin: 16px 0 6px;
+    font-size: 11pt;
+}
+
+.contract-clause {
+    font-weight: 700;
+    text-transform: uppercase;
+    margin: 20px 0 8px;
+    font-size: 11pt;
+}
+
+.contract-body {
+    margin: 0 0 10px;
+    text-align: justify;
+    white-space: pre-line;
+}
+
+.contract-signature {
+    margin: 8px 0;
+    text-align: left;
+}
+
+.contract-var-empty,
+.contract-var-filled {
+    color: #1a1a1a;
+}
+
+.contract-page-number {
+    position: absolute;
+    bottom: 20px;
+    right: 56px;
+    font-size: 9pt;
+    color: #888;
+}
+
+@media (max-width: 1024px) {
+    .contract-page {
+        width: 100%;
+        min-height: auto;
+        font-size: 10pt;
+    }
+    .contract-page-body {
+        padding: 20px 24px 40px;
+    }
+}

@@ -1,6 +1,271 @@
 /* global NuviieMaps */
 window.NuviieMaps = window.NuviieMaps || {};
 
+NuviieMaps._webResultsCtx = null;
+
+NuviieMaps.normalizeSearchToken = (s) => (s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .trim();
+
+NuviieMaps.getWebResultsContext = (placeName) => {
+    const detailRoot = document.querySelector('[role="main"]') || document.body;
+    const nameNorm = NuviieMaps.normalizeSearchToken(placeName);
+    const nameTokens = nameNorm.split(' ').filter((w) => w.length >= 3);
+
+    const frames = new Set();
+    for (const root of [detailRoot, document.body]) {
+        root.querySelectorAll('iframe.rvN3ke, iframe[src*="/search"]').forEach((f) => frames.add(f));
+    }
+
+    for (const frame of frames) {
+        try {
+            let frameQuery = '';
+            try {
+                frameQuery = NuviieMaps.normalizeSearchToken(decodeURIComponent(frame.getAttribute('src') || ''));
+            } catch (e) {
+                frameQuery = NuviieMaps.normalizeSearchToken(frame.getAttribute('src') || '');
+            }
+            // Exige que pelo menos um token forte do nome apareça na query do iframe
+            if (nameTokens.length && !nameTokens.some((t) => frameQuery.includes(t))) continue;
+
+            const fdoc = frame.contentDocument || frame.contentWindow?.document;
+            if (fdoc) {
+                return { frame, fdoc, fwin: frame.contentWindow, nameTokens };
+            }
+        } catch (e) { /* iframe blocked */ }
+    }
+    return null;
+};
+
+NuviieMaps.waitForWebResultsIframe = async (placeName, maxMs = 5000, intervalMs = 200) => {
+    const deadline = Date.now() + maxMs;
+    let ctx = null;
+    while (Date.now() < deadline) {
+        ctx = NuviieMaps.getWebResultsContext(placeName);
+        const hasCards = ctx?.fdoc?.querySelector('#gsr .V2ynS, .RMrS6d, .CIdPsb');
+        const hasBody = ctx?.fdoc?.body?.classList?.contains('trex');
+        const hasWjd = ctx?.fwin?.W_jd && Object.keys(ctx.fwin.W_jd).length > 0;
+        if (ctx && (hasBody || hasCards || hasWjd)) {
+            NuviieMaps._webResultsCtx = ctx;
+            return ctx;
+        }
+        await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    ctx = NuviieMaps.getWebResultsContext(placeName);
+    NuviieMaps._webResultsCtx = ctx;
+    return ctx;
+};
+
+NuviieMaps.collectWjd = (fwin, fdoc) => {
+    const out = {};
+    const fromWin = fwin?.W_jd;
+    if (fromWin && typeof fromWin === 'object') {
+        Object.assign(out, fromWin);
+    }
+    if (fdoc) {
+        const html = fdoc.documentElement?.innerHTML || '';
+        // Pares ["https://...", 0] do script inline W_jd
+        let i = 0;
+        for (const m of html.matchAll(/\["(https:\/\/[^"]+)",\s*\d+\]/g)) {
+            out[`_inline${i++}`] = [m[1], 0];
+        }
+    }
+    return out;
+};
+
+NuviieMaps.detectCardPlatform = (card) => {
+    const faviconAlt = (card.querySelector('img.l5D6lb')?.getAttribute('alt') || '').toLowerCase();
+    const cidText = (card.querySelector('.CIdPsb')?.textContent || '').toLowerCase();
+    const src = `${faviconAlt} ${cidText}`;
+    if (/facebook\.com/.test(src)) return 'facebook';
+    if (/instagram\.com/.test(src)) return 'instagram';
+    if (/linkedin\.com/.test(src)) return 'linkedin';
+    if (/youtube\.com/.test(src)) return 'youtube';
+    if (/twitter\.com|x\.com/.test(src)) return 'twitter';
+    if (/tiktok\.com/.test(src)) return 'tiktok';
+    return 'website';
+};
+
+NuviieMaps.parseSearchResultCard = (R, card, bad) => {
+    const cidPsb = card.querySelector('.CIdPsb');
+    const faviconAlt = card.querySelector('img.l5D6lb')?.getAttribute('alt') || '';
+    const urlText = (cidPsb?.textContent || faviconAlt || '').trim();
+    const platform = NuviieMaps.detectCardPlatform(card);
+    let url = NuviieMaps.breadcrumbToUrl(urlText);
+
+    if (url) NuviieMaps.applySocialUrl(R, url, bad);
+
+    // Facebook/Instagram às vezes só aparecem no breadcrumb truncado — força pelo favicon
+    if (platform === 'facebook' && !R.facebook && urlText) {
+        const slugM = urlText.match(/facebook\.com\s*[›>\s]+\s*(.+)/i);
+        if (slugM) {
+            const slug = slugM[1].replace(/[\s.…]+$/g, '').trim();
+            if (slug && !bad.has(slug.toLowerCase().replace(/^p\//, ''))) {
+                R.facebook = slug.startsWith('p/') || slug.startsWith('profile.php')
+                    ? `https://www.facebook.com/${slug}`
+                    : `https://www.facebook.com/${slug}`;
+            }
+        }
+    }
+    if (platform === 'instagram' && !R.instagram && urlText) {
+        const igM = urlText.match(/instagram\.com\s*[›>\s]+\s*@?([A-Za-z0-9._]+)/i);
+        if (igM && !bad.has(igM[1].toLowerCase())) R.instagram = '@' + igM[1];
+    }
+
+    const snippet = (card.querySelector('.GhV79b')?.textContent || '').trim();
+    if (snippet && !R.address) {
+        const addrM = snippet.match(/(?:Avenida|Av\.?|Rua|Alameda|Travessa|Estrada|Pra[cç]a|Rod\.?)[^;,\n]{8,200}(?:,\s*[^,\n]{2,40}){0,4}/i);
+        if (addrM) R.address = addrM[0].replace(/\s+/g, ' ').trim();
+    }
+    if (snippet && !R.bio && snippet.length > 30 && !/not yet rated|avalia|reviews?\)/i.test(snippet)) {
+        R.bio = snippet.slice(0, 800);
+    }
+};
+
+NuviieMaps.resolveGoogleRedirect = (href) => {
+    let url = (href || '').trim();
+    if (!url) return '';
+    const redirectM = url.match(/[?&]q=([^&]+)/);
+    if (redirectM && /\/url\?/.test(url)) {
+        try { url = decodeURIComponent(redirectM[1]); } catch (e) { /* ignore */ }
+    }
+    return url;
+};
+
+NuviieMaps.breadcrumbToUrl = (text) => {
+    const raw = (text || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw.split(/\s*[›>]\s*/)[0].trim();
+    const m = raw.match(/^(https?:\/\/[^\s›>]+)(?:\s*[›>]\s*(.+))?/i);
+    if (!m) return '';
+    const base = m[1].replace(/\/$/, '');
+    const path = (m[2] || '').trim().replace(/\s.*/,'');
+    if (!path) return base + '/';
+    if (/^www\./i.test(path) || path.includes('.')) return `https://${path}`;
+    if (/instagram\.com/i.test(base)) return `${base}/${path.replace(/^@/, '')}/`;
+    if (/facebook\.com/i.test(base)) return `${base}/${path}/`;
+    if (/linkedin\.com/i.test(base)) {
+        if (/^(in|company)\//i.test(path)) return `${base}/${path}/`;
+        return `${base}/company/${path}/`;
+    }
+    if (/youtube\.com/i.test(base)) return `${base}/${path}/`;
+    return `${base}/${path}/`;
+};
+
+NuviieMaps.applySocialUrl = (R, href, bad) => {
+    let url = NuviieMaps.resolveGoogleRedirect(href);
+    if (!url || url.startsWith('javascript:')) return;
+
+    if (!R.instagram) {
+        const m = url.match(/instagram\.com\/([A-Za-z0-9._]{2,50})/);
+        if (m && !bad.has(m[1].toLowerCase())) R.instagram = '@' + m[1].replace(/\/$/, '');
+    }
+    if (!R.facebook) {
+        const m = url.match(/facebook\.com\/(?:p\/)?([A-Za-z0-9._\-]{2,120})/);
+        if (m && !bad.has(m[1].toLowerCase())) R.facebook = url.replace(/[?#].*/, '');
+    }
+    if (!R.youtube) {
+        const m = url.match(/youtube\.com\/(?:channel\/|c\/|@)([A-Za-z0-9._\-]{2,80})/);
+        if (m && !bad.has(m[1].toLowerCase())) R.youtube = url.replace(/[?#].*/, '');
+    }
+    if (!R.twitter) {
+        const m = url.match(/(?:twitter|x)\.com\/([A-Za-z0-9._]{2,50})/);
+        if (m && !bad.has(m[1].toLowerCase())) R.twitter = url.replace(/[?#].*/, '');
+    }
+    if (!R.linkedin) {
+        const m = url.match(/linkedin\.com\/(in|company)\/([A-Za-z0-9._\-]{2,80})/);
+        if (m && !bad.has(m[2].toLowerCase())) R.linkedin = url.replace(/[?#].*/, '');
+    }
+    if (!R.tiktok) {
+        const m = url.match(/tiktok\.com\/@([A-Za-z0-9._]{2,50})/);
+        if (m && !bad.has(m[1].toLowerCase())) R.tiktok = '@' + m[1];
+    }
+    if (!R.phone) {
+        const m = url.match(/wa\.me\/(\d{10,15})/);
+        if (m) R.phone = m[1];
+    }
+    if (!R.website) {
+        if (url.startsWith('http') &&
+            !url.includes('google') && !url.includes('goo.gl') &&
+            !url.includes('instagram.com') && !url.includes('facebook.com') &&
+            !url.includes('youtube.com') && !url.includes('twitter.com') &&
+            !url.includes('x.com') && !url.includes('linkedin.com') &&
+            !url.includes('wa.me') && !url.includes('whatsapp.com') &&
+            !url.includes('tiktok.com')) {
+            R.website = url.replace(/[?#].*/, '');
+        }
+    }
+};
+
+NuviieMaps.extractFromWebResults = (R, ctx, bad) => {
+    if (!ctx?.fdoc) return { links: [], doc: null };
+    const { fdoc, fwin } = ctx;
+
+    // 1) W_jd — mapa explícito de URLs (prioridade)
+    const wjd = NuviieMaps.collectWjd(fwin, fdoc);
+    for (const val of Object.values(wjd)) {
+        const url = Array.isArray(val) ? val[0] : val;
+        if (url) NuviieMaps.applySocialUrl(R, url, bad);
+    }
+
+    // 2) Cards "Resultados da Web" — SEMPRE parsear (W_jd pode estar incompleto)
+    for (const card of fdoc.querySelectorAll('#gsr .V2ynS, .RMrS6d, div.V2ynS')) {
+        NuviieMaps.parseSearchResultCard(R, card, bad);
+    }
+
+    // 3) Links <a href> dentro do iframe (redirects do Google)
+    const links = [...fdoc.querySelectorAll('a[href]')];
+    for (const a of links) {
+        NuviieMaps.applySocialUrl(R, a.href, bad);
+    }
+
+    // 4) Texto visível do iframe
+    NuviieMaps.applySocialFromText(R, fdoc.body?.innerText || '', bad);
+
+    return { links, doc: fdoc };
+};
+
+NuviieMaps.applySocialFromText = (R, bodyText, bad) => {
+    if (!bodyText) return;
+    if (!R.instagram) {
+        const igM = bodyText.match(/instagram[^\n]{0,50}@([A-Za-z0-9._]{2,50})/i) ||
+                    bodyText.match(/@([A-Za-z0-9._]{2,50})[^\n]{0,30}instagram/i) ||
+                    bodyText.match(/instagram\.com\s*[›\/>\s]+\s*([A-Za-z0-9._]{2,50})/i) ||
+                    bodyText.match(/instagram\.com\/([A-Za-z0-9._]{2,50})/i);
+        if (igM) {
+            const handle = igM[1].replace(/[^A-Za-z0-9._]/g, '');
+            if (handle && !bad.has(handle.toLowerCase())) R.instagram = '@' + handle;
+        }
+    }
+    if (!R.facebook) {
+        const fbM = bodyText.match(/facebook\.com\s*[›\/>\s]+\s*(p\/[A-Za-z0-9._\-]+|Dr-[A-Za-z0-9._\-]+|[A-Za-z0-9._\-]{2,120})/i);
+        if (fbM) {
+            const slug = fbM[1].replace(/[\s.…]+$/g, '').trim();
+            if (slug && !bad.has(slug.toLowerCase().replace(/^p\//, ''))) {
+                R.facebook = `https://www.facebook.com/${slug}`;
+            }
+        }
+    }
+    if (!R.linkedin) {
+        const liM = bodyText.match(/linkedin\.com\s*[›\/>\s]+\s*(in|company)\s*[›\/>\s]+\s*([A-Za-z0-9._\-]{2,80})/i);
+        if (liM && !bad.has(liM[2].toLowerCase())) {
+            R.linkedin = `https://www.linkedin.com/${liM[1].toLowerCase()}/${liM[2].replace(/\s.*$/, '')}`;
+        }
+    }
+    if (!R.youtube) {
+        const ytM = bodyText.match(/youtube\.com\s*[›\/>\s]+\s*(?:channel|c|@)?\s*[›\/>\s]?\s*([A-Za-z0-9._\-@]{2,80})/i);
+        if (ytM && !bad.has(ytM[1].toLowerCase())) {
+            R.youtube = `https://www.youtube.com/${ytM[1].replace(/\s.*$/, '')}`;
+        }
+    }
+    if (!R.tiktok) {
+        const ttM = bodyText.match(/tiktok\.com\s*[›\/>\s]+\s*@?([A-Za-z0-9._]{2,50})/i);
+        if (ttM && !bad.has(ttM[1].toLowerCase())) R.tiktok = '@' + ttM[1].replace(/\s.*$/, '');
+    }
+};
+
 NuviieMaps.extractAll = () => {
     const R = {
         name: null, category: null, phone: null, address: null,
@@ -371,33 +636,14 @@ NuviieMaps.extractAll = () => {
     let webResultsLinks = [];
     let webResultsDoc = null;
     try {
-        const normalize = (s) => (s || '')
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
-            .toLowerCase()
-            .replace(/[^a-z0-9 ]/g, ' ')
-            .trim();
-        const nameNorm = normalize(R.name);
-        // primeira "palavra forte" do nome (>=3 letras), pra comparar com a query do iframe
-        const nameToken = nameNorm.split(' ').find((w) => w.length >= 3) || '';
-
-        for (const frame of detailRoot.querySelectorAll('iframe.rvN3ke, iframe[src^="/search"]')) {
-            try {
-                let frameQuery = '';
-                try { frameQuery = normalize(decodeURIComponent(frame.getAttribute('src') || '')); } catch (e) {
-                    frameQuery = normalize(frame.getAttribute('src') || '');
-                }
-                // Se não conseguimos confirmar que o iframe é do lugar atual, ignoramos
-                // (melhor não ter o dado do que vazar o de outro lugar).
-                if (nameToken && !frameQuery.includes(nameToken)) continue;
-
-                const fdoc = frame.contentDocument || frame.contentWindow?.document;
-                if (fdoc) {
-                    webResultsLinks = webResultsLinks.concat([...fdoc.querySelectorAll('a[href]')]);
-                    webResultsDoc = fdoc;
-                }
-            } catch (e) { /* iframe ainda não carregou ou bloqueado */ }
+        const ctx = NuviieMaps._webResultsCtx || NuviieMaps.getWebResultsContext(R.name);
+        if (ctx) {
+            const wr = NuviieMaps.extractFromWebResults(R, ctx, bad);
+            webResultsLinks = wr.links;
+            webResultsDoc = wr.doc;
         }
     } catch (e) {}
+    NuviieMaps._webResultsCtx = null;
 
     // ── Bio fallback via "Resultados da Web" ──────────────────────────────────
     // Algumas empresas têm uma descrição (texto entre aspas, "De [Nome]: '...'")
@@ -413,106 +659,17 @@ NuviieMaps.extractAll = () => {
         } catch (e) { /* ignore */ }
     }
 
-    // Primeiro: links diretos (painel principal + iframe "Resultados da Web", se confirmado fresco)
+    // Links diretos (painel principal + iframe "Resultados da Web")
     for (const a of [...detailRoot.querySelectorAll('a[href]'), ...webResultsLinks]) {
-        let href = (a.href || '').trim();
-        if (!href || href.startsWith('javascript:')) continue;
-
-        // Links de "Resultados da Web" às vezes vêm como redirect do Google
-        // (/url?q=https%3A%2F%2Fbr.linkedin.com%2Fin%2F...&...). O texto visível
-        // do card pode estar truncado ("https://br.linkedin.com › ..."), mas o
-        // href real do redirect contém a URL completa — resolvemos isso aqui.
-        const redirectM = href.match(/[?&]q=([^&]+)/);
-        if (redirectM && /\/url\?/.test(href)) {
-            try { href = decodeURIComponent(redirectM[1]); } catch (e) { /* ignore */ }
-        }
-
-        // Instagram
-        if (!R.instagram) {
-            const m = href.match(/instagram\.com\/([A-Za-z0-9._]{2,50})/);
-            if (m && !bad.has(m[1].toLowerCase()))
-                R.instagram = '@' + m[1].replace(/\/$/,'');
-        }
-        // Facebook
-        if (!R.facebook) {
-            const m = href.match(/facebook\.com\/([A-Za-z0-9._\-]{2,80})/);
-            if (m && !bad.has(m[1].toLowerCase()))
-                R.facebook = href.replace(/[?#].*/,'');
-        }
-        // YouTube
-        if (!R.youtube) {
-            const m = href.match(/youtube\.com\/(?:channel\/|c\/|@)([A-Za-z0-9._\-]{2,80})/);
-            if (m && !bad.has(m[1].toLowerCase()))
-                R.youtube = href.replace(/[?#].*/,'');
-        }
-        // Twitter/X
-        if (!R.twitter) {
-            const m = href.match(/(?:twitter|x)\.com\/([A-Za-z0-9._]{2,50})/);
-            if (m && !bad.has(m[1].toLowerCase()))
-                R.twitter = href.replace(/[?#].*/,'');
-        }
-        // LinkedIn — qualquer subdomínio (br.linkedin.com, www.linkedin.com, etc),
-        // perfis pessoais (/in/) ou de empresa (/company/)
-        if (!R.linkedin) {
-            const m = href.match(/linkedin\.com\/(in|company)\/([A-Za-z0-9._\-]{2,80})/);
-            if (m && !bad.has(m[2].toLowerCase()))
-                R.linkedin = href.replace(/[?#].*/,'');
-        }
-        // WhatsApp
-        if (!R.phone) {
-            const m = href.match(/wa\.me\/(\d{10,15})/);
-            if (m) R.phone = m[1];
-        }
-        // Website — qualquer link externo que não seja redes sociais ou Google
-        if (!R.website) {
-            if (href.startsWith('http') &&
-                !href.includes('google') && !href.includes('goo.gl') &&
-                !href.includes('instagram.com') && !href.includes('facebook.com') &&
-                !href.includes('youtube.com') && !href.includes('twitter.com') &&
-                !href.includes('x.com') && !href.includes('linkedin.com') &&
-                !href.includes('wa.me') && !href.includes('whatsapp.com') &&
-                !href.includes('tiktok.com')) {
-                R.website = href;
-            }
-        }
+        NuviieMaps.applySocialUrl(R, a.href, bad);
     }
 
-    // Segundo: texto visível (URLs escritas como texto) — captura handles no body
-    // Isso é especialmente útil para iframes e seções "Resultados da Web"
+    // Texto visível — painel principal + iframe
     const bodyText = detailRoot.innerText || '';
-    if (!R.instagram) {
-        // Handle @usuario mencionado próximo a "Instagram"
-        const igM = bodyText.match(/instagram[^\n]{0,50}@([A-Za-z0-9._]{2,50})/i) ||
-                    bodyText.match(/@([A-Za-z0-9._]{2,50})[^\n]{0,30}instagram/i) ||
-                    bodyText.match(/instagram\.com\/([A-Za-z0-9._]{2,50})/i);
-        if (igM) {
-            const handle = igM[1].replace(/[^A-Za-z0-9._]/g, '');
-            if (handle && !bad.has(handle.toLowerCase())) R.instagram = '@' + handle;
-        }
-    }
-
-    // ── Facebook/LinkedIn/YouTube via "Resultados da Web" sem <a href> real ──
-    // O Google às vezes mostra o resultado como breadcrumb em texto puro:
-    // "https://www.facebook.com › tyagobarbieri" (sem link clicável real,
-    // o <a> que envolve não tem href utilizável). Capturamos esse padrão
-    // "dominio.com › slug" do texto visível.
-    if (!R.facebook) {
-        const fbM = bodyText.match(/facebook\.com\s*[›\/]\s*([A-Za-z0-9._\-]{2,80})/i);
-        if (fbM && !bad.has(fbM[1].toLowerCase())) {
-            R.facebook = `https://www.facebook.com/${fbM[1].replace(/\s.*$/, '')}`;
-        }
-    }
-    if (!R.linkedin) {
-        const liM = bodyText.match(/linkedin\.com\s*[›\/]\s*(?:company|in)\s*[›\/]\s*([A-Za-z0-9._\-]{2,80})/i);
-        if (liM && !bad.has(liM[1].toLowerCase())) {
-            R.linkedin = `https://www.linkedin.com/company/${liM[1].replace(/\s.*$/, '')}`;
-        }
-    }
-    if (!R.youtube) {
-        const ytM = bodyText.match(/youtube\.com\s*[›\/]\s*(?:channel|c|@)?\s*[›\/]?\s*([A-Za-z0-9._\-]{2,80})/i);
-        if (ytM && !bad.has(ytM[1].toLowerCase())) {
-            R.youtube = `https://www.youtube.com/${ytM[1].replace(/\s.*$/, '')}`;
-        }
+    const webText = webResultsDoc?.body?.innerText || '';
+    NuviieMaps.applySocialFromText(R, bodyText, bad);
+    if (webText && webText !== bodyText) {
+        NuviieMaps.applySocialFromText(R, webText, bad);
     }
 
     // ── Telefone/Endereço via Io6YTe e data-item-id (Maps 2024+) ───────────

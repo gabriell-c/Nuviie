@@ -32,7 +32,18 @@ NuviieMaps.extractSinglePlace = async (linkInfo, options) => {
   await NuviieMaps.revealContactButtons();
   await NuviieMaps.revealContactButtons();
 
+  await NuviieMaps.scrollToWebResults();
+  await NuviieMaps.waitForWebResultsIframe(name);
+
   let jsData = NuviieMaps.extractAll();
+  if (!jsData.facebook || !jsData.instagram) {
+    await NuviieMaps.sleep(800);
+    await NuviieMaps.waitForWebResultsIframe(name, 3000);
+    const retry = NuviieMaps.extractAll();
+    for (const [k, v] of Object.entries(retry)) {
+      if (v && !jsData[k]) jsData[k] = v;
+    }
+  }
   if (!jsData.phone || !jsData.address) {
     await NuviieMaps.revealContactButtons();
     const retry = NuviieMaps.extractAll();

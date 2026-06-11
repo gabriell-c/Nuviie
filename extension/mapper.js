@@ -6,6 +6,7 @@ const SITE_TYPE_PATTERNS = [
   ['whatsapp', /(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)/i],
   ['facebook', /(?:facebook\.com|fb\.com|fb\.me)\//i],
   ['youtube', /youtube\.com\//i],
+  ['linkedin', /linkedin\.com\//i],
   ['linktree', /(?:linktr\.ee|linkinbio\.|bio\.site|beacons\.ai|linky\.bio|milkshake\.app)/i],
   ['other_social', /(?:tiktok\.com|twitter\.com|x\.com|snapchat\.com|pinterest\.com|threads\.net)/i],
 ];
@@ -63,8 +64,13 @@ NuviieMaps.mapToLead = (raw, { city, niche, mapsUrl, reviews, aboutAmenities, ho
   let instagram = js.instagram || null;
   let facebook = js.facebook || null;
   let youtube = js.youtube || null;
-  let twitter = js.twitter || js.tiktok || null;
+  let twitter = js.twitter || null;
   let linkedin = js.linkedin || null;
+
+  if (!twitter && js.tiktok) {
+    const tt = String(js.tiktok).replace(/^@/, '');
+    twitter = tt.startsWith('http') ? tt : `https://www.tiktok.com/@${tt}`;
+  }
 
   if (rawWebsite && websiteType === 'instagram') {
     const m = rawWebsite.match(/instagram\.com\/([A-Za-z0-9._]{1,50})/i);
@@ -79,6 +85,16 @@ NuviieMaps.mapToLead = (raw, { city, niche, mapsUrl, reviews, aboutAmenities, ho
     website = null;
   } else if (rawWebsite && websiteType === 'youtube') {
     if (!youtube) youtube = rawWebsite;
+    website = null;
+  } else if (rawWebsite && websiteType === 'linkedin') {
+    if (!linkedin) linkedin = rawWebsite;
+    website = null;
+  } else if (rawWebsite && websiteType === 'other_social') {
+    if (/tiktok\.com/i.test(rawWebsite) && !twitter) {
+      twitter = rawWebsite;
+    } else if (/(?:twitter|x)\.com/i.test(rawWebsite) && !twitter) {
+      twitter = rawWebsite;
+    }
     website = null;
   }
 

@@ -1,34 +1,41 @@
 from django.test import TestCase
 
-from contracts.parser import analyze_contract_pdf
+from contracts.nuviie_template import (
+    default_values,
+    render_paragraphs,
+    render_sections,
+    build_filled_data_from_post,
+    flat_field_schema,
+)
 
 
-class ContractParserTests(TestCase):
-    def test_analyze_blank_lines_and_labels(self):
-        """Parser heurístico detecta labels com valor em branco."""
-        import tempfile
-        import os
+class NuviieTemplateTests(TestCase):
+    def test_default_values_has_all_fields(self):
+        defaults = default_values()
+        keys = {f['key'] for f in flat_field_schema()}
+        self.assertTrue(keys.issubset(set(defaults.keys()) | {'contract_name'}))
 
-        try:
-            from reportlab.pdfgen import canvas
-        except ImportError:
-            self.skipTest('reportlab não instalado')
+    def test_render_replaces_placeholders(self):
+        data = default_values()
+        data['nome_cliente'] = 'Empresa Teste LTDA'
+        data['cpf_cnpj'] = '12.345.678/0001-99'
+        paragraphs = render_paragraphs(data)
+        full_text = ' '.join(paragraphs)
+        self.assertIn('Empresa Teste LTDA', full_text)
+        self.assertNotIn('{{nome_cliente}}', full_text)
 
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
-            path = tmp.name
+    def test_render_sections_marks_headings(self):
+        data = default_values()
+        sections = render_sections(data)
+        titles = [s for s in sections if s.get('style') == 'title']
+        self.assertEqual(len(titles), 1)
+        self.assertEqual(titles[0]['text'], 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS')
 
-        c = canvas.Canvas(path)
-        c.drawString(100, 750, 'CONTRATO DE PRESTACAO DE SERVICOS')
-        c.drawString(100, 730, 'Contratante: _________________________')
-        c.drawString(100, 710, 'Valor: R$ ___________')
-        c.drawString(100, 690, '{{ nome_cliente }}')
-        c.save()
-
-        try:
-            result = analyze_contract_pdf(path)
-            keys = result['detected_fields']
-            self.assertIn('nome_cliente', keys)
-            self.assertTrue(len(result['structure']['blocks']) >= 3)
-            self.assertTrue(len(result['field_schema']) >= 1)
-        finally:
-            os.unlink(path)
+    def test_build_filled_data_from_post(self):
+        from django.http import QueryDict
+        post = QueryDict(mutable=True)
+        post['field_nome_cliente'] = 'Cliente ABC'
+        post['field_valor_total'] = '5000'
+        data = build_filled_data_from_post(post)
+        self.assertEqual(data['nome_cliente'], 'Cliente ABC')
+        self.assertEqual(data['valor_total'], '5000')

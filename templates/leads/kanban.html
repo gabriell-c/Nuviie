@@ -187,18 +187,51 @@
              
             <!-- Modal Header -->
             <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
-                <div class="flex items-center space-x-3">
-                    <span class="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 uppercase tracking-wide"
-                          x-text="currentLead.source_display"></span>
-                    <h2 class="text-base font-bold text-slate-800 dark:text-slate-200" x-text="currentLead.name">Lead Details</h2>
+                <div class="flex items-center space-x-3 min-w-0">
+                    <div class="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0 flex items-center justify-center relative"
+                         x-show="currentLead.profile_picture_url || currentLead.instagram">
+                        <img x-show="profilePictureSrc() && !profilePicFailed"
+                             :src="profilePictureSrc()"
+                             referrerpolicy="no-referrer"
+                             alt="Foto do perfil"
+                             class="w-full h-full object-cover absolute inset-0"
+                             @error="profilePicFailed = true">
+                        <span x-show="!profilePictureSrc() || profilePicFailed"
+                              class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500 text-white font-bold text-sm"
+                              x-text="(currentLead.name || '?').charAt(0).toUpperCase()"></span>
+                    </div>
+                    <div class="min-w-0">
+                        <span class="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 uppercase tracking-wide"
+                              x-text="currentLead.source_display"></span>
+                        <h2 class="text-base font-bold text-slate-800 dark:text-slate-200 truncate" x-text="currentLead.name">Lead Details</h2>
+                    </div>
                 </div>
-                <div class="flex items-center space-x-2">
-                    <button x-show="currentLead.maps_link"
+                <div class="flex items-center space-x-2 shrink-0">
+                    <button x-show="currentLead.source === 'instagram' && currentLead.instagram_link"
+                            @click="openExternalUrl(currentLead.instagram_link)"
+                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:opacity-90 text-white rounded-lg text-[10px] font-semibold transition"
+                            title="Abrir perfil no Instagram">
+                        <i class="fa-brands fa-instagram text-xs"></i>
+                        <span>Instagram</span>
+                    </button>
+                    <button x-show="currentLead.source !== 'instagram' && currentLead.maps_link"
                             @click="openExternalUrl(currentLead.maps_link)"
                             class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
                             title="Abrir no Google Maps">
                         <i class="fa-solid fa-map-location-dot text-xs"></i>
-                        <span>Abrir Maps</span>
+                        <span>Maps</span>
+                    </button>
+                    <button @click="downloadLeadExport('md')"
+                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-violet-200 dark:hover:border-violet-800"
+                            title="Baixar perfil em Markdown">
+                        <i class="fa-brands fa-markdown text-xs"></i>
+                        <span>.md</span>
+                    </button>
+                    <button @click="downloadLeadExport('json')"
+                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-amber-200 dark:hover:border-amber-800"
+                            title="Baixar perfil em JSON">
+                        <i class="fa-solid fa-code text-xs"></i>
+                        <span>.json</span>
                     </button>
                     <button @click="editMode = !editMode" class="text-slate-400 hover:text-indigo-500 p-1.5 rounded-lg transition" :title="editMode ? 'Visualizar' : 'Editar dados'">
                         <i class="fa-solid" :class="editMode ? 'fa-eye' : 'fa-pen-to-square'"></i>
@@ -212,61 +245,108 @@
                 </div>
             </div>
 
-            <!-- Modal Content (Scrollable Grid) -->
-            <div class="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6" x-show="currentLead">
+            <!-- Modal Content -->
+            <div class="flex-1 min-h-0 overflow-hidden p-6 grid grid-cols-1 lg:grid-cols-3 gap-6" x-show="currentLead">
+
+                <!-- Hero perfil Instagram -->
+                <template x-if="currentLead.source === 'instagram'">
+                    <div class="lg:col-span-3 shrink-0">
+                        <div class="relative rounded-2xl overflow-hidden border-2 border-transparent bg-gradient-to-r from-purple-500 via-pink-500 to-orange-400 p-[2px]">
+                            <div class="flex items-center gap-5 p-5 rounded-[14px] bg-white dark:bg-slate-900">
+                                <div class="w-28 h-28 rounded-2xl overflow-hidden shrink-0 ring-2 ring-pink-500/30 bg-slate-100 dark:bg-slate-800 flex items-center justify-center relative">
+                                    <img x-show="profilePictureSrc() && !profilePicFailed"
+                                         :src="profilePictureSrc()"
+                                         referrerpolicy="no-referrer"
+                                         alt="Foto do perfil"
+                                         class="w-full h-full object-cover absolute inset-0"
+                                         @error="profilePicFailed = true">
+                                    <span x-show="!profilePictureSrc() || profilePicFailed"
+                                          class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500 text-white font-bold text-3xl"
+                                          x-text="(currentLead.name || '?').charAt(0).toUpperCase()"></span>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-pink-500 mb-1">Perfil Instagram</p>
+                                    <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 truncate" x-text="currentLead.name"></h3>
+                                    <p class="text-sm text-indigo-500 font-semibold" x-text="currentLead.instagram || ''"></p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 truncate" x-text="currentLead.category || ''"></p>
+                                </div>
+                                <button x-show="currentLead.instagram_link"
+                                        @click="openExternalUrl(currentLead.instagram_link)"
+                                        class="shrink-0 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-semibold hover:opacity-90 transition">
+                                    <i class="fa-brands fa-instagram mr-1"></i> Abrir perfil
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
                 
                 <!-- Col Left: Main Fields & Actions -->
-                <div class="lg:col-span-2 space-y-6">
+                <div class="lg:col-span-2 space-y-6 overflow-y-auto pr-1 min-h-0">
                     <!-- Actions Box -->
-                    <div class="glass-panel p-5 rounded-2xl space-y-4">
+                    <div class="glass-panel p-5 rounded-2xl space-y-4 transition-all duration-300">
                         <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Ações Rápidas de Contato</h4>
-                        <div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <!-- WhatsApp -->
                             <a :href="currentLead.whatsapp_link" target="_blank" 
-                               :class="currentLead.normalized_phone ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
-                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
-                                <i class="fa-brands fa-whatsapp text-lg mb-1"></i>
+                               :class="currentLead.normalized_phone ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               :title="currentLead.whatsapp_link || 'Telefone não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-brands fa-whatsapp text-xl mb-1.5"></i>
                                 <span>WhatsApp</span>
                             </a>
                             <!-- Website -->
                             <a :href="currentLead.website" target="_blank" 
-                               :class="currentLead.website ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
-                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
-                                <i class="fa-solid fa-globe text-lg mb-1"></i>
-                                <span>Abrir Website</span>
+                               :class="currentLead.website ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               :title="currentLead.website || 'Website não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-solid fa-globe text-xl mb-1.5"></i>
+                                <span>Website</span>
                             </a>
                             <!-- Instagram -->
-                            <a :href="'https://instagram.com/' + (currentLead.instagram || '').replace('@','')" target="_blank" 
-                               :class="currentLead.instagram ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-pink-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
-                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
-                                <i class="fa-brands fa-instagram text-lg mb-1"></i>
+                            <a :href="socialUrl('instagram', currentLead.instagram)" target="_blank" 
+                               :class="currentLead.instagram ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-pink-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               :title="socialUrl('instagram', currentLead.instagram) || 'Instagram não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-brands fa-instagram text-xl mb-1.5"></i>
                                 <span>Instagram</span>
                             </a>
                             <!-- Facebook -->
                             <a :href="currentLead.facebook" target="_blank" 
-                               :class="currentLead.facebook ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
-                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
-                                <i class="fa-brands fa-facebook text-lg mb-1"></i>
+                               :class="currentLead.facebook ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               :title="currentLead.facebook || 'Facebook não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-brands fa-facebook text-xl mb-1.5"></i>
                                 <span>Facebook</span>
                             </a>
                             <!-- LinkedIn -->
                             <a :href="currentLead.linkedin" target="_blank"
-                               :class="currentLead.linkedin ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
-                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
-                                <i class="fa-brands fa-linkedin text-lg mb-1"></i>
+                               :class="currentLead.linkedin ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               :title="currentLead.linkedin || 'LinkedIn não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-brands fa-linkedin text-xl mb-1.5"></i>
                                 <span>LinkedIn</span>
                             </a>
                             <!-- YouTube -->
                             <a :href="currentLead.youtube" target="_blank"
-                               :class="currentLead.youtube ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
-                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
-                                <i class="fa-brands fa-youtube text-lg mb-1"></i>
+                               :class="currentLead.youtube ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               :title="currentLead.youtube || 'YouTube não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-brands fa-youtube text-xl mb-1.5"></i>
                                 <span>YouTube</span>
                             </a>
-                            <!-- Google Meu Negócio -->
+                            <!-- Twitter/X -->
+                            <a :href="currentLead.twitter" target="_blank"
+                               :class="currentLead.twitter ? 'bg-slate-900 hover:bg-black text-white shadow-slate-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               :title="currentLead.twitter || 'Twitter/X não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-brands fa-x-twitter text-xl mb-1.5"></i>
+                                <span>Twitter / X</span>
+                            </a>
+                            <!-- Google Maps -->
                             <a :href="currentLead.maps_link" target="_blank" 
-                               :class="currentLead.maps_link ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 shadow-slate-200/60' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none border-transparent'"
-                               class="flex flex-col items-center justify-center p-3 rounded-xl border font-semibold text-[10px] text-center shadow-md transition">
+                               :class="currentLead.maps_link ? 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 shadow-slate-200/60 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60 border-transparent'"
+                               :title="currentLead.maps_link || 'Link do Maps não disponível'"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border font-semibold text-[10px] text-center shadow-md transition-all duration-200">
                                 <svg class="w-5 h-5 mb-1" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                                     <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -397,36 +477,69 @@
                     </div>
 
                     <!-- Informações Extras (extraídas do Google Maps) -->
-                    <template x-if="currentLead._price_range || currentLead._plus_code || currentLead._total_photos || (currentLead._amenities && currentLead._amenities.length > 0)">
+                    <template x-if="currentLead.source === 'instagram' && (currentLead.total_photos || (currentLead.amenities && currentLead.amenities.latest_post_at))">
+                        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+                            <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Atividade Instagram</h4>
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                                <template x-if="currentLead.total_photos">
+                                    <div>
+                                        <span class="text-slate-400 block mb-0.5">Publicações</span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.total_photos"></span>
+                                    </div>
+                                </template>
+                                <template x-if="currentLead.amenities && currentLead.amenities.latest_post_at">
+                                    <div>
+                                        <span class="text-slate-400 block mb-0.5">Última postagem</span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="formatInstagramDate(currentLead.amenities.latest_post_at)"></span>
+                                    </div>
+                                </template>
+                                <template x-if="currentLead.amenities && currentLead.amenities.latest_post">
+                                    <div class="sm:col-span-2">
+                                        <span class="text-slate-400 block mb-0.5">Última publicação</span>
+                                        <p class="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2" x-text="currentLead.amenities.latest_post.caption || '(Sem legenda)'"></p>
+                                        <a x-show="currentLead.amenities.latest_post.permalink" :href="currentLead.amenities.latest_post.permalink" target="_blank" class="text-[10px] text-indigo-500 hover:underline">Ver no Instagram</a>
+                                    </div>
+                                </template>
+                                <template x-if="currentLead.amenities && currentLead.amenities.follower_count">
+                                    <div>
+                                        <span class="text-slate-400 block mb-0.5">Seguidores</span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="Number(currentLead.amenities.follower_count).toLocaleString('pt-BR')"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="currentLead.price_range || currentLead.plus_code || (currentLead.total_photos && currentLead.source !== 'instagram') || (currentLead.amenities && currentLead.amenities.length > 0)">
                         <div class="glass-panel p-6 rounded-2xl space-y-4">
                             <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider border-b border-slate-100 dark:border-slate-800/80 pb-3">Informações Extras</h4>
 
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                                <template x-if="currentLead._price_range">
+                                <template x-if="currentLead.price_range">
                                     <div>
                                         <span class="text-slate-400 block mb-1">Faixa de Preço</span>
-                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead._price_range"></span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.price_range"></span>
                                     </div>
                                 </template>
-                                <template x-if="currentLead._plus_code">
+                                <template x-if="currentLead.plus_code">
                                     <div>
                                         <span class="text-slate-400 block mb-1">Plus Code</span>
-                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead._plus_code"></span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.plus_code"></span>
                                     </div>
                                 </template>
-                                <template x-if="currentLead._total_photos">
+                                <template x-if="currentLead.total_photos">
                                     <div>
                                         <span class="text-slate-400 block mb-1">Total de Fotos</span>
-                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead._total_photos"></span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.total_photos"></span>
                                     </div>
                                 </template>
                             </div>
 
-                            <template x-if="currentLead._amenities && currentLead._amenities.length > 0">
+                            <template x-if="currentLead.amenities && currentLead.amenities.length > 0">
                                 <div>
                                     <span class="text-slate-400 block mb-2 text-xs">Comodidades / Características</span>
                                     <div class="flex flex-wrap gap-1.5">
-                                        <template x-for="(item, idx) in currentLead._amenities" :key="idx">
+                                        <template x-for="(item, idx) in currentLead.amenities" :key="idx">
                                             <span class="text-[10px] px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium" x-text="item"></span>
                                         </template>
                                     </div>
@@ -436,107 +549,245 @@
                     </template>
                 </div>
 
-                <!-- Col Right: Reviews, Hours & Notes -->
-                <div class="space-y-6 flex flex-col h-full overflow-hidden">
+                <!-- Col Right: Tabs (Reviews | Hours | Notes) -->
+                <div class="flex flex-col min-h-0 h-full overflow-hidden glass-panel rounded-2xl">
+                    <div class="flex border-b border-slate-200 dark:border-slate-800 shrink-0 px-2 pt-2 gap-1">
+                        <button type="button" @click="detailTab = 'reviews'"
+                                x-show="currentLead.source !== 'instagram'"
+                                :class="detailTab === 'reviews' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'"
+                                class="flex-1 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider rounded-t-xl border-b-2 transition-all duration-200">
+                            <i class="fa-solid fa-star mr-1"></i> Avaliações
+                        </button>
+                        <button type="button" @click="detailTab = 'instagram_media'"
+                                x-show="currentLead.source === 'instagram'"
+                                :class="detailTab === 'instagram_media' ? 'bg-pink-50 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400 border-pink-200 dark:border-pink-800' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'"
+                                class="flex-1 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider rounded-t-xl border-b-2 transition-all duration-200">
+                            <i class="fa-brands fa-instagram mr-1"></i> Posts
+                        </button>
+                        <button type="button" @click="detailTab = 'hours'"
+                                :class="detailTab === 'hours' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'"
+                                class="flex-1 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider rounded-t-xl border-b-2 transition-all duration-200">
+                            <i class="fa-regular fa-clock mr-1"></i> Horários
+                        </button>
+                        <button type="button" @click="detailTab = 'notes'"
+                                :class="detailTab === 'notes' ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 border-transparent'"
+                                class="flex-1 px-3 py-2.5 text-[10px] font-bold uppercase tracking-wider rounded-t-xl border-b-2 transition-all duration-200">
+                            <i class="fa-solid fa-note-sticky mr-1"></i> Notas
+                        </button>
+                    </div>
 
-                    <!-- Avaliações Recentes -->
-                    <template x-if="currentLead.recent_reviews && currentLead.recent_reviews.length > 0">
-                        <div class="glass-panel p-5 rounded-2xl shrink-0">
-                            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
-                                <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Avaliações Recentes</h4>
-                                <div class="flex items-center space-x-1 text-amber-500">
-                                    <i class="fa-solid fa-star text-xs"></i>
-                                    <span class="text-xs font-bold text-slate-700 dark:text-slate-300" x-text="currentLead.rating ? currentLead.rating.toFixed(1) + ' (' + currentLead.review_count + ')' : '-'"></span>
+                    <div x-show="detailTab === 'reviews'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-1" x-transition:enter-end="opacity-100 translate-y-0"
+                         class="flex-1 min-h-0 overflow-y-auto p-5">
+                        <template x-if="currentLead.recent_reviews && currentLead.recent_reviews.length > 0">
+                            <div>
+                                <div class="flex items-center justify-between mb-4">
+                                    <span class="text-xs text-slate-400">Avaliações recentes</span>
+                                    <div class="flex items-center space-x-1 text-amber-500">
+                                        <i class="fa-solid fa-star text-xs"></i>
+                                        <span class="text-xs font-bold text-slate-700 dark:text-slate-300" x-text="currentLead.rating ? currentLead.rating.toFixed(1) + ' (' + currentLead.review_count + ')' : '-'"></span>
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    <template x-for="(rev, idx) in (currentLead.recent_reviews || []).slice(0, 10)" :key="idx">
+                                        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 space-y-1.5 transition-all duration-200 hover:border-indigo-200 dark:hover:border-indigo-800/50">
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-[10px] font-bold text-slate-700 dark:text-slate-300" x-text="rev.author || 'Anônimo'"></span>
+                                                <div class="flex items-center space-x-0.5">
+                                                    <template x-for="s in (rev.rating || 0)" :key="'f'+s+idx">
+                                                        <i class="fa-solid fa-star text-amber-400" style="font-size:8px"></i>
+                                                    </template>
+                                                    <template x-for="s in (5 - (rev.rating || 0))" :key="'e'+s+idx">
+                                                        <i class="fa-regular fa-star text-slate-300 dark:text-slate-700" style="font-size:8px"></i>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed" x-text="rev.text || '(Sem comentário)'"></p>
+                                            <span class="text-[9px] text-slate-400 dark:text-slate-600" x-text="rev.date || ''"></span>
+                                        </div>
+                                    </template>
                                 </div>
                             </div>
-                            <div class="space-y-3 max-h-52 overflow-y-auto pr-1">
-                                <template x-for="(rev, idx) in (currentLead.recent_reviews || []).slice(0, 10)" :key="idx">
-                                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60 space-y-1.5">
-                                        <div class="flex items-center justify-between">
-                                            <span class="text-[10px] font-bold text-slate-700 dark:text-slate-300" x-text="rev.author || 'Anônimo'"></span>
-                                            <div class="flex items-center space-x-0.5">
-                                                <template x-for="s in (rev.rating || 0)" :key="s">
-                                                    <i class="fa-solid fa-star text-amber-400" style="font-size:8px"></i>
-                                                </template>
-                                                <template x-for="s in (5 - (rev.rating || 0))" :key="s">
-                                                    <i class="fa-regular fa-star text-slate-300 dark:text-slate-700" style="font-size:8px"></i>
-                                                </template>
-                                            </div>
+                        </template>
+                        <template x-if="!currentLead.recent_reviews || currentLead.recent_reviews.length === 0">
+                            <div class="text-center py-12 text-slate-400">
+                                <i class="fa-solid fa-star text-2xl mb-2 block opacity-40"></i>
+                                <span class="text-xs">Nenhuma avaliação registrada.</span>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div x-show="detailTab === 'instagram_media'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-1" x-transition:enter-end="opacity-100 translate-y-0"
+                         class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                        <template x-if="hasInstagramMedia()">
+                            <div class="space-y-4">
+                                <template x-if="instagramReels().length">
+                                    <div>
+                                        <h4 class="text-[10px] font-bold uppercase text-pink-500 tracking-wider mb-2">Reels (<span x-text="instagramReels().length"></span>)</h4>
+                                        <div class="space-y-3">
+                                            <template x-for="(item, idx) in instagramReels()" :key="'reel-'+idx">
+                                                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60">
+                                                    <a x-show="item.image_url" :href="item.permalink" target="_blank"
+                                                       class="block w-full mb-3 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                                        <img :src="item.image_url" referrerpolicy="no-referrer"
+                                                             class="w-full max-h-72 object-contain bg-black/5 dark:bg-black/20" alt="Preview do reel">
+                                                    </a>
+                                                    <div class="min-w-0">
+                                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                                            <span class="text-[10px] font-bold text-pink-500 uppercase" x-text="item.type"></span>
+                                                            <span class="text-[9px] text-slate-400" x-text="formatInstagramDate(item.taken_at)"></span>
+                                                        </div>
+                                                        <p class="text-[10px] text-slate-600 dark:text-slate-300 line-clamp-4 mb-1" x-text="item.caption || '(Sem legenda)'"></p>
+                                                            <div class="flex flex-wrap gap-2 text-[9px] text-slate-400">
+                                                                <span x-show="item.like_count != null"><i class="fa-solid fa-heart text-pink-400"></i> <span x-text="item.like_count"></span></span>
+                                                                <span x-show="item.comment_count != null"><i class="fa-solid fa-comment"></i> <span x-text="item.comment_count"></span></span>
+                                                                <span x-show="item.view_count != null"><i class="fa-solid fa-eye"></i> <span x-text="item.view_count"></span></span>
+                                                            </div>
+                                                            <a :href="item.permalink" target="_blank" class="text-[9px] text-indigo-500 hover:underline break-all" x-text="item.permalink"></a>
+                                                            <template x-if="item.video_url">
+                                                                <a :href="item.video_url" target="_blank" class="block text-[9px] text-violet-500 hover:underline truncate mt-0.5">Vídeo: <span x-text="item.video_url"></span></a>
+                                                            </template>
+                                                            <template x-if="item.comments && item.comments.length">
+                                                                <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1">
+                                                                    <span class="text-[9px] font-bold text-slate-500 uppercase">Comentários recentes</span>
+                                                                    <template x-for="(c, ci) in item.comments" :key="'rc-'+ci">
+                                                                        <p class="text-[9px] text-slate-500"><strong x-text="c.author"></strong>: <span x-text="c.text"></span></p>
+                                                                    </template>
+                                                                </div>
+                                                            </template>
+                                                    </div>
+                                                </div>
+                                            </template>
                                         </div>
-                                        <p class="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed" x-text="rev.text || '(Sem comentário)'"></p>
-                                        <span class="text-[9px] text-slate-400 dark:text-slate-600" x-text="rev.date || ''"></span>
+                                    </div>
+                                </template>
+
+                                <template x-if="instagramPosts().length">
+                                    <div>
+                                        <h4 class="text-[10px] font-bold uppercase text-indigo-500 tracking-wider mb-2">Publicações (<span x-text="instagramPosts().length"></span>)</h4>
+                                        <div class="space-y-4">
+                                            <template x-for="(item, idx) in instagramPosts()" :key="'post-'+idx">
+                                                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/60">
+                                                    <a x-show="item.image_url" :href="item.permalink" target="_blank"
+                                                       class="block w-full mb-3 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                                        <img :src="item.image_url" referrerpolicy="no-referrer"
+                                                             class="w-full max-h-80 object-contain bg-black/5 dark:bg-black/20" alt="Preview da publicação">
+                                                    </a>
+                                                    <div class="min-w-0">
+                                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                                            <span class="text-[10px] font-bold text-indigo-500 uppercase" x-text="item.type"></span>
+                                                            <span class="text-[9px] text-slate-400" x-text="formatInstagramDate(item.taken_at)"></span>
+                                                        </div>
+                                                        <p class="text-[10px] text-slate-600 dark:text-slate-300 whitespace-pre-wrap line-clamp-6 mb-2" x-text="item.caption || '(Sem legenda)'"></p>
+                                                            <div class="flex flex-wrap gap-2 text-[9px] text-slate-400 mb-1">
+                                                                <span x-show="item.like_count != null"><i class="fa-solid fa-heart text-pink-400"></i> <span x-text="item.like_count"></span></span>
+                                                                <span x-show="item.comment_count != null"><i class="fa-solid fa-comment"></i> <span x-text="item.comment_count"></span></span>
+                                                            </div>
+                                                            <a :href="item.permalink" target="_blank" class="text-[9px] text-indigo-500 hover:underline break-all block" x-text="item.permalink"></a>
+                                                            <template x-if="item.image_url">
+                                                                <a :href="item.image_url" target="_blank" class="block text-[9px] text-emerald-500 hover:underline truncate mt-0.5">Imagem: <span x-text="item.image_url"></span></a>
+                                                            </template>
+                                                            <template x-if="item.video_url">
+                                                                <a :href="item.video_url" target="_blank" class="block text-[9px] text-violet-500 hover:underline truncate mt-0.5">Vídeo: <span x-text="item.video_url"></span></a>
+                                                            </template>
+                                                            <template x-if="item.carousel && item.carousel.length">
+                                                                <div class="mt-2 flex flex-wrap gap-1">
+                                                                    <template x-for="(slide, si) in item.carousel" :key="'car-'+si">
+                                                                        <a :href="slide.image_url || slide.video_url" target="_blank" class="text-[8px] px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600" x-text="'Slide '+(si+1)"></a>
+                                                                    </template>
+                                                                </div>
+                                                            </template>
+                                                            <template x-if="item.comments && item.comments.length">
+                                                                <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1">
+                                                                    <span class="text-[9px] font-bold text-slate-500 uppercase">Comentários recentes</span>
+                                                                    <template x-for="(c, ci) in item.comments" :key="'pc-'+ci">
+                                                                        <p class="text-[9px] text-slate-500"><strong x-text="c.author"></strong>: <span x-text="c.text"></span></p>
+                                                                    </template>
+                                                                </div>
+                                                            </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
                                     </div>
                                 </template>
                             </div>
-                        </div>
-                    </template>
-
-                    <!-- Horários de Funcionamento -->
-                    <template x-if="currentLead.business_hours && Object.keys(currentLead.business_hours).length > 0">
-                        <div class="glass-panel p-5 rounded-2xl shrink-0">
-                            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
-                                <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Horário de Funcionamento</h4>
-                                <template x-if="currentLead.business_hours.aberto_agora === true">
-                                    <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Aberto agora</span>
-                                </template>
-                                <template x-if="currentLead.business_hours.aberto_agora === false">
-                                    <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 uppercase tracking-wider">Fechado agora</span>
-                                </template>
+                        </template>
+                        <template x-if="!hasInstagramMedia()">
+                            <div class="text-center py-12 text-slate-400">
+                                <i class="fa-brands fa-instagram text-2xl mb-2 block opacity-40"></i>
+                                <span class="text-xs">Nenhuma publicação extraída ainda.</span>
+                                <p class="text-[10px] mt-2 text-slate-500">Reextraia com a extensão v1.2.7+ (logado no Instagram) e clique <strong>Enviar ao Nuviie</strong>.</p>
                             </div>
-                            <template x-if="currentLead.business_hours.status_atual">
-                                <p class="text-[10px] text-slate-500 dark:text-slate-400 mb-3 italic" x-text="currentLead.business_hours.status_atual"></p>
-                            </template>
-                            <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
-                                <template x-for="[dayKey, dayLabel] in [['seg','Segunda'],['ter','Terça'],['qua','Quarta'],['qui','Quinta'],['sex','Sexta'],['sab','Sábado'],['dom','Domingo']]" :key="dayKey">
-                                    <template x-if="currentLead.business_hours[dayKey]">
-                                        <div class="flex items-center justify-between">
-                                            <span class="text-slate-400 dark:text-slate-500 font-semibold" x-text="dayLabel"></span>
-                                            <span :class="currentLead.business_hours[dayKey] === 'Fechado' ? 'text-red-400' : 'text-slate-700 dark:text-slate-300 font-medium'"
-                                                  x-text="currentLead.business_hours[dayKey]"></span>
-                                        </div>
+                        </template>
+                    </div>
+
+                    <div x-show="detailTab === 'hours'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-1" x-transition:enter-end="opacity-100 translate-y-0"
+                         class="flex-1 min-h-0 overflow-y-auto p-5">
+                        <template x-if="currentLead.business_hours && Object.keys(currentLead.business_hours).length > 0">
+                            <div>
+                                <div class="flex items-center justify-between mb-4">
+                                    <span class="text-xs text-slate-400">Horário de funcionamento</span>
+                                    <template x-if="currentLead.business_hours.aberto_agora === true">
+                                        <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Aberto agora</span>
                                     </template>
+                                    <template x-if="currentLead.business_hours.aberto_agora === false">
+                                        <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 uppercase tracking-wider">Fechado agora</span>
+                                    </template>
+                                </div>
+                                <template x-if="currentLead.business_hours.status_atual">
+                                    <p class="text-[10px] text-slate-500 dark:text-slate-400 mb-3 italic" x-text="currentLead.business_hours.status_atual"></p>
                                 </template>
+                                <div class="grid grid-cols-1 gap-y-2 text-[10px]">
+                                    <template x-for="[dayKey, dayLabel] in [['seg','Segunda'],['ter','Terça'],['qua','Quarta'],['qui','Quinta'],['sex','Sexta'],['sab','Sábado'],['dom','Domingo']]" :key="dayKey">
+                                        <template x-if="currentLead.business_hours[dayKey]">
+                                            <div class="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-900/40 transition">
+                                                <span class="text-slate-400 dark:text-slate-500 font-semibold" x-text="dayLabel"></span>
+                                                <span :class="currentLead.business_hours[dayKey] === 'Fechado' ? 'text-red-400' : 'text-slate-700 dark:text-slate-300 font-medium'"
+                                                      x-text="currentLead.business_hours[dayKey]"></span>
+                                            </div>
+                                        </template>
+                                    </template>
+                                </div>
                             </div>
-                        </div>
-                    </template>
+                        </template>
+                        <template x-if="!currentLead.business_hours || Object.keys(currentLead.business_hours).length === 0">
+                            <div class="text-center py-12 text-slate-400">
+                                <i class="fa-regular fa-clock text-2xl mb-2 block opacity-40"></i>
+                                <span class="text-xs">Horários não disponíveis.</span>
+                            </div>
+                        </template>
+                    </div>
 
-                    <!-- Histórico de Notas -->
-                    <div class="glass-panel p-6 rounded-2xl flex flex-col flex-1 overflow-hidden min-h-0">
-                        <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider border-b border-slate-100 dark:border-slate-800 pb-3 mb-4 shrink-0">Histórico de Notas</h4>
-                        
-                        <!-- Add Note Form -->
-                        <form @submit.prevent="submitNote()" class="mb-4 shrink-0 space-y-2">
-                            <textarea x-model="newNoteText" placeholder="Adicionar nova observação ou nota comercial..." rows="2" required
-                                      class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white"></textarea>
-                            <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl flex items-center justify-center space-x-1">
-                                <i class="fa-solid fa-paper-plane text-[9px]"></i>
-                                <span>Salvar Nota</span>
-                            </button>
-                        </form>
-                        
-                        <!-- Notes List (Scrollable) -->
-                        <div class="flex-1 overflow-y-auto space-y-3 pr-1">
+                    <div x-show="detailTab === 'notes'" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+                        <div class="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
                             <template x-for="note in currentLead.notes" :key="note.id">
-                                <div class="p-3 bg-slate-50 dark:bg-slate-850 border border-slate-100 dark:border-slate-800/80 rounded-xl space-y-1">
+                                <div class="p-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800/80 rounded-xl space-y-1 transition-all duration-200 hover:border-indigo-200 dark:hover:border-indigo-800/40">
                                     <div class="flex items-center justify-between text-[9px] font-semibold">
                                         <span class="text-slate-700 dark:text-slate-300" x-text="note.user_name"></span>
                                         <span class="text-slate-400" x-text="note.created_at_formatted"></span>
                                     </div>
-                                    
-                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider uppercase
-                                                 bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                                    <span class="inline-flex px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wider uppercase bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                                           x-text="note.action_type_display"></span>
-                                          
                                     <p class="text-[10px] text-slate-600 dark:text-slate-400 whitespace-pre-wrap leading-relaxed mt-1" x-text="note.note"></p>
                                 </div>
                             </template>
-
                             <template x-if="!currentLead.notes || currentLead.notes.length === 0">
-                                <div class="text-center py-6 text-slate-400">
-                                    <i class="fa-solid fa-note-sticky text-lg mb-1 block"></i>
-                                    <span class="text-[10px]">Nenhuma nota cadastrada.</span>
+                                <div class="text-center py-8 text-slate-400">
+                                    <i class="fa-solid fa-note-sticky text-2xl mb-2 block opacity-40"></i>
+                                    <span class="text-xs">Nenhuma nota cadastrada.</span>
                                 </div>
                             </template>
+                        </div>
+                        <div class="shrink-0 border-t border-slate-200 dark:border-slate-800 p-4 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-sm">
+                            <form @submit.prevent="submitNote()" class="space-y-2">
+                                <textarea x-model="newNoteText" placeholder="Adicionar nova observação ou nota comercial..." rows="2" required
+                                          class="block w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-800 dark:text-white resize-none"></textarea>
+                                <button type="submit" :disabled="noteSaving"
+                                        class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl flex items-center justify-center space-x-2 transition-all duration-200 shadow-lg shadow-indigo-500/20">
+                                    <i class="fa-solid fa-paper-plane text-[10px]" :class="noteSaving && 'animate-pulse'"></i>
+                                    <span x-text="noteSaving ? 'Salvando...' : 'Salvar Nota'"></span>
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
@@ -610,6 +861,9 @@
             createModalOpen: false,
             selectedIds: [],
             editMode: false,
+            detailTab: 'reviews',
+            profilePicFailed: false,
+            noteSaving: false,
             currentLead: {},
             newNoteText: '',
             
@@ -632,6 +886,14 @@
             init() {
                 this.fetchLeads().then(() => {
                     this.initSortable();
+                });
+                window.addEventListener('nuviie-leads-updated', () => {
+                    const openId = this.detailsModalOpen && this.currentLead?.id
+                        ? this.currentLead.id
+                        : null;
+                    this.fetchLeads().then(() => {
+                        if (openId) this.openDetails(openId);
+                    });
                 });
             },
             
@@ -718,11 +980,23 @@
             async openDetails(id) {
                 this.editMode = false;
                 this.newNoteText = '';
+                this.detailTab = 'reviews';
+                this.profilePicFailed = false;
+                this.noteSaving = false;
                 
                 try {
                     const response = await fetch(`/api/leads/${id}/`);
                     if (response.ok) {
                         this.currentLead = await response.json();
+                        if (this.currentLead.source === 'instagram') {
+                            this.detailTab = 'instagram_media';
+                        } else if (this.currentLead.recent_reviews && this.currentLead.recent_reviews.length > 0) {
+                            this.detailTab = 'reviews';
+                        } else if (this.currentLead.business_hours && Object.keys(this.currentLead.business_hours).length > 0) {
+                            this.detailTab = 'hours';
+                        } else {
+                            this.detailTab = 'notes';
+                        }
                         this.detailsModalOpen = true;
                     }
                 } catch (e) {
@@ -730,8 +1004,70 @@
                 }
             },
             
+            socialUrl(field, value) {
+                if (!value) return '';
+                const v = String(value).trim();
+                if (v.startsWith('http://') || v.startsWith('https://')) return v;
+                if (field === 'instagram') {
+                    return 'https://instagram.com/' + v.replace(/^@/, '');
+                }
+                return v;
+            },
+
+            async downloadLeadExport(format) {
+                if (!this.currentLead?.id) return;
+                try {
+                    const response = await fetch(`/api/leads/${this.currentLead.id}/export/?file_type=${format}`, {
+                        headers: {
+                            'X-CSRFToken': this.getCookie('csrftoken'),
+                        },
+                    });
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        await NuviieModal.alert(err.error || 'Erro ao exportar lead.', 'Erro');
+                        return;
+                    }
+                    const blob = await response.blob();
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="([^"]+)"/);
+                    const filename = match ? match[1] : `lead.${format}`;
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                } catch (e) {
+                    await NuviieModal.alert('Erro ao baixar arquivo: ' + e.message, 'Erro');
+                }
+            },
+            
             openExternalUrl(url) {
                 if (url) window.open(url, '_blank');
+            },
+
+            profilePictureSrc() {
+                const lead = this.currentLead;
+                if (!lead) return '';
+                if (lead.profile_picture_display_url) {
+                    return lead.profile_picture_display_url;
+                }
+                const url = lead.profile_picture_url || '';
+                if (url && (url.includes('lead_avatars') || url.includes('/media/'))) {
+                    return url;
+                }
+                if (url && (url.includes('fbcdn.net') || url.includes('cdninstagram.com')) && lead.id) {
+                    return `/api/leads/${lead.id}/avatar/`;
+                }
+                if (url) return url;
+                const amenities = lead.amenities || {};
+                const posts = amenities.recent_posts || amenities.recent_reels || [];
+                if (Array.isArray(posts) && posts[0] && posts[0].image_url) {
+                    return posts[0].image_url;
+                }
+                return '';
             },
 
             toggleSelect(id) {
@@ -824,11 +1160,10 @@
             },
             
             async submitNote() {
-                if (!this.newNoteText.strip) {
-                    this.newNoteText = this.newNoteText.trim();
-                }
-                if (!this.newNoteText) return;
+                this.newNoteText = (this.newNoteText || '').trim();
+                if (!this.newNoteText || this.noteSaving) return;
                 
+                this.noteSaving = true;
                 try {
                     const response = await fetch(`/api/leads/${this.currentLead.id}/add-note/`, {
                         method: 'POST',
@@ -844,9 +1179,15 @@
                         if (!this.currentLead.notes) this.currentLead.notes = [];
                         this.currentLead.notes.unshift(newNote);
                         this.newNoteText = '';
+                        this.detailTab = 'notes';
+                    } else {
+                        const err = await response.json().catch(() => ({}));
+                        await NuviieModal.alert(err.error || err.note || 'Não foi possível salvar a nota.', 'Erro');
                     }
                 } catch (e) {
-                    console.error("Erro ao salvar nota:", e);
+                    await NuviieModal.alert('Erro ao salvar nota: ' + e.message, 'Erro');
+                } finally {
+                    this.noteSaving = false;
                 }
             },
             
@@ -923,6 +1264,29 @@
                 if (!isoStr) return '';
                 const date = new Date(isoStr);
                 return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            },
+
+            formatInstagramDate(unixTs) {
+                if (!unixTs) return '-';
+                const date = new Date(Number(unixTs) * 1000);
+                if (Number.isNaN(date.getTime())) return '-';
+                return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            },
+
+            hasInstagramMedia() {
+                const a = this.currentLead?.amenities;
+                if (!a || typeof a !== 'object') return false;
+                return (a.recent_posts && a.recent_posts.length) || (a.recent_reels && a.recent_reels.length);
+            },
+
+            instagramPosts() {
+                const a = this.currentLead?.amenities;
+                return (a && a.recent_posts) ? a.recent_posts : [];
+            },
+
+            instagramReels() {
+                const a = this.currentLead?.amenities;
+                return (a && a.recent_reels) ? a.recent_reels : [];
             },
             
             getCookie(name) {

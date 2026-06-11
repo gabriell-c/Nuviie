@@ -1,58 +1,79 @@
-"""Geração de contratos em DOCX a partir de structure + valores."""
+"""Geração de DOCX fiel ao MODELO CONTRATO NUVIIE.pdf"""
 
 from __future__ import annotations
 
-import re
-
+from django.conf import settings
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
+from docx.shared import Pt, Mm, RGBColor
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+
+from .nuviie_template import NUVIIE_BLUE, render_sections
+
+LOGO_PATH = settings.BASE_DIR / 'static' / 'imgs' / 'logo_branca.png'
 
 
-def _replace_in_text(text: str, field_key: str, value: str) -> str:
-    val = str(value or '')
-    text = re.sub(r'\{\{\s*' + re.escape(field_key) + r'\s*\}\}', val, text)
-    text = re.sub(r'\[\s*' + re.escape(field_key) + r'\s*\]', val, text)
-    if not val:
-        return text
-    text = re.sub(r'_{3,}', val, text, count=1)
-    text = re.sub(r'\.{5,}', val, text, count=1)
-    return text
+def _set_cell_shading(cell, hex_color: str):
+    shading = OxmlElement('w:shd')
+    shading.set(qn('w:fill'), hex_color.lstrip('#'))
+    cell._tc.get_or_add_tcPr().append(shading)
 
 
-def _render_block_text(block: dict, filled_data: dict) -> str:
-    if block.get('type') != 'variable':
-        return block.get('text', '')
-    text = block.get('text', '')
-    key = block.get('field_key', '')
-    value = filled_data.get(key, '')
-    return _replace_in_text(text, key, value)
+def _add_header_table(doc: Document):
+    """Logo + barra azul no topo (igual ao PDF)."""
+    table = doc.add_table(rows=1, cols=2)
+    table.autofit = False
+    logo_cell = table.rows[0].cells[0]
+    bar_cell = table.rows[0].cells[1]
 
+    logo_cell.width = Mm(20)
+    bar_cell.width = Mm(170)
+    _set_cell_shading(logo_cell, NUVIIE_BLUE.lstrip('#'))
+    _set_cell_shading(bar_cell, NUVIIE_BLUE.lstrip('#'))
 
-def generate_contract_docx(structure: dict, filled_data: dict, output_path: str, contract_title: str):
-    doc = Document()
-    style = doc.styles['Normal']
-    style.font.name = 'Helvetica'
-    style.font.size = Pt(10)
-
-    title = doc.add_heading(contract_title.upper(), level=1)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    blocks = (structure or {}).get('blocks', [])
-    if not blocks:
-        doc.add_paragraph('(Documento vazio — reanalise o modelo PDF.)')
-    else:
-        for block in blocks:
-            rendered = _render_block_text(block, filled_data)
-            if not rendered.strip():
-                continue
-            para = doc.add_paragraph(rendered)
-            if re.match(r'^(CLÁUSULA|SEÇÃO|CAPÍTULO|PARÁGRAFO|\d+\.)', rendered, re.IGNORECASE):
-                for run in para.runs:
-                    run.bold = True
+    if LOGO_PATH.exists():
+        p = logo_cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run()
+        run.add_picture(str(LOGO_PATH), width=Mm(14))
 
     doc.add_paragraph('')
-    doc.add_paragraph('_______________________________________\t\t_______________________________________')
-    doc.add_paragraph('CONTRATANTE\t\tCONTRATADA (Nuviie Agência)')
+
+
+def generate_nuviie_contract_docx(filled_data: dict, output_path: str, contract_title: str):
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+
+    _add_header_table(doc)
+
+    for section in render_sections(filled_data):
+        text = section.get('text', '').strip()
+        if not text:
+            continue
+        st = section.get('style', 'body')
+
+        if st == 'title':
+            para = doc.add_paragraph()
+            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = para.add_run(text)
+            run.bold = True
+            run.font.size = Pt(13)
+        elif st in ('party_label', 'clause'):
+            para = doc.add_paragraph(text)
+            for run in para.runs:
+                run.bold = True
+        else:
+            para = doc.add_paragraph(text)
+            para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY if st == 'body' else WD_ALIGN_PARAGRAPH.LEFT
+
+    doc.add_paragraph('')
+    doc.add_paragraph('_______________________________________')
+    doc.add_paragraph(filled_data.get('assinatura_contratante', 'CONTRATANTE'))
+    doc.add_paragraph('')
+    doc.add_paragraph('_______________________________________')
+    doc.add_paragraph('Gabriel Cardoso - Nuviie')
 
     doc.save(output_path)

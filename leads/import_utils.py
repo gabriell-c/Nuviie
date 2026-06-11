@@ -2,8 +2,80 @@
 
 from __future__ import annotations
 
+from django.db.models import Q
+
 from .models import Lead
+from .profile_picture_utils import apply_profile_picture_from_import
 from .website_utils import detect_website_type
+
+
+def _normalize_instagram_handle(inst: str | None) -> str | None:
+    if not inst:
+        return None
+    handle = str(inst).strip().lstrip('@').lower()
+    return handle or None
+
+
+def _format_phone_br(normalized: str | None) -> str | None:
+    if not normalized:
+        return None
+    digits = ''.join(c for c in str(normalized) if c.isdigit())
+    if digits.startswith('55') and len(digits) > 11:
+        digits = digits[2:]
+    if len(digits) == 11:
+        return f'({digits[:2]}) {digits[2:7]}-{digits[7:]}'
+    if len(digits) == 10:
+        return f'({digits[:2]}) {digits[2:6]}-{digits[6:]}'
+    return normalized
+
+
+def _find_instagram_lead(user, inst_norm: str):
+    return Lead.objects.filter(user=user).filter(
+        Q(instagram__iexact=f'@{inst_norm}') | Q(instagram__iexact=inst_norm)
+    ).first()
+
+
+def _update_instagram_lead(existing: Lead, item: dict) -> None:
+    """Atualiza lead existente com dados mais recentes da extensão Instagram."""
+    amenities = item.get('_amenities') or item.get('amenities')
+    if amenities and isinstance(amenities, dict):
+        if isinstance(existing.amenities, dict):
+            merged = {**existing.amenities, **amenities}
+            for key in ('recent_posts', 'recent_reels', 'latest_post'):
+                new_val = amenities.get(key)
+                old_val = existing.amenities.get(key)
+                if (not new_val or (isinstance(new_val, list) and len(new_val) == 0)) and old_val:
+                    merged[key] = old_val
+            existing.amenities = merged
+        else:
+            existing.amenities = amenities
+    if item.get('bio'):
+        existing.bio = item['bio']
+    apply_profile_picture_from_import(existing, item)
+    if item.get('_total_photos') or item.get('total_photos'):
+        existing.total_photos = item.get('_total_photos') or item.get('total_photos')
+    if item.get('category'):
+        existing.category = item['category']
+    if item.get('city') and not existing.city:
+        existing.city = item['city']
+    if item.get('address'):
+        existing.address = item['address']
+    if item.get('website'):
+        existing.website = item['website']
+    if item.get('website_detected_type'):
+        existing.website_detected_type = item['website_detected_type']
+    for field in ('facebook', 'youtube', 'twitter', 'linkedin'):
+        if item.get(field):
+            setattr(existing, field, item[field])
+    if item.get('phone_number'):
+        existing.phone_number = item['phone_number']
+    if item.get('normalized_phone'):
+        existing.normalized_phone = item['normalized_phone']
+    if not existing.phone_number and existing.normalized_phone:
+        existing.phone_number = _format_phone_br(existing.normalized_phone)
+    if item.get('is_verified') is not None:
+        existing.is_verified = item['is_verified']
+    existing.save()
 
 
 def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
@@ -22,6 +94,14 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
             skipped += 1
             continue
 
+        inst_norm = _normalize_instagram_handle(inst)
+        if inst_norm:
+            existing_ig = _find_instagram_lead(user, inst_norm)
+            if existing_ig and (item.get('source') == 'instagram' or existing_ig.source == 'instagram'):
+                _update_instagram_lead(existing_ig, item)
+                saved += 1
+                continue
+
         if not norm_p and item.get('phone_number'):
             norm_p = _normalize_phone_local(item['phone_number'])
 
@@ -35,11 +115,15 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
             or Lead.objects.filter(user=user, name__iexact=name).exists()
             or (inst and Lead.objects.filter(user=user, instagram__iexact=inst, name__iexact=name).exists())
         )
+        if inst_norm and not dup:
+            existing_ig = _find_instagram_lead(user, inst_norm)
+            if existing_ig:
+                dup = True
         if dup:
             skipped += 1
             continue
 
-        Lead.objects.create(
+        lead = Lead.objects.create(
             user=user,
             name=name,
             category=item.get('category') or '',
@@ -70,6 +154,7 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
             amenities=item.get('_amenities') or item.get('amenities') or None,
             total_photos=item.get('_total_photos') or item.get('total_photos'),
         )
+        apply_profile_picture_from_import(lead, item)
         saved += 1
 
     return saved, skipped

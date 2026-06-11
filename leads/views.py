@@ -19,6 +19,11 @@ from .serializers import LeadSerializer, LeadNoteSerializer
 from audit.services import log_activity
 from .import_utils import save_leads_from_dicts, parse_leads_upload
 from .instagram_scraper import run_instagram_scraper
+from .lead_export import build_lead_profile, lead_to_json, lead_to_markdown, slugify_filename
+from .profile_picture_utils import (
+    fetch_and_cache_profile_picture,
+    read_avatar_bytes,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +340,47 @@ class LeadViewSet(viewsets.ModelViewSet):
         )
         
         return Response(LeadNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='export')
+    def export_lead(self, request, pk=None):
+        lead = self.get_object()
+        fmt = (request.query_params.get('file_type') or request.query_params.get('format') or 'md').lower()
+        profile = build_lead_profile(lead)
+
+        if fmt == 'json':
+            content = lead_to_json(profile)
+            filename = f'{slugify_filename(lead.name)}.json'
+            content_type = 'application/json; charset=utf-8'
+        elif fmt == 'md':
+            content = lead_to_markdown(profile)
+            filename = f'{slugify_filename(lead.name)}.md'
+            content_type = 'text/markdown; charset=utf-8'
+        else:
+            return Response({'error': 'Formato inválido. Use file_type=md ou file_type=json.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        response = HttpResponse(content, content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=['get'], url_path='avatar')
+    def avatar(self, request, pk=None):
+        lead = self.get_object()
+        cached = read_avatar_bytes(lead)
+        if cached:
+            content, content_type = cached
+            return HttpResponse(content, content_type=content_type)
+
+        if lead.profile_picture_url:
+            local_url = fetch_and_cache_profile_picture(lead, lead.profile_picture_url)
+            if local_url:
+                lead.profile_picture_url = local_url
+                lead.save(update_fields=['profile_picture_url'])
+                cached = read_avatar_bytes(lead)
+                if cached:
+                    content, content_type = cached
+                    return HttpResponse(content, content_type=content_type)
+
+        return Response(status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=False, methods=['post'], url_path='bulk-delete')
     def bulk_delete(self, request):

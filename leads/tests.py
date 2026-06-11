@@ -178,6 +178,132 @@ class ImportUtilsTests(TestCase):
         self.assertEqual(saved2, 0)
         self.assertEqual(skipped2, 1)
 
+    def test_save_leads_from_dicts_dedup_instagram_handle(self):
+        from leads.import_utils import save_leads_from_dicts
+
+        Lead.objects.create(
+            user=self.user,
+            name='Dr João Original',
+            instagram='@clinica.teste',
+            source='instagram',
+            status='novo',
+        )
+        payload = [{
+            'name': 'Clínica Teste Odonto',
+            'instagram': '@clinica.teste',
+            'city': 'Ribeirão Preto',
+            'source': 'instagram',
+            'amenities': {'recent_posts': [{'type': 'photo'}]},
+        }]
+        saved, skipped = save_leads_from_dicts(self.user, payload)
+        self.assertEqual(saved, 1)
+        self.assertEqual(skipped, 0)
+        existing = Lead.objects.get(user=self.user, instagram__iexact='@clinica.teste')
+        self.assertEqual(existing.amenities.get('recent_posts'), [{'type': 'photo'}])
+        self.assertEqual(Lead.objects.filter(user=self.user, instagram__iexact='@clinica.teste').count(), 1)
+
+    def test_save_leads_updates_ig_when_same_name_exists(self):
+        from leads.import_utils import save_leads_from_dicts
+
+        Lead.objects.create(
+            user=self.user,
+            name='FCS Advocacia',
+            instagram='@fcsadvocacia',
+            source='instagram',
+            status='novo',
+            amenities={'follower_count': 100},
+        )
+        payload = [{
+            'name': 'FCS Advocacia',
+            'instagram': '@fcsadvocacia',
+            'source': 'instagram',
+            'amenities': {
+                'follower_count': 1340,
+                'recent_posts': [{'shortcode': 'abc123', 'type': 'photo', 'caption': 'Teste'}],
+            },
+        }]
+        saved, skipped = save_leads_from_dicts(self.user, payload)
+        self.assertEqual(saved, 1)
+        self.assertEqual(skipped, 0)
+        lead = Lead.objects.get(user=self.user, instagram__iexact='@fcsadvocacia')
+        self.assertEqual(len(lead.amenities.get('recent_posts', [])), 1)
+        self.assertEqual(lead.amenities.get('follower_count'), 1340)
+
+    def test_save_leads_updates_phone_from_whatsapp_normalized(self):
+        from leads.import_utils import save_leads_from_dicts
+
+        Lead.objects.create(
+            user=self.user,
+            name='Advogado WA',
+            instagram='@advwa',
+            source='instagram',
+            status='novo',
+            website_detected_type='whatsapp',
+            normalized_phone='5516999998888',
+        )
+        payload = [{
+            'name': 'Advogado WA',
+            'instagram': '@advwa',
+            'source': 'instagram',
+            'website_detected_type': 'whatsapp',
+            'normalized_phone': '5516999998888',
+            'phone_number': '(16) 99999-8888',
+        }]
+        saved, skipped = save_leads_from_dicts(self.user, payload)
+        self.assertEqual(saved, 1)
+        lead = Lead.objects.get(user=self.user, instagram__iexact='@advwa')
+        self.assertEqual(lead.phone_number, '(16) 99999-8888')
+        self.assertEqual(lead.normalized_phone, '5516999998888')
+
+    def test_instagram_export_limits_and_strips_media_urls(self):
+        from leads.lead_export import build_lead_profile, lead_to_json
+        import json
+
+        comments = [{'author': '@u1', 'text': f'c{i}'} for i in range(5)]
+        posts = [{
+            'type': 'photo',
+            'shortcode': f'p{i}',
+            'taken_at': 1000 + i,
+            'caption': f'Post {i}',
+            'image_url': f'https://cdn.example.com/{i}.jpg',
+            'video_url': f'https://cdn.example.com/{i}.mp4',
+            'comments': comments,
+        } for i in range(8)]
+        lead = Lead.objects.create(
+            user=self.user,
+            name='Export IG Test',
+            instagram='@exporttest',
+            source='instagram',
+            status='novo',
+            amenities={'recent_posts': posts, 'recent_reels': [], 'follower_count': 100},
+        )
+        profile = build_lead_profile(lead)
+        ig = profile.get('instagram', {})
+        ultimas = ig.get('ultimas_publicacoes', [])
+        self.assertLessEqual(len(ultimas), 5)
+        raw = lead_to_json(profile)
+        ig_block = json.loads(raw)['instagram']
+        for item in ig_block['ultimas_publicacoes']:
+            self.assertNotIn('image_url', item)
+            self.assertNotIn('video_url', item)
+            self.assertLessEqual(len(item.get('comments', [])), 3)
+
+    def test_instagram_quality_with_posts_and_recency(self):
+        from datetime import datetime, timezone
+        recent_ts = int(datetime.now(timezone.utc).timestamp()) - (86400 * 10)
+        lead = Lead.objects.create(
+            user=self.user,
+            name='Clínica Ativa IG',
+            instagram='@clinicaativa',
+            source='instagram',
+            status='novo',
+            total_photos=45,
+            profile_picture_url='https://example.com/pic.jpg',
+            website_detected_type='linktree',
+            amenities={'latest_post_at': recent_ts, 'post_count': 45},
+        )
+        self.assertGreaterEqual(lead.quality_score, 40)
+
     @override_settings(
         NUVIIE_EXTENSION_TOKEN='test-token-123',
         NUVIIE_EXTENSION_USER='importuser@nuviie.com',
@@ -209,6 +335,179 @@ class ImportUtilsTests(TestCase):
             HTTP_X_NUVIIE_TOKEN='wrong',
         )
         self.assertEqual(response.status_code, 401)
+
+
+class LeadExportTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username='exportuser@nuviie.com',
+            email='exportuser@nuviie.com',
+            password='testpassword123',
+        )
+        self.lead = Lead.objects.create(
+            user=self.user,
+            name='Dr Murilo Campos',
+            category='Dentista',
+            city='Ribeirão Preto',
+            phone_number='(16) 99999-8888',
+            normalized_phone='5516999998888',
+            website='https://drmurilocampos.com.br',
+            instagram='@dr.murilocampos',
+            facebook='https://www.facebook.com/p/Dr-Murilo-Campo',
+            address='Avenida Maurilio Biagi 800',
+            rating=5.0,
+            review_count=2,
+            recent_reviews=[{
+                'author': 'Amarilda',
+                'rating': 5,
+                'text': 'muito bom',
+            }],
+            business_hours={'seg': '08:00–18:00', 'aberto_agora': True},
+            source='google_maps',
+            status='novo',
+        )
+
+    def test_lead_to_markdown_contains_sections(self):
+        from leads.lead_export import build_lead_profile, lead_to_markdown
+
+        profile = build_lead_profile(self.lead)
+        md = lead_to_markdown(profile)
+        self.assertIn('# Dr Murilo Campos', md)
+        self.assertIn('Instagram', md)
+        self.assertIn('@dr.murilocampos', md)
+        self.assertIn('Amarilda', md)
+        self.assertIn('5 estrelas', md)
+
+    def test_export_endpoint_md_and_json(self):
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        detail = client.get(f'/api/leads/{self.lead.id}/')
+        self.assertEqual(detail.status_code, 200)
+
+        md_resp = client.get(f'/api/leads/{self.lead.id}/export/?file_type=md')
+        self.assertEqual(md_resp.status_code, 200)
+        self.assertIn('text/markdown', md_resp['Content-Type'])
+        self.assertIn('attachment', md_resp['Content-Disposition'])
+        self.assertIn(b'Dr Murilo Campos', md_resp.content)
+
+        json_resp = client.get(f'/api/leads/{self.lead.id}/export/?file_type=json')
+        self.assertEqual(json_resp.status_code, 200)
+        import json
+        data = json.loads(json_resp.content)
+        self.assertEqual(data['identificacao']['nome'], 'Dr Murilo Campos')
+        self.assertEqual(len(data['avaliacoes']['recentes']), 1)
+
+
+class ProfilePictureTests(TestCase):
+    _PNG_DATA_URL = (
+        'data:image/png;base64,'
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    )
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username='picuser@nuviie.com',
+            email='picuser@nuviie.com',
+            password='testpassword123',
+        )
+        self.client = Client()
+        self.client.login(username='picuser@nuviie.com', password='testpassword123')
+
+    def test_save_leads_profile_picture_from_base64(self):
+        from django.core.files.storage import default_storage
+        from leads.import_utils import save_leads_from_dicts
+
+        payload = [{
+            'name': 'Perfil Com Foto',
+            'instagram': '@fototest',
+            'source': 'instagram',
+            'profile_picture_data': self._PNG_DATA_URL,
+            'profile_picture_url': 'https://instagram.frao6-1.fna.fbcdn.net/v/test.jpg',
+        }]
+        saved, skipped = save_leads_from_dicts(self.user, payload)
+        self.assertEqual(saved, 1)
+        lead = Lead.objects.get(user=self.user, instagram__iexact='@fototest')
+        self.assertIn('lead_avatars', lead.profile_picture_url or '')
+        self.assertTrue(default_storage.exists('lead_avatars/fototest.png'))
+
+    def test_update_instagram_lead_overwrites_profile_picture(self):
+        from leads.import_utils import save_leads_from_dicts
+
+        Lead.objects.create(
+            user=self.user,
+            name='Perfil Com Foto',
+            instagram='@fototest',
+            source='instagram',
+            status='novo',
+            profile_picture_url='https://instagram.frao6-1.fna.fbcdn.net/old.jpg',
+        )
+        payload = [{
+            'name': 'Perfil Com Foto',
+            'instagram': '@fototest',
+            'source': 'instagram',
+            'profile_picture_data': self._PNG_DATA_URL,
+        }]
+        saved, skipped = save_leads_from_dicts(self.user, payload)
+        self.assertEqual(saved, 1)
+        lead = Lead.objects.get(user=self.user, instagram__iexact='@fototest')
+        self.assertIn('lead_avatars', lead.profile_picture_url or '')
+
+    def test_avatar_endpoint_serves_local_file(self):
+        from leads.import_utils import save_leads_from_dicts
+
+        payload = [{
+            'name': 'Avatar Endpoint',
+            'instagram': '@avataruser',
+            'source': 'instagram',
+            'profile_picture_data': self._PNG_DATA_URL,
+        }]
+        save_leads_from_dicts(self.user, payload)
+        lead = Lead.objects.get(user=self.user, instagram__iexact='@avataruser')
+
+        resp = self.client.get(f'/api/leads/{lead.id}/avatar/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('image/', resp['Content-Type'])
+        self.assertGreater(len(resp.content), 50)
+
+    def test_serializer_profile_picture_display_url_local(self):
+        from rest_framework.test import APIClient
+        from leads.import_utils import save_leads_from_dicts
+
+        save_leads_from_dicts(self.user, [{
+            'name': 'Display URL Local',
+            'instagram': '@displaylocal',
+            'source': 'instagram',
+            'profile_picture_data': self._PNG_DATA_URL,
+        }])
+        lead = Lead.objects.get(user=self.user, instagram__iexact='@displaylocal')
+
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        resp = api.get(f'/api/leads/{lead.id}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('lead_avatars', resp.data['profile_picture_display_url'])
+
+    def test_serializer_profile_picture_display_url_cdn_proxy(self):
+        from rest_framework.test import APIClient
+
+        lead = Lead.objects.create(
+            user=self.user,
+            name='Display URL CDN',
+            instagram='@displaycdn',
+            source='instagram',
+            status='novo',
+            profile_picture_url='https://instagram.frao6-1.fna.fbcdn.net/v/test.jpg',
+        )
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        resp = api.get(f'/api/leads/{lead.id}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('/avatar/', resp.data['profile_picture_display_url'])
 
 
 class WebsiteUtilsTests(TestCase):

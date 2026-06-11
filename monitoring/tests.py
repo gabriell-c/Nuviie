@@ -25,6 +25,10 @@ class MonitoringTests(TestCase):
         self.assertIn('cpu', data)
         self.assertIn('memory', data)
         self.assertIn('system', data)
+        self.assertIn('hardware', data)
+        self.assertIn('processes', data)
+        self.assertIn('disk_io', data)
+        self.assertIn('per_core', data['cpu'])
 
     def test_analytics_page(self):
         self.client.login(username='monitoruser@nuviie.com', password='testpassword123')

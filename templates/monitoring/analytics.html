@@ -1,109 +1,309 @@
 {% extends 'base.html' %}
 
+{% block extra_head %}
+<style>
+    .chart-svg { width: 100%; height: 80px; }
+    .chart-grid line { stroke: rgba(148,163,184,.15); stroke-width: 1; }
+    .core-bar { transition: height .4s ease; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="space-y-6" x-data="serverAnalytics()" x-init="startPolling()">
+
+    <!-- Header -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
             <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Analytics do Servidor</h1>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Métricas em tempo real — atualiza a cada 5 segundos</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Hardware, consumo em tempo real e histórico — atualiza a cada 5s</p>
         </div>
-        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+        <div class="flex items-center gap-3 text-[10px] text-slate-400">
             <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span x-text="lastUpdate ? 'Atualizado: ' + lastUpdate : 'Carregando...'"></span>
         </div>
     </div>
 
-    <div x-show="error" class="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-xs text-red-600" x-text="error"></div>
+    <div x-show="error" x-cloak class="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 text-xs text-red-600" x-text="error"></div>
 
     <template x-if="metrics">
         <div class="space-y-6">
-            <!-- CPU + RAM -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <!-- Gráficos históricos -->
+            <div class="glass-panel rounded-2xl p-6">
+                <h3 class="text-xs font-bold uppercase text-slate-400 mb-5 tracking-wider">Histórico (últimos 5 min)</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                    <template x-for="chart in chartConfigs" :key="chart.key">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[10px] font-semibold uppercase text-slate-500" x-text="chart.label"></span>
+                                <span class="text-xs font-bold" :class="chart.colorClass" x-text="chartValue(chart.key)"></span>
+                            </div>
+                            <svg class="chart-svg" :viewBox="'0 0 100 40'" preserveAspectRatio="none">
+                                <line x1="0" y1="10" x2="100" y2="10" stroke="rgba(148,163,184,.1)" stroke-width=".5"/>
+                                <line x1="0" y1="20" x2="100" y2="20" stroke="rgba(148,163,184,.1)" stroke-width=".5"/>
+                                <line x1="0" y1="30" x2="100" y2="30" stroke="rgba(148,163,184,.1)" stroke-width=".5"/>
+                                <polyline fill="none" :stroke="chart.stroke" stroke-width="1.5" stroke-linejoin="round"
+                                          :points="chartPoints(history[chart.key], chart.max)"/>
+                                <polyline :fill="chart.fill" fill-opacity=".15" stroke="none"
+                                          :points="chartArea(history[chart.key], chart.max)"/>
+                            </svg>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- CPU + RAM gauges -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="glass-panel rounded-2xl p-6">
-                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">CPU</h3>
-                    <div class="flex items-end justify-between mb-3">
-                        <span class="text-3xl font-bold text-slate-900 dark:text-white" x-text="metrics.cpu.percent + '%'"></span>
-                        <span class="text-[10px] text-slate-400" x-text="metrics.cpu.count_physical + ' físicos / ' + metrics.cpu.count_logical + ' lógicos'"></span>
+                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Processador</h3>
+                    <div class="flex items-end justify-between mb-2">
+                        <span class="text-4xl font-bold text-indigo-500" x-text="metrics.cpu.percent + '%'"></span>
+                        <span class="text-[10px] text-slate-400 text-right max-w-[50%]" x-text="metrics.cpu.brand"></span>
                     </div>
-                    <div class="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mb-4">
                         <div class="h-full bg-indigo-500 rounded-full transition-all duration-500" :style="'width:' + metrics.cpu.percent + '%'"></div>
                     </div>
-                    <p class="text-[10px] text-slate-400 mt-2" x-show="metrics.cpu.freq_mhz" x-text="'Freq: ' + metrics.cpu.freq_mhz + ' MHz'"></p>
+                    <dl class="grid grid-cols-2 gap-2 text-[11px] mb-4">
+                        <div><dt class="text-slate-400">Núcleos físicos</dt><dd class="font-semibold" x-text="metrics.cpu.count_physical"></dd></div>
+                        <div><dt class="text-slate-400">Threads / lógicos</dt><dd class="font-semibold" x-text="metrics.cpu.threads || metrics.cpu.count_logical"></dd></div>
+                        <div><dt class="text-slate-400">Freq. atual</dt><dd class="font-semibold" x-text="(metrics.cpu.freq_mhz || '—') + (metrics.cpu.freq_mhz ? ' MHz' : '')"></dd></div>
+                        <div><dt class="text-slate-400">Freq. máxima</dt><dd class="font-semibold" x-text="(metrics.cpu.freq_max_mhz || '—') + (metrics.cpu.freq_max_mhz ? ' MHz' : '')"></dd></div>
+                    </dl>
+                    <!-- Uso por núcleo -->
+                    <p class="text-[10px] font-semibold uppercase text-slate-400 mb-2">Uso por núcleo</p>
+                    <div class="flex items-end gap-1 h-16">
+                        <template x-for="(pct, i) in metrics.cpu.per_core" :key="i">
+                            <div class="flex-1 flex flex-col items-center gap-1">
+                                <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-t relative" style="height:48px">
+                                    <div class="core-bar absolute bottom-0 w-full rounded-t bg-indigo-500"
+                                         :style="'height:' + Math.max(pct, 2) + '%'"></div>
+                                </div>
+                                <span class="text-[8px] text-slate-400" x-text="i"></span>
+                            </div>
+                        </template>
+                    </div>
                 </div>
 
                 <div class="glass-panel rounded-2xl p-6">
                     <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Memória RAM</h3>
-                    <div class="flex items-end justify-between mb-3">
-                        <span class="text-3xl font-bold text-slate-900 dark:text-white" x-text="metrics.memory.percent + '%'"></span>
+                    <div class="flex items-end justify-between mb-2">
+                        <span class="text-4xl font-bold text-emerald-500" x-text="metrics.memory.percent + '%'"></span>
                         <span class="text-[10px] text-slate-400" x-text="metrics.memory.used_h + ' / ' + metrics.memory.total_h"></span>
                     </div>
-                    <div class="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-3 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mb-4">
                         <div class="h-full bg-emerald-500 rounded-full transition-all duration-500" :style="'width:' + metrics.memory.percent + '%'"></div>
                     </div>
-                    <p class="text-[10px] text-slate-400 mt-2" x-text="'Swap: ' + metrics.memory.swap_used_h + ' (' + metrics.memory.swap_percent + '%)'"></p>
+                    <dl class="grid grid-cols-2 gap-2 text-[11px] mb-4">
+                        <div><dt class="text-slate-400">Total instalada</dt><dd class="font-semibold" x-text="metrics.memory.total_h"></dd></div>
+                        <div><dt class="text-slate-400">Disponível</dt><dd class="font-semibold" x-text="metrics.memory.available_h"></dd></div>
+                        <div><dt class="text-slate-400">Tipo DDR</dt>
+                            <dd class="font-semibold" x-text="(metrics.memory.summary?.types || []).join(', ') || 'Detectando...'"></dd></div>
+                        <div><dt class="text-slate-400">Velocidade</dt>
+                            <dd class="font-semibold" x-text="ramSpeedLabel()"></dd></div>
+                        <div><dt class="text-slate-400">Swap</dt>
+                            <dd class="font-semibold" x-text="metrics.memory.swap_used_h + ' (' + metrics.memory.swap_percent + '%)'"></dd></div>
+                        <div><dt class="text-slate-400">Slots usados</dt>
+                            <dd class="font-semibold" x-text="metrics.memory.summary?.slots_used || metrics.memory.modules?.length || '—'"></dd></div>
+                    </dl>
+                    <!-- Módulos RAM -->
+                    <template x-if="metrics.memory.modules?.length">
+                        <div class="border-t border-slate-100 dark:border-slate-800 pt-3">
+                            <p class="text-[10px] font-semibold uppercase text-slate-400 mb-2">Pentes de memória</p>
+                            <div class="space-y-1">
+                                <template x-for="(mod, i) in metrics.memory.modules" :key="i">
+                                    <div class="flex justify-between text-[10px] px-2 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-900/40">
+                                        <span x-text="mod.capacity_h + ' — ' + mod.type + (mod.speed_mhz ? ' @ ' + mod.speed_mhz + ' MHz' : '')"></span>
+                                        <span class="text-slate-400" x-text="mod.manufacturer"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </div>
 
-            <!-- Sistema + Processo -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="glass-panel rounded-2xl p-6 md:col-span-2">
-                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Sistema</h3>
-                    <dl class="grid grid-cols-2 gap-3 text-xs">
-                        <div><dt class="text-slate-400">Hostname</dt><dd class="font-semibold text-slate-800 dark:text-slate-200" x-text="metrics.system.hostname"></dd></div>
-                        <div><dt class="text-slate-400">SO</dt><dd class="font-semibold" x-text="metrics.system.os + ' ' + metrics.system.os_release"></dd></div>
-                        <div><dt class="text-slate-400">Uptime</dt><dd class="font-semibold" x-text="metrics.system.uptime_h"></dd></div>
-                        <div><dt class="text-slate-400">Python / Django</dt><dd class="font-semibold" x-text="metrics.system.python_version + ' / ' + metrics.system.django_version"></dd></div>
-                    </dl>
+            <!-- Top processos -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-xs font-bold uppercase text-red-400 mb-4 tracking-wider">Top CPU</h3>
+                    <div class="space-y-2">
+                        <template x-for="p in metrics.processes.by_cpu.slice(0,8)" :key="'cpu-'+p.pid">
+                            <div class="flex items-center gap-2 text-[10px]">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold truncate" x-text="p.name"></div>
+                                    <div class="text-slate-400">PID <span x-text="p.pid"></span></div>
+                                </div>
+                                <div class="w-20 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-red-500 rounded-full" :style="'width:' + Math.min(p.cpu_percent, 100) + '%'"></div>
+                                </div>
+                                <span class="font-bold text-red-500 w-10 text-right" x-text="p.cpu_percent + '%'"></span>
+                            </div>
+                        </template>
+                    </div>
                 </div>
                 <div class="glass-panel rounded-2xl p-6">
-                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Processo Django</h3>
-                    <dl class="space-y-2 text-xs">
-                        <div><span class="text-slate-400">PID </span><span class="font-semibold" x-text="metrics.process.pid"></span></div>
-                        <div><span class="text-slate-400">Threads </span><span class="font-semibold" x-text="metrics.process.threads"></span></div>
-                        <div><span class="text-slate-400">RAM </span><span class="font-semibold" x-text="metrics.process.memory_rss_h"></span></div>
-                        <div><span class="text-slate-400">CPU proc. </span><span class="font-semibold" x-text="metrics.process.cpu_percent + '%'"></span></div>
-                    </dl>
+                    <h3 class="text-xs font-bold uppercase text-emerald-400 mb-4 tracking-wider">Top RAM</h3>
+                    <div class="space-y-2">
+                        <template x-for="p in metrics.processes.by_memory.slice(0,8)" :key="'ram-'+p.pid">
+                            <div class="flex items-center gap-2 text-[10px]">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold truncate" x-text="p.name"></div>
+                                    <div class="text-slate-400">PID <span x-text="p.pid"></span></div>
+                                </div>
+                                <div class="w-20 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-emerald-500 rounded-full"
+                                         :style="'width:' + memBarPercent(p.memory_bytes) + '%'"></div>
+                                </div>
+                                <span class="font-bold text-emerald-500 w-14 text-right" x-text="p.memory_h"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-xs font-bold uppercase text-blue-400 mb-4 tracking-wider">Top Disco (I/O acumulado)</h3>
+                    <div class="space-y-2">
+                        <template x-for="p in metrics.processes.by_disk.slice(0,8)" :key="'disk-'+p.pid">
+                            <div class="flex items-center justify-between text-[10px] gap-2">
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-semibold truncate" x-text="p.name"></div>
+                                    <div class="text-slate-400">PID <span x-text="p.pid"></span></div>
+                                </div>
+                                <div class="text-right shrink-0">
+                                    <div class="text-blue-500">↑ <span x-text="p.write_h"></span></div>
+                                    <div class="text-slate-400">↓ <span x-text="p.read_h"></span></div>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="!metrics.processes.by_disk?.length" class="text-[10px] text-slate-400 text-center py-4">Sem dados de I/O por processo</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Discos -->
+            <!-- Armazenamento -->
             <div class="glass-panel rounded-2xl p-6">
-                <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Discos</h3>
-                <div class="space-y-4">
+                <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Armazenamento</h3>
+                <!-- Velocidades leitura/escrita -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40">
+                        <span class="text-[10px] text-slate-400 block mb-1">Leitura (atual)</span>
+                        <span class="text-lg font-bold text-blue-600 dark:text-blue-400" x-text="metrics.disk_io.totals?.read_h || '—'"></span>
+                    </div>
+                    <div class="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-100 dark:border-purple-900/40">
+                        <span class="text-[10px] text-slate-400 block mb-1">Escrita (atual)</span>
+                        <span class="text-lg font-bold text-purple-600 dark:text-purple-400" x-text="metrics.disk_io.totals?.write_h || '—'"></span>
+                    </div>
+                    <div class="col-span-2 p-4 rounded-xl bg-slate-50 dark:bg-slate-900/40 text-[10px] text-slate-400">
+                        Velocidades calculadas entre polls (5s). Primeira medição pode aparecer como 0.
+                    </div>
+                </div>
+                <!-- Partições -->
+                <div class="space-y-4 mb-6">
                     <template x-for="disk in metrics.disks" :key="disk.mountpoint">
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="font-semibold" x-text="disk.device + ' (' + disk.mountpoint + ')'"></span>
+                                <span class="font-semibold" x-text="disk.device + ' → ' + disk.mountpoint + ' (' + disk.fstype + ')'"></span>
                                 <span class="text-slate-400" x-text="disk.used_h + ' / ' + disk.total_h + ' (' + disk.percent + '%)'"></span>
                             </div>
-                            <div class="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
                                 <div class="h-full rounded-full transition-all duration-500"
-                                     :class="disk.percent > 90 ? 'bg-red-500' : 'bg-blue-500'"
+                                     :class="disk.percent > 90 ? 'bg-red-500' : disk.percent > 75 ? 'bg-amber-500' : 'bg-blue-500'"
                                      :style="'width:' + disk.percent + '%'"></div>
                             </div>
                         </div>
                     </template>
                 </div>
+                <!-- I/O por disco -->
+                <template x-if="metrics.disk_io.per_disk?.length">
+                    <div>
+                        <p class="text-[10px] font-semibold uppercase text-slate-400 mb-2">I/O por disco</p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-[10px]">
+                                <thead><tr class="text-slate-400 uppercase">
+                                    <th class="text-left pb-2">Disco</th>
+                                    <th class="text-right pb-2">Leitura/s</th>
+                                    <th class="text-right pb-2">Escrita/s</th>
+                                    <th class="text-right pb-2">Total lido</th>
+                                    <th class="text-right pb-2">Total escrito</th>
+                                </tr></thead>
+                                <tbody>
+                                    <template x-for="d in metrics.disk_io.per_disk" :key="d.disk">
+                                        <tr class="border-t border-slate-100 dark:border-slate-800">
+                                            <td class="py-2 font-semibold" x-text="d.disk"></td>
+                                            <td class="py-2 text-right text-blue-500" x-text="d.read_h"></td>
+                                            <td class="py-2 text-right text-purple-500" x-text="d.write_h"></td>
+                                            <td class="py-2 text-right text-slate-400" x-text="d.read_total_h"></td>
+                                            <td class="py-2 text-right text-slate-400" x-text="d.write_total_h"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+                <!-- Hardware discos -->
+                <template x-if="metrics.hardware?.storage_devices?.length">
+                    <div class="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+                        <p class="text-[10px] font-semibold uppercase text-slate-400 mb-2">Discos físicos</p>
+                        <template x-for="(dev, i) in metrics.hardware.storage_devices" :key="i">
+                            <div class="text-[10px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/40 mb-1">
+                                <span class="font-semibold" x-text="dev.model"></span>
+                                <span class="text-slate-400"> — </span>
+                                <span x-text="dev.size_h + ' · ' + dev.media_type + ' · ' + dev.interface"></span>
+                            </div>
+                        </template>
+                    </div>
+                </template>
             </div>
 
-            <!-- Rede -->
-            <div class="glass-panel rounded-2xl p-6">
-                <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Rede</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4">
-                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Enviados</span><span class="font-bold" x-text="metrics.network.bytes_sent_h"></span></div>
-                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Recebidos</span><span class="font-bold" x-text="metrics.network.bytes_recv_h"></span></div>
-                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Pacotes ↑</span><span class="font-bold" x-text="metrics.network.packets_sent"></span></div>
-                    <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50"><span class="text-slate-400 block">Pacotes ↓</span><span class="font-bold" x-text="metrics.network.packets_recv"></span></div>
+            <!-- Sistema + Rede -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Sistema</h3>
+                    <dl class="grid grid-cols-2 gap-3 text-xs">
+                        <div><dt class="text-slate-400">Hostname</dt><dd class="font-semibold" x-text="metrics.system.hostname"></dd></div>
+                        <div><dt class="text-slate-400">SO</dt><dd class="font-semibold" x-text="metrics.system.os + ' ' + metrics.system.os_release"></dd></div>
+                        <div><dt class="text-slate-400">Arquitetura</dt><dd class="font-semibold" x-text="metrics.system.machine"></dd></div>
+                        <div><dt class="text-slate-400">Uptime</dt><dd class="font-semibold" x-text="metrics.system.uptime_h"></dd></div>
+                        <div><dt class="text-slate-400">Python</dt><dd class="font-semibold" x-text="metrics.system.python_version"></dd></div>
+                        <div><dt class="text-slate-400">Django</dt><dd class="font-semibold" x-text="metrics.system.django_version"></dd></div>
+                        <div class="col-span-2"><dt class="text-slate-400">Processador</dt><dd class="font-semibold text-[11px]" x-text="metrics.system.processor"></dd></div>
+                    </dl>
+                    <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <p class="text-[10px] font-semibold uppercase text-slate-400 mb-2">Processo Django (este servidor)</p>
+                        <dl class="grid grid-cols-2 gap-2 text-[11px]">
+                            <div><dt class="text-slate-400">PID</dt><dd class="font-semibold" x-text="metrics.process.pid"></dd></div>
+                            <div><dt class="text-slate-400">Threads</dt><dd class="font-semibold" x-text="metrics.process.threads"></dd></div>
+                            <div><dt class="text-slate-400">RAM</dt><dd class="font-semibold" x-text="metrics.process.memory_rss_h"></dd></div>
+                            <div><dt class="text-slate-400">CPU</dt><dd class="font-semibold" x-text="metrics.process.cpu_percent + '%'"></dd></div>
+                        </dl>
+                        <p class="text-[10px] text-slate-400 mt-2" x-text="metrics.processes.total + ' processos no sistema'"></p>
+                    </div>
                 </div>
-                <div class="space-y-2">
-                    <template x-for="iface in metrics.network.interfaces" :key="iface.name">
-                        <div class="flex items-center justify-between text-[10px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/40">
-                            <span class="font-semibold" x-text="iface.name"></span>
-                            <span :class="iface.is_up ? 'text-emerald-500' : 'text-red-400'" x-text="iface.is_up ? 'Ativa' : 'Inativa'"></span>
+
+                <div class="glass-panel rounded-2xl p-6">
+                    <h3 class="text-xs font-bold uppercase text-slate-400 mb-4 tracking-wider">Rede</h3>
+                    <div class="grid grid-cols-2 gap-4 text-xs mb-4">
+                        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                            <span class="text-slate-400 block text-[10px]">Enviados</span>
+                            <span class="font-bold" x-text="metrics.network.bytes_sent_h"></span>
                         </div>
-                    </template>
+                        <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50">
+                            <span class="text-slate-400 block text-[10px]">Recebidos</span>
+                            <span class="font-bold" x-text="metrics.network.bytes_recv_h"></span>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <template x-for="iface in metrics.network.interfaces" :key="iface.name">
+                            <div class="flex items-center justify-between text-[10px] px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/40">
+                                <span class="font-semibold" x-text="iface.name"></span>
+                                <span :class="iface.is_up ? 'text-emerald-500' : 'text-red-400'"
+                                      x-text="(iface.is_up ? 'Ativa' : 'Inativa') + (iface.speed_mbps ? ' · ' + iface.speed_mbps + ' Mbps' : '')"></span>
+                            </div>
+                        </template>
+                    </div>
                 </div>
             </div>
+
         </div>
     </template>
 </div>
@@ -117,18 +317,76 @@ function serverAnalytics() {
         error: '',
         lastUpdate: '',
         _timer: null,
+        maxHistory: 60,
+        history: { cpu: [], ram: [], disk_read: [], disk_write: [] },
+        chartConfigs: [
+            { key: 'cpu', label: 'CPU %', stroke: '#6366f1', fill: '#6366f1', max: 100, colorClass: 'text-indigo-500' },
+            { key: 'ram', label: 'RAM %', stroke: '#10b981', fill: '#10b981', max: 100, colorClass: 'text-emerald-500' },
+            { key: 'disk_read', label: 'Leitura disco', stroke: '#3b82f6', fill: '#3b82f6', max: null, colorClass: 'text-blue-500' },
+            { key: 'disk_write', label: 'Escrita disco', stroke: '#a855f7', fill: '#a855f7', max: null, colorClass: 'text-purple-500' },
+        ],
+
+        chartPoints(arr, maxVal) {
+            if (!arr.length) return '';
+            const max = maxVal || Math.max(...arr, 1);
+            return arr.map((v, i) => {
+                const x = arr.length === 1 ? 50 : (i / (arr.length - 1)) * 100;
+                const y = 38 - (v / max) * 36;
+                return `${x},${y}`;
+            }).join(' ');
+        },
+
+        chartArea(arr, maxVal) {
+            if (!arr.length) return '';
+            const line = this.chartPoints(arr, maxVal);
+            const lastX = arr.length === 1 ? 50 : 100;
+            return `0,40 ${line} ${lastX},40`;
+        },
+
+        chartValue(key) {
+            const arr = this.history[key];
+            if (!arr.length) return '—';
+            const v = arr[arr.length - 1];
+            if (key === 'cpu' || key === 'ram') return v.toFixed(1) + '%';
+            return v >= 1048576 ? (v / 1048576).toFixed(1) + ' MB/s' : (v / 1024).toFixed(1) + ' KB/s';
+        },
+
+        pushHistory() {
+            if (!this.metrics) return;
+            const h = this.history;
+            h.cpu.push(this.metrics.cpu.percent);
+            h.ram.push(this.metrics.memory.percent);
+            h.disk_read.push(this.metrics.disk_io?.totals?.read_bytes_per_sec || 0);
+            h.disk_write.push(this.metrics.disk_io?.totals?.write_bytes_per_sec || 0);
+            for (const k of ['cpu', 'ram', 'disk_read', 'disk_write']) {
+                if (h[k].length > this.maxHistory) h[k].shift();
+            }
+        },
+
+        memBarPercent(bytes) {
+            const max = this.metrics?.processes?.by_memory?.[0]?.memory_bytes || 1;
+            return Math.min((bytes / max) * 100, 100);
+        },
+
+        ramSpeedLabel() {
+            const speeds = this.metrics?.memory?.summary?.speeds_mhz || [];
+            if (!speeds.length) return '—';
+            return speeds.map(s => s + ' MHz').join(', ');
+        },
+
         async fetchMetrics() {
             try {
                 const resp = await fetch('{% url "monitoring_api" %}');
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 this.metrics = await resp.json();
+                this.pushHistory();
                 this.error = '';
-                const d = new Date();
-                this.lastUpdate = d.toLocaleTimeString('pt-BR');
+                this.lastUpdate = new Date().toLocaleTimeString('pt-BR');
             } catch (e) {
                 this.error = 'Erro ao carregar métricas: ' + e.message;
             }
         },
+
         startPolling() {
             this.fetchMetrics();
             this._timer = setInterval(() => this.fetchMetrics(), 5000);
