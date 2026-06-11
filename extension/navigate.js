@@ -1,7 +1,7 @@
 /* global NuviieMaps */
 window.NuviieMaps = window.NuviieMaps || {};
 
-NuviieMaps.scrollPanel = async () => {
+NuviieMaps.scrollPanel = async ({ light = false } = {}) => {
   const scrollScript = (scrollTop) => {
     const containers = [
       document.querySelector('div[role="main"]'),
@@ -17,12 +17,34 @@ NuviieMaps.scrollPanel = async () => {
     else window.scrollTo(0, scrollTop);
   };
 
+  if (light) {
+    // Scroll leve para abas Sobre e Avaliações — conteúdo mais curto,
+    // não precisa de lazy-load de "Resultados da Web"
+    const lightSteps = [300, 800, 1800, 99999];
+    for (const stepPx of lightSteps) {
+      scrollScript(stepPx);
+      await NuviieMaps.sleep(500);
+    }
+    scrollScript(0);
+    await NuviieMaps.sleep(300);
+    return;
+  }
+
+  // Scroll completo para a aba principal (overview) — carrega lazy-load de redes sociais
   const steps = [200, 500, 900, 1400, 2000, 2800, 3800, 5000, 6500, 8500, 12000, 99999];
   for (const stepPx of steps) {
     scrollScript(stepPx);
     await NuviieMaps.sleep(800);
   }
-  await NuviieMaps.sleep(1500);
+
+  // A seção "Resultados da Web" (com links de Instagram/LinkedIn/Facebook
+  // encontrados via busca) é carregada via JS de forma mais lenta que o
+  // resto do painel. Damos um "ressalto" (sobe um pouco e desce de novo)
+  // para forçar o disparo do lazy-load, e esperamos mais tempo no fundo.
+  scrollScript(99999 - 600);
+  await NuviieMaps.sleep(400);
+  scrollScript(99999);
+  await NuviieMaps.sleep(1500); // era 3000ms — 1500ms já é suficiente
 
   const containers = [
     document.querySelector('div[role="main"]'),
@@ -84,7 +106,7 @@ NuviieMaps.goToOverview = () => NuviieMaps.clickTab(['Visão geral', 'Visao gera
 NuviieMaps.visitAboutTab = async () => {
   const ok = await NuviieMaps.clickTab(['Sobre']);
   if (!ok) return [];
-  await NuviieMaps.scrollPanel();
+  await NuviieMaps.scrollPanel({ light: true });
   const amenities = NuviieMaps.extractAboutAmenities();
   await NuviieMaps.goToOverview();
   await NuviieMaps.waitForStableH1();
@@ -96,7 +118,7 @@ NuviieMaps.visitReviewsTab = async () => {
   if (!ok) {
     return NuviieMaps.extractReviews();
   }
-  await NuviieMaps.scrollPanel();
+  await NuviieMaps.scrollPanel({ light: true });
   document.querySelectorAll(
     'button[aria-label*="Ver mais"], button.w8nwRe, button[jsaction*="reviewfulltext"]'
   ).forEach((btn) => {
@@ -132,9 +154,11 @@ NuviieMaps.revealContactButtons = async () => {
 
 NuviieMaps.waitForStableH1 = async (maxAttempts = 25) => {
   for (let i = 0; i < maxAttempts; i++) {
-    const h1 = document.querySelector('h1');
+    const h1 = document.querySelector('[role="main"] h1.DUwDvf')
+            || document.querySelector('[role="main"] h1')
+            || document.querySelector('h1');
     const text = h1 ? h1.textContent.trim() : '';
-    if (NuviieMaps.isValidPlaceName(text)) return text;
+    if (NuviieMaps.isValidPlaceName(text) && text.toLowerCase() !== 'resultados') return text;
     await NuviieMaps.sleep(300);
   }
   return NuviieMaps.nameFromUrl(window.location.href) || '';

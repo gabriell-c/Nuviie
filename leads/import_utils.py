@@ -33,7 +33,7 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
         dup = (
             (norm_p and Lead.objects.filter(user=user, normalized_phone=norm_p).exists())
             or Lead.objects.filter(user=user, name__iexact=name).exists()
-            or (inst and Lead.objects.filter(user=user, instagram__iexact=inst).exists())
+            or (inst and Lead.objects.filter(user=user, instagram__iexact=inst, name__iexact=name).exists())
         )
         if dup:
             skipped += 1

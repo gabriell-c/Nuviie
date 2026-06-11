@@ -105,7 +105,7 @@ NuviieMaps.runExtraction = async (options) => {
 
     NuviieMaps.state.progress.current = i + 1;
     NuviieMaps.sendProgress();
-    await NuviieMaps.randomDelay(options.delayMin || 1500, options.delayMax || 3000);
+    await NuviieMaps.randomDelay(options.delayMin || 800, options.delayMax || 1500);
   }
 
   NuviieMaps.state.running = false;

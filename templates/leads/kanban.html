@@ -145,8 +145,12 @@
                             <!-- Footer properties -->
                             <div class="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 mt-3 pt-2 text-[10px]">
                                 <div class="flex items-center space-x-2 text-slate-400">
-                                    <i class="fa-brands fa-whatsapp text-emerald-500 text-xs" x-show="lead.normalized_phone"></i>
-                                    <i class="fa-solid fa-globe text-indigo-400" x-show="lead.website"></i>
+                                    <i class="fa-brands fa-whatsapp text-emerald-500 text-xs" x-show="lead.normalized_phone" title="WhatsApp"></i>
+                                    <i class="fa-solid fa-globe text-indigo-400" x-show="lead.website" title="Website"></i>
+                                    <i class="fa-brands fa-instagram text-pink-400" x-show="lead.instagram" title="Instagram"></i>
+                                    <i class="fa-brands fa-facebook text-blue-500" x-show="lead.facebook" title="Facebook"></i>
+                                    <i class="fa-brands fa-linkedin text-sky-500" x-show="lead.linkedin" title="LinkedIn"></i>
+                                    <i class="fa-brands fa-youtube text-red-500" x-show="lead.youtube" title="YouTube"></i>
                                 </div>
                                 
                                 <span class="text-[9px] font-medium text-slate-400 dark:text-slate-500" x-text="formatDate(lead.created_at)"></span>
@@ -216,7 +220,7 @@
                     <!-- Actions Box -->
                     <div class="glass-panel p-5 rounded-2xl space-y-4">
                         <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Ações Rápidas de Contato</h4>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
                             <!-- WhatsApp -->
                             <a :href="currentLead.whatsapp_link" target="_blank" 
                                :class="currentLead.normalized_phone ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
@@ -244,6 +248,20 @@
                                class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
                                 <i class="fa-brands fa-facebook text-lg mb-1"></i>
                                 <span>Facebook</span>
+                            </a>
+                            <!-- LinkedIn -->
+                            <a :href="currentLead.linkedin" target="_blank"
+                               :class="currentLead.linkedin ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
+                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
+                                <i class="fa-brands fa-linkedin text-lg mb-1"></i>
+                                <span>LinkedIn</span>
+                            </a>
+                            <!-- YouTube -->
+                            <a :href="currentLead.youtube" target="_blank"
+                               :class="currentLead.youtube ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-500/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none'"
+                               class="flex flex-col items-center justify-center p-3 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition">
+                                <i class="fa-brands fa-youtube text-lg mb-1"></i>
+                                <span>YouTube</span>
                             </a>
                             <!-- Google Meu Negócio -->
                             <a :href="currentLead.maps_link" target="_blank" 
@@ -340,6 +358,26 @@
                                     <input type="text" x-model="currentLead.instagram"
                                            class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
                                 </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Facebook URL</label>
+                                    <input type="url" x-model="currentLead.facebook"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">LinkedIn URL</label>
+                                    <input type="url" x-model="currentLead.linkedin"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">YouTube URL</label>
+                                    <input type="url" x-model="currentLead.youtube"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-400 mb-1">Twitter / X URL</label>
+                                    <input type="url" x-model="currentLead.twitter"
+                                           class="block w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-white">
+                                </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-slate-400 mb-1">Endereço Completo</label>
                                     <input type="text" x-model="currentLead.address"
@@ -357,6 +395,45 @@
                             </div>
                         </form>
                     </div>
+
+                    <!-- Informações Extras (extraídas do Google Maps) -->
+                    <template x-if="currentLead._price_range || currentLead._plus_code || currentLead._total_photos || (currentLead._amenities && currentLead._amenities.length > 0)">
+                        <div class="glass-panel p-6 rounded-2xl space-y-4">
+                            <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider border-b border-slate-100 dark:border-slate-800/80 pb-3">Informações Extras</h4>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                                <template x-if="currentLead._price_range">
+                                    <div>
+                                        <span class="text-slate-400 block mb-1">Faixa de Preço</span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead._price_range"></span>
+                                    </div>
+                                </template>
+                                <template x-if="currentLead._plus_code">
+                                    <div>
+                                        <span class="text-slate-400 block mb-1">Plus Code</span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead._plus_code"></span>
+                                    </div>
+                                </template>
+                                <template x-if="currentLead._total_photos">
+                                    <div>
+                                        <span class="text-slate-400 block mb-1">Total de Fotos</span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead._total_photos"></span>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <template x-if="currentLead._amenities && currentLead._amenities.length > 0">
+                                <div>
+                                    <span class="text-slate-400 block mb-2 text-xs">Comodidades / Características</span>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <template x-for="(item, idx) in currentLead._amenities" :key="idx">
+                                            <span class="text-[10px] px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium" x-text="item"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
                 </div>
 
                 <!-- Col Right: Reviews, Hours & Notes -->

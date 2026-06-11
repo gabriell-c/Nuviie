@@ -1,4 +1,5 @@
 import random
+import re
 import logging
 import base64
 import json
@@ -435,6 +436,7 @@ def profile_view(request):
     if request.method == 'POST':
         first_name      = request.POST.get('first_name', '').strip()
         last_name       = request.POST.get('last_name', '').strip()
+        username        = request.POST.get('username', '').strip()
         phone_number    = request.POST.get('phone_number', '').strip()
         profile_picture = request.FILES.get('profile_picture')
         enable_face     = request.POST.get('enable_face')
@@ -443,10 +445,19 @@ def profile_view(request):
             if CustomUser.objects.filter(phone_number=cleaned_phone).exists():
                 messages.error(request, "Este número de WhatsApp já está em uso.")
                 return render(request, 'auth/profile.html')
+        if username and username != request.user.username:
+            if not re.match(r'^[\w.@+-]+$', username):
+                messages.error(request, "Nome de usuário inválido. Use apenas letras, números e os caracteres . @ + - _")
+                return render(request, 'auth/profile.html')
+            if CustomUser.objects.filter(username__iexact=username).exclude(pk=request.user.pk).exists():
+                messages.error(request, "Este nome de usuário já está em uso.")
+                return render(request, 'auth/profile.html')
         try:
             user = request.user
             user.first_name = first_name
             user.last_name  = last_name
+            if username:
+                user.username = username
             if cleaned_phone:
                 user.phone_number = cleaned_phone
             if profile_picture:

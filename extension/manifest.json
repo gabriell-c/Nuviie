@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nuviie Maps Extractor",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "Extrai leads completos do Google Maps para o Nuviie CRM local",
   "permissions": ["storage", "downloads", "activeTab"],
   "host_permissions": [
@@ -10,9 +10,20 @@
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*"
   ],
+  
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Nuviie Maps Extractor"
+    "default_title": "Nuviie Maps Extractor",
+    "default_icon": {
+      "16": "logo_fundo_azul.png",
+      "48": "logo_fundo_azul.png",
+      "128": "logo_fundo_azul.png"
+    }
+  },
+  "icons": {
+    "16": "logo_fundo_azul.png",
+    "48": "logo_fundo_azul.png",
+    "128": "logo_fundo_azul.png"
   },
   "background": {
     "service_worker": "background.js"

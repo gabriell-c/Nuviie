@@ -161,8 +161,22 @@ NuviieMaps.extractAll = () => {
                          'support','notifications','explore','highlights']);
 
     // ── Nome ──────────────────────────────────────────────────────────────────
-    const h1 = document.querySelector('h1');
-    if (h1) R.name = h1.textContent.trim();
+    // ATENÇÃO: document.querySelector('h1') pega o PRIMEIRO h1 da página, que
+    // pode ser o cabeçalho "Resultados" da lista de busca (lateral esquerda),
+    // e não o nome do estabelecimento (que fica no painel de detalhes).
+    // Por isso priorizamos h1 dentro do painel de detalhes (role="main") e,
+    // se ainda assim vier "Resultados"/"Results", tratamos como inválido.
+    const nameBad = new Set(['resultados', 'results', 'resultado']);
+    let h1 = document.querySelector('[role="main"] h1.DUwDvf')
+          || document.querySelector('[role="main"] h1')
+          || document.querySelector('h1.DUwDvf')
+          || document.querySelector('h1');
+    if (h1) {
+        const candidate = h1.textContent.trim();
+        if (candidate && !nameBad.has(candidate.toLowerCase())) {
+            R.name = candidate;
+        }
+    }
 
     // ── og:image e foto principal da ficha ───────────────────────────────────
     const og = document.querySelector('meta[property="og:image"]');
@@ -339,10 +353,79 @@ NuviieMaps.extractAll = () => {
     }
 
     // ── Website e redes sociais — todos os <a href> + texto da página ────────
-    // Primeiro: links diretos
-    for (const a of document.querySelectorAll('a[href]')) {
-        const href = (a.href || '').trim();
+    // ATENÇÃO: usamos document.querySelectorAll aqui pegaria também links da
+    // LISTA de resultados (lateral esquerda) e de anúncios/cards "Patrocinado",
+    // que ficam no DOM mesmo enquanto navegamos entre lugares. Isso fazia o
+    // mesmo Instagram (de um anúncio fixo) "vazar" para todos os leads.
+    // Por isso restringimos a busca ao painel de detalhes do lugar.
+    const detailRoot = document.querySelector('[role="main"]') || document.body;
+
+    // ── "Resultados da Web" — links extras (Instagram, LinkedIn, Facebook etc.)
+    // ficam dentro de um <iframe src="/search?q=..."> que é MESMA ORIGEM
+    // (google.com), então conseguimos acessar contentDocument sem CORS.
+    // ATENÇÃO: esse iframe é uma SPA e às vezes NÃO é recriado/recarregado a
+    // tempo quando navegamos pra outro lugar — seu conteúdo pode ainda ser o
+    // do lugar ANTERIOR e "vazar" pros leads seguintes (ex: mesmo Instagram
+    // repetido em vários leads diferentes). Para evitar isso, só confiamos no
+    // iframe se o `src` dele (parâmetro q=) bater com o nome do lugar atual.
+    let webResultsLinks = [];
+    let webResultsDoc = null;
+    try {
+        const normalize = (s) => (s || '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+            .toLowerCase()
+            .replace(/[^a-z0-9 ]/g, ' ')
+            .trim();
+        const nameNorm = normalize(R.name);
+        // primeira "palavra forte" do nome (>=3 letras), pra comparar com a query do iframe
+        const nameToken = nameNorm.split(' ').find((w) => w.length >= 3) || '';
+
+        for (const frame of detailRoot.querySelectorAll('iframe.rvN3ke, iframe[src^="/search"]')) {
+            try {
+                let frameQuery = '';
+                try { frameQuery = normalize(decodeURIComponent(frame.getAttribute('src') || '')); } catch (e) {
+                    frameQuery = normalize(frame.getAttribute('src') || '');
+                }
+                // Se não conseguimos confirmar que o iframe é do lugar atual, ignoramos
+                // (melhor não ter o dado do que vazar o de outro lugar).
+                if (nameToken && !frameQuery.includes(nameToken)) continue;
+
+                const fdoc = frame.contentDocument || frame.contentWindow?.document;
+                if (fdoc) {
+                    webResultsLinks = webResultsLinks.concat([...fdoc.querySelectorAll('a[href]')]);
+                    webResultsDoc = fdoc;
+                }
+            } catch (e) { /* iframe ainda não carregou ou bloqueado */ }
+        }
+    } catch (e) {}
+
+    // ── Bio fallback via "Resultados da Web" ──────────────────────────────────
+    // Algumas empresas têm uma descrição (texto entre aspas, "De [Nome]: '...'")
+    // que só aparece nos resultados de busca normais do Google, não na aba
+    // "Sobre" do painel do Maps. Como o iframe.rvN3ke é a mesma página de busca
+    // (mesma origem), conseguimos ler esse texto dali.
+    if (!R.bio && webResultsDoc) {
+        try {
+            const wrText = webResultsDoc.body.innerText || '';
+            const bioM = wrText.match(/De\s+[^\n:]{2,120}[:\n]\s*"([^"\n]{15,800})"/i)
+                      || wrText.match(/"([^"\n]{30,800})"/);
+            if (bioM) R.bio = bioM[1].trim();
+        } catch (e) { /* ignore */ }
+    }
+
+    // Primeiro: links diretos (painel principal + iframe "Resultados da Web", se confirmado fresco)
+    for (const a of [...detailRoot.querySelectorAll('a[href]'), ...webResultsLinks]) {
+        let href = (a.href || '').trim();
         if (!href || href.startsWith('javascript:')) continue;
+
+        // Links de "Resultados da Web" às vezes vêm como redirect do Google
+        // (/url?q=https%3A%2F%2Fbr.linkedin.com%2Fin%2F...&...). O texto visível
+        // do card pode estar truncado ("https://br.linkedin.com › ..."), mas o
+        // href real do redirect contém a URL completa — resolvemos isso aqui.
+        const redirectM = href.match(/[?&]q=([^&]+)/);
+        if (redirectM && /\/url\?/.test(href)) {
+            try { href = decodeURIComponent(redirectM[1]); } catch (e) { /* ignore */ }
+        }
 
         // Instagram
         if (!R.instagram) {
@@ -368,10 +451,11 @@ NuviieMaps.extractAll = () => {
             if (m && !bad.has(m[1].toLowerCase()))
                 R.twitter = href.replace(/[?#].*/,'');
         }
-        // LinkedIn
+        // LinkedIn — qualquer subdomínio (br.linkedin.com, www.linkedin.com, etc),
+        // perfis pessoais (/in/) ou de empresa (/company/)
         if (!R.linkedin) {
-            const m = href.match(/linkedin\.com\/(?:company|in)\/([A-Za-z0-9._\-]{2,80})/);
-            if (m && !bad.has(m[1].toLowerCase()))
+            const m = href.match(/linkedin\.com\/(in|company)\/([A-Za-z0-9._\-]{2,80})/);
+            if (m && !bad.has(m[2].toLowerCase()))
                 R.linkedin = href.replace(/[?#].*/,'');
         }
         // WhatsApp
@@ -395,7 +479,7 @@ NuviieMaps.extractAll = () => {
 
     // Segundo: texto visível (URLs escritas como texto) — captura handles no body
     // Isso é especialmente útil para iframes e seções "Resultados da Web"
-    const bodyText = document.body ? document.body.innerText : '';
+    const bodyText = detailRoot.innerText || '';
     if (!R.instagram) {
         // Handle @usuario mencionado próximo a "Instagram"
         const igM = bodyText.match(/instagram[^\n]{0,50}@([A-Za-z0-9._]{2,50})/i) ||
@@ -404,6 +488,30 @@ NuviieMaps.extractAll = () => {
         if (igM) {
             const handle = igM[1].replace(/[^A-Za-z0-9._]/g, '');
             if (handle && !bad.has(handle.toLowerCase())) R.instagram = '@' + handle;
+        }
+    }
+
+    // ── Facebook/LinkedIn/YouTube via "Resultados da Web" sem <a href> real ──
+    // O Google às vezes mostra o resultado como breadcrumb em texto puro:
+    // "https://www.facebook.com › tyagobarbieri" (sem link clicável real,
+    // o <a> que envolve não tem href utilizável). Capturamos esse padrão
+    // "dominio.com › slug" do texto visível.
+    if (!R.facebook) {
+        const fbM = bodyText.match(/facebook\.com\s*[›\/]\s*([A-Za-z0-9._\-]{2,80})/i);
+        if (fbM && !bad.has(fbM[1].toLowerCase())) {
+            R.facebook = `https://www.facebook.com/${fbM[1].replace(/\s.*$/, '')}`;
+        }
+    }
+    if (!R.linkedin) {
+        const liM = bodyText.match(/linkedin\.com\s*[›\/]\s*(?:company|in)\s*[›\/]\s*([A-Za-z0-9._\-]{2,80})/i);
+        if (liM && !bad.has(liM[1].toLowerCase())) {
+            R.linkedin = `https://www.linkedin.com/company/${liM[1].replace(/\s.*$/, '')}`;
+        }
+    }
+    if (!R.youtube) {
+        const ytM = bodyText.match(/youtube\.com\s*[›\/]\s*(?:channel|c|@)?\s*[›\/]?\s*([A-Za-z0-9._\-]{2,80})/i);
+        if (ytM && !bad.has(ytM[1].toLowerCase())) {
+            R.youtube = `https://www.youtube.com/${ytM[1].replace(/\s.*$/, '')}`;
         }
     }
 
