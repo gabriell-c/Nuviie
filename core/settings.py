@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     'chat',
     'audit',
     'monitoring',
+    'prompt_library',
 ]
 
 MIDDLEWARE = [

@@ -39,6 +39,7 @@ urlpatterns = [
     path('', include('chat.urls')),
     path('audit/', include('audit.urls')),
     path('monitoring/', include('monitoring.urls')),
+    path('', include('prompt_library.urls')),
 ]
 
 if settings.DEBUG:

@@ -17,6 +17,7 @@ O **Nuviie Hub** é um monólito Django modular para uso **local** (você e sua 
 - 📊 **Organizar oportunidades** num CRM Kanban visual
 - 📄 **Gerar contratos** a partir de templates PDF
 - 💬 **Simular atendimento** com IA local (Ollama)
+- 📚 **Biblioteca de Prompts** — CRUD global de prompts e categorias para a equipe
 - 🔐 **Autenticar com segurança** — e-mail, WhatsApp OTP e login facial
 
 Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
@@ -36,6 +37,7 @@ Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
 | 📊 **Analytics Servidor** | CPU, RAM, disco, rede (psutil) | `/monitoring/analytics/` |
 | 📜 **Histórico** | Auditoria de ações no sistema | `/audit/history/` |
 | 💬 **Chat IA** | Assistente comercial com Ollama | `/chat/` |
+| 📚 **Biblioteca de Prompts** | CRUD global de prompts e categorias (título, conteúdo, cor) | `/biblioteca-prompts/` |
 | 👤 **Autenticação** | Login, registro, face, OTP WhatsApp | `/auth/login/` |
 
 ---
@@ -238,6 +240,43 @@ Acesse `/chat/` — o Ollama **não é obrigatório** para leads e Kanban.
 
 ---
 
+### 📚 Biblioteca de Prompts
+
+**O que faz:** repositório **global** de prompts da equipe — todos os usuários autenticados veem, criam, editam e excluem os mesmos registros.
+
+**Campos:**
+
+| Entidade | Campos |
+|----------|--------|
+| **Categoria** | Nome, cor (badge visual) |
+| **Prompt** | Título, conteúdo (texto longo), categoria |
+
+**Como usar:**
+
+1. Acesse `/biblioteca-prompts/` (ou **Biblioteca de Prompts** no menu lateral)
+2. Crie **categorias** (ex.: Vendas, Instagram, Contratos, Atendimento)
+3. Adicione **prompts** vinculados a uma categoria
+4. Use **Copiar** no card para colar o texto onde precisar
+5. Filtre por categoria ou busque por título/conteúdo
+
+**Regras:**
+
+- Não é possível excluir uma categoria que ainda tenha prompts vinculados
+- A biblioteca é compartilhada entre todos os logins (sem prompts por usuário)
+
+**API REST** (requer login):
+
+| Método | Endpoint |
+|--------|----------|
+| GET/POST | `/api/prompt-categories/` |
+| GET/PATCH/DELETE | `/api/prompt-categories/{id}/` |
+| GET/POST | `/api/prompts/` |
+| GET/PATCH/DELETE | `/api/prompts/{id}/` |
+
+Filtros em prompts: `?category=<id>` e `?search=<texto>`
+
+---
+
 ### 🔐 Autenticação
 
 - Login/cadastro: `/auth/login/` e `/auth/register/`
@@ -293,6 +332,28 @@ curl -X PATCH -u email@exemplo.com:senha \
 - CSV: `/leads/export/?format=csv`
 - JSON: `/leads/export/?format=json`
 
+### Biblioteca de Prompts (requer login)
+
+```bash
+# Listar categorias
+curl -u email@exemplo.com:senha http://127.0.0.1:8000/api/prompt-categories/
+
+# Criar categoria
+curl -X POST -u email@exemplo.com:senha \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Vendas", "color": "#6366f1"}' \
+  http://127.0.0.1:8000/api/prompt-categories/
+
+# Listar prompts (filtros opcionais)
+curl -u email@exemplo.com:senha "http://127.0.0.1:8000/api/prompts/?category=1&search=whatsapp"
+
+# Criar prompt
+curl -X POST -u email@exemplo.com:senha \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Abordagem fria", "content": "Olá...", "category": 1}' \
+  http://127.0.0.1:8000/api/prompts/
+```
+
 ### Health check
 
 ```bash
@@ -341,6 +402,7 @@ flowchart TB
         leads[leads]
         contracts[contracts]
         chat[chat]
+        prompts[prompt_library]
         audit[audit]
         monitoring[monitoring]
     end
@@ -371,7 +433,8 @@ Nuviie/
 ├── audit/             → ActivityLog e histórico de auditoria
 ├── monitoring/        → Analytics do servidor (psutil)
 ├── chat/              → conversas com Ollama
-├── templates/         → HTML (auth, leads, contracts, chat)
+├── prompt_library/    → biblioteca global de prompts e categorias (CRUD + API)
+├── templates/         → HTML (auth, leads, contracts, chat, prompt_library)
 ├── static/css/        → estilos customizados
 ├── .env.example       → template de configuração
 └── manage.py
@@ -435,6 +498,8 @@ Sim, para uso local. Carregue sem compactação no Chrome — não precisa publi
 
 - [x] Extensão Chrome Maps Extractor (MV3)
 - [x] Importação bulk via API token + upload CSV/JSON
+- [x] Biblioteca de Prompts (CRUD global + API REST)
+- [ ] Integrar prompts com o Chat IA (“Usar no Chat”)
 - [ ] Fila de tarefas (Celery) para scrapers longos
 - [ ] Suporte PostgreSQL via `DATABASE_URL`
 - [ ] Vincular contratos gerados a leads do CRM
