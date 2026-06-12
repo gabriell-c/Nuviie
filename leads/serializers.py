@@ -41,13 +41,13 @@ class LeadSerializer(serializers.ModelSerializer):
             'recent_reviews', 'business_hours',
             'maps_url', 'maps_share_url', 'maps_link',
             'source', 'source_display', 'status', 'status_display',
-            'quality_score', 'is_verified', 'whatsapp_link',
+            'quality_score', 'score_breakdown', 'is_verified', 'whatsapp_link',
             'price_range', 'plus_code', 'amenities', 'total_photos',
             'profile_picture_url', 'profile_picture_display_url',
             'notes', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'id', 'normalized_phone', 'quality_score',
+            'id', 'normalized_phone', 'quality_score', 'score_breakdown',
             'created_at', 'updated_at'
         ]
 

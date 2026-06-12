@@ -146,6 +146,11 @@
                 <span>Biblioteca de Prompts</span>
             </a>
 
+            <a href="{% url 'lead_scoring' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'lead_scoring' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-scale-balanced text-lg"></i>
+                <span>Regras de Pontuação</span>
+            </a>
+
             <div class="pt-4 pb-2">
                 <span class="px-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">Sistema</span>
             </div>
@@ -225,6 +230,7 @@
                     {% elif current_page == 'contracts' %}Gerador de Contratos
                     {% elif current_page == 'chat' %}Atendente IA
                     {% elif current_page == 'prompt_library' %}Biblioteca de Prompts
+                    {% elif current_page == 'lead_scoring' %}Regras de Pontuação
                     {% elif current_page == 'monitoring' %}Analytics Servidor
                     {% elif current_page == 'audit_history' %}Histórico
                     {% else %}Minha Conta{% endif %}

@@ -18,6 +18,7 @@ O **Nuviie Hub** é um monólito Django modular para uso **local** (você e sua 
 - 📄 **Gerar contratos** a partir de templates PDF
 - 💬 **Simular atendimento** com IA local (Ollama)
 - 📚 **Biblioteca de Prompts** — CRUD global de prompts e categorias para a equipe
+- ⚖️ **Regras de Pontuação** — motor configurável de score para leads (sem limite 0–100)
 - 🔐 **Autenticar com segurança** — e-mail, WhatsApp OTP e login facial
 
 Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
@@ -38,6 +39,7 @@ Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
 | 📜 **Histórico** | Auditoria de ações no sistema | `/audit/history/` |
 | 💬 **Chat IA** | Assistente comercial com Ollama | `/chat/` |
 | 📚 **Biblioteca de Prompts** | CRUD global de prompts e categorias (título, conteúdo, cor) | `/biblioteca-prompts/` |
+| ⚖️ **Regras de Pontuação** | CRUD global de regras e condições; score ilimitado | `/regras-pontuacao/` |
 | 👤 **Autenticação** | Login, registro, face, OTP WhatsApp | `/auth/login/` |
 
 ---
@@ -210,7 +212,7 @@ extension/
 3. Clique em um card para editar, ver notas ou abrir WhatsApp/Maps
 4. Exporte em CSV/JSON, crie leads manualmente ou exclua em massa (selecionados / todos)
 
-Cada lead tem **score de qualidade (0–100)** calculado automaticamente.
+Cada lead tem **score de qualidade** calculado pelas regras em `/regras-pontuacao/` (ordenável no Kanban por mais quente/frio).
 
 ---
 
@@ -274,6 +276,34 @@ Acesse `/chat/` — o Ollama **não é obrigatório** para leads e Kanban.
 | GET/PATCH/DELETE | `/api/prompts/{id}/` |
 
 Filtros em prompts: `?category=<id>` e `?search=<texto>`
+
+---
+
+### ⚖️ Regras de Pontuação
+
+**O que faz:** motor **global** e configurável que calcula a pontuação de cada lead com base em regras que você define. Não há limite de 0 a 100 — pontos positivos e negativos se acumulam livremente.
+
+**Como usar:**
+
+1. Acesse `/regras-pontuacao/` para criar/editar regras
+2. Cada regra tem **pontos** (+/-) e **condições** (campo + operador + valor)
+3. Combine condições com **AND** (todas) ou **OR** (qualquer)
+4. No Kanban, ordene por **Mais quente** / **Mais frio** e veja o score nos cards
+5. No modal do lead, veja o **breakdown**: regras aplicadas e não aplicadas, com motivo
+
+**Exemplos de regras:**
+
+- Seguidores entre 2k–5k **sem site** → +50 pts (duas condições AND)
+- Já tem site próprio → -15 pts
+
+**API REST** (requer login):
+
+| Método | Endpoint |
+|--------|----------|
+| GET | `/api/scoring-fields/` — campos disponíveis para condições |
+| GET/POST | `/api/scoring-rules/` |
+| GET/PATCH/DELETE | `/api/scoring-rules/{id}/` |
+| POST | `/api/scoring-rules/recalculate/` — recalcula todos os leads |
 
 ---
 
@@ -434,7 +464,8 @@ Nuviie/
 ├── monitoring/        → Analytics do servidor (psutil)
 ├── chat/              → conversas com Ollama
 ├── prompt_library/    → biblioteca global de prompts e categorias (CRUD + API)
-├── templates/         → HTML (auth, leads, contracts, chat, prompt_library)
+├── lead_scoring/      → motor e CRUD de regras de pontuação de leads
+├── templates/         → HTML (auth, leads, contracts, chat, prompt_library, lead_scoring)
 ├── static/css/        → estilos customizados
 ├── .env.example       → template de configuração
 └── manage.py
@@ -499,6 +530,7 @@ Sim, para uso local. Carregue sem compactação no Chrome — não precisa publi
 - [x] Extensão Chrome Maps Extractor (MV3)
 - [x] Importação bulk via API token + upload CSV/JSON
 - [x] Biblioteca de Prompts (CRUD global + API REST)
+- [x] Regras de Pontuação configuráveis (CRUD + breakdown no Kanban)
 - [ ] Integrar prompts com o Chat IA (“Usar no Chat”)
 - [ ] Fila de tarefas (Celery) para scrapers longos
 - [ ] Suporte PostgreSQL via `DATABASE_URL`

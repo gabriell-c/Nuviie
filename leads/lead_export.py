@@ -212,6 +212,10 @@ def build_lead_profile(lead: Lead) -> dict:
             },
         },
         'notas_crm': notes,
+        'pontuacao': {
+            'total': lead.quality_score,
+            'breakdown': lead.score_breakdown or {},
+        },
     }
     if lead.source == 'instagram' and isinstance(lead.amenities, dict):
         profile['instagram'] = _instagram_export_section(lead.amenities)
@@ -241,6 +245,15 @@ def lead_to_markdown(profile: dict) -> str:
     lines.append(f'- **Cidade:** {_fmt(ident.get("cidade"))}')
     lines.append(f'- **Status CRM:** {_fmt(ident.get("status"))}')
     lines.append(f'- **Pontuação de qualidade:** {_fmt(ident.get("pontuacao_qualidade"))} pts')
+    pontuacao = profile.get('pontuacao', {})
+    breakdown = pontuacao.get('breakdown') or {}
+    matched = breakdown.get('matched_rules') or []
+    if matched:
+        lines.append('- **Regras aplicadas:**')
+        for rule in matched[:10]:
+            pts = rule.get('points', 0)
+            sign = '+' if pts > 0 else ''
+            lines.append(f'  - {rule.get("name")}: {sign}{pts} pts')
     lines.append('')
 
     lines += ['## Contato', '']

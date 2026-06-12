@@ -239,9 +239,15 @@ class LeadViewSet(viewsets.ModelViewSet):
             elif has_site_param == 'false':
                 queryset = queryset.filter(Q(website='') | Q(website__isnull=True))
                 
-        if ordering_param:
+        allowed_orderings = {
+            '-quality_score', 'quality_score',
+            '-created_at', 'created_at',
+        }
+        if ordering_param and ordering_param in allowed_orderings:
             queryset = queryset.order_by(ordering_param)
-            
+        else:
+            queryset = queryset.order_by('-created_at')
+
         return queryset
 
     def perform_create(self, serializer):

@@ -40,6 +40,7 @@ urlpatterns = [
     path('audit/', include('audit.urls')),
     path('monitoring/', include('monitoring.urls')),
     path('', include('prompt_library.urls')),
+    path('', include('lead_scoring.urls')),
 ]
 
 if settings.DEBUG:

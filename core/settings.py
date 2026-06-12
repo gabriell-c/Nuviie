@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     'audit',
     'monitoring',
     'prompt_library',
+    'lead_scoring',
 ]
 
 MIDDLEWARE = [

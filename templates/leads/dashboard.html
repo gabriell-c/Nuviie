@@ -57,7 +57,7 @@
         <div class="glass-panel rounded-2xl p-6 shadow-sm flex items-center justify-between hover:shadow-md transition">
             <div class="space-y-1">
                 <span class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Pontuação Média</span>
-                <h3 class="text-2xl font-bold text-slate-900 dark:text-white leading-none">{{ avg_quality }}<span class="text-xs text-slate-400 dark:text-slate-500"> / 100</span></h3>
+                <h3 class="text-2xl font-bold text-slate-900 dark:text-white leading-none">{{ avg_quality }}<span class="text-xs text-slate-400 dark:text-slate-500"> pts</span></h3>
                 <span class="text-[10px] text-slate-400 block mt-1">Qualidade de contatos</span>
             </div>
             <div class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-xl">
@@ -236,10 +236,10 @@
                         <td class="py-3.5 text-slate-500 dark:text-slate-400">{{ lead.city|default:"-" }}</td>
                         <td class="py-3.5">
                             <span class="px-2 py-0.5 rounded-md font-semibold text-[10px] 
-                                         {% if lead.quality_score >= 80 %} bg-emerald-500/10 text-emerald-600 dark:text-emerald-400
-                                         {% elif lead.quality_score >= 50 %} bg-amber-500/10 text-amber-600 dark:text-amber-400
-                                         {% else %} bg-rose-500/10 text-rose-600 dark:text-rose-400 {% endif %}">
-                                {{ lead.quality_score }} pts
+                                         {% if lead.quality_score > 0 %} bg-emerald-500/10 text-emerald-600 dark:text-emerald-400
+                                         {% elif lead.quality_score < 0 %} bg-rose-500/10 text-rose-600 dark:text-rose-400
+                                         {% else %} bg-slate-500/10 text-slate-500 dark:text-slate-400 {% endif %}">
+                                {% if lead.quality_score > 0 %}+{% endif %}{{ lead.quality_score }} pts
                             </span>
                         </td>
                         <td class="py-3.5 text-right pr-2">

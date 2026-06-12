@@ -1,0 +1,489 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="flex flex-col h-[calc(100vh-100px)]" x-data="scoringRules()" x-init="init()">
+
+    <div x-show="toast.show" x-cloak x-transition
+         class="fixed bottom-6 right-6 z-[9998] px-4 py-3 rounded-xl shadow-lg text-xs font-semibold text-white"
+         :class="toast.ok ? 'bg-emerald-600' : 'bg-red-600'"
+         x-text="toast.message"></div>
+
+    <div class="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Regras de Pontuação</h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Configure como cada lead é pontuado — regras globais para toda a equipe</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 self-start">
+            <button @click="recalculateAll()" :disabled="recalculating"
+                    class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-50">
+                <i class="fa-solid fa-rotate" :class="recalculating ? 'fa-spin' : ''"></i>
+                <span x-text="recalculating ? 'Recalculando...' : 'Recalcular leads'"></span>
+            </button>
+            <button @click="openRuleModal()"
+                    class="inline-flex items-center gap-2 px-4 py-2.5 gradient-bg-primary text-white rounded-xl text-xs font-semibold hover:opacity-95 transition shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid fa-plus"></i>
+                <span>Nova regra</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
+        <!-- Lista de regras -->
+        <div class="lg:col-span-4 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden min-h-[280px] lg:min-h-0">
+            <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                <h2 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Regras ativas</h2>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                <template x-for="rule in rules" :key="rule.id">
+                    <button @click="selectRule(rule)"
+                            class="w-full text-left px-3 py-3 rounded-xl transition border"
+                            :class="selectedRuleId === rule.id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <span class="text-sm font-bold text-slate-800 dark:text-slate-200 truncate" x-text="rule.name"></span>
+                            <span class="text-xs font-bold shrink-0 px-2 py-0.5 rounded-lg"
+                                  :class="rule.points >= 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'"
+                                  x-text="rule.points_display + ' pts'"></span>
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span x-text="rule.condition_count + ' condição(ões)'"></span>
+                            <span>·</span>
+                            <span x-show="!rule.is_active" class="text-amber-500">Inativa</span>
+                            <span x-show="rule.is_active" class="text-emerald-500">Ativa</span>
+                        </div>
+                    </button>
+                </template>
+                <div x-show="!loading && rules.length === 0" class="text-center py-8 text-slate-400 text-xs px-2">
+                    Nenhuma regra. Crie a primeira acima.
+                </div>
+            </div>
+        </div>
+
+        <!-- Editor -->
+        <div class="lg:col-span-8 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden min-h-[400px] lg:min-h-0">
+            <div x-show="!selectedRuleId && !ruleModal.open" class="flex-1 flex flex-col items-center justify-center text-center p-8">
+                <i class="fa-solid fa-scale-balanced text-4xl text-slate-300 dark:text-slate-600 mb-3"></i>
+                <p class="text-sm font-semibold text-slate-600 dark:text-slate-400">Selecione uma regra ou crie uma nova</p>
+                <p class="text-xs text-slate-400 mt-1 max-w-sm">Combine campos do lead com condições e pontos positivos ou negativos.</p>
+            </div>
+
+            <div x-show="selectedRuleId || ruleModal.open" class="flex-1 flex flex-col overflow-hidden">
+                <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                    <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200" x-text="ruleModal.id ? 'Editar regra' : 'Nova regra'"></h2>
+                    <div class="flex items-center gap-2">
+                        <button x-show="ruleModal.id" @click="deleteRule()" class="px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition">
+                            Excluir
+                        </button>
+                        <button @click="saveRule()" :disabled="ruleModal.saving"
+                                class="px-4 py-1.5 text-xs font-semibold rounded-xl gradient-bg-primary text-white disabled:opacity-50">
+                            <span x-text="ruleModal.saving ? 'Salvando...' : 'Salvar'"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                            <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Nome *</label>
+                            <input type="text" x-model="ruleModal.name" required maxlength="200"
+                                   class="w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Descrição</label>
+                            <textarea x-model="ruleModal.description" rows="2"
+                                      class="w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Pontos (+/-) *</label>
+                            <input type="number" x-model.number="ruleModal.points" required
+                                   class="w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Prioridade</label>
+                            <input type="number" x-model.number="ruleModal.priority"
+                                   class="w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Modo de combinação</label>
+                            <select x-model="ruleModal.match_mode"
+                                    class="w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                                <option value="all">Todas as condições (AND)</option>
+                                <option value="any">Qualquer condição (OR)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="ruleModal.is_active" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-sm text-slate-700 dark:text-slate-300">Regra ativa</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Condições -->
+                    <div class="border-t border-slate-100 dark:border-slate-800 pt-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Condições</h3>
+                            <button type="button" @click="addCondition()"
+                                    class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                                + Adicionar condição
+                            </button>
+                        </div>
+
+                        <div class="space-y-3">
+                            <template x-for="(cond, idx) in ruleModal.conditions" :key="idx">
+                                <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
+                                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
+                                        <div class="sm:col-span-4">
+                                            <label class="block text-[9px] font-semibold text-slate-400 uppercase mb-1">Campo</label>
+                                            <select x-model="cond.field_path" @change="onFieldChange(cond)"
+                                                    class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-white">
+                                                <option value="">Selecione...</option>
+                                                <template x-for="f in fields" :key="f.path">
+                                                    <option :value="f.path" x-text="f.label"></option>
+                                                </template>
+                                            </select>
+                                        </div>
+                                        <div class="sm:col-span-3">
+                                            <label class="block text-[9px] font-semibold text-slate-400 uppercase mb-1">Operador</label>
+                                            <select x-model="cond.operator"
+                                                    class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-white">
+                                                <template x-for="op in operatorsFor(cond.field_path)" :key="op">
+                                                    <option :value="op" x-text="operatorLabel(op)"></option>
+                                                </template>
+                                            </select>
+                                        </div>
+                                        <div class="sm:col-span-4" x-show="needsValue(cond.operator)">
+                                            <label class="block text-[9px] font-semibold text-slate-400 uppercase mb-1">Valor</label>
+                                            <template x-if="cond.operator === 'between'">
+                                                <div class="flex gap-1">
+                                                    <input type="number" x-model.number="cond.valueMin" placeholder="Min"
+                                                           class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+                                                    <input type="number" x-model.number="cond.valueMax" placeholder="Max"
+                                                           class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+                                                </div>
+                                            </template>
+                                            <template x-if="cond.operator === 'in' || cond.operator === 'not_in'">
+                                                <input type="text" x-model="cond.valueText" placeholder="a,b,c (separado por vírgula)"
+                                                       class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+                                            </template>
+                                            <template x-if="fieldMeta(cond.field_path).choices && (cond.operator === 'eq' || cond.operator === 'neq')">
+                                                <select x-model="cond.valueScalar"
+                                                        class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+                                                    <template x-for="c in fieldMeta(cond.field_path).choices" :key="c.value">
+                                                        <option :value="c.value" x-text="c.label"></option>
+                                                    </template>
+                                                </select>
+                                            </template>
+                                            <template x-if="!(cond.operator === 'between' || cond.operator === 'in' || cond.operator === 'not_in') && !(fieldMeta(cond.field_path).choices && (cond.operator === 'eq' || cond.operator === 'neq')) && needsValue(cond.operator)">
+                                                <input :type="fieldMeta(cond.field_path).type === 'number' ? 'number' : 'text'"
+                                                       x-model="cond.valueScalar" placeholder="Valor"
+                                                       class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+                                            </template>
+                                        </div>
+                                        <div class="sm:col-span-1 flex items-end justify-end">
+                                            <button type="button" @click="removeCondition(idx)" title="Remover"
+                                                    class="w-8 h-8 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition">
+                                                <i class="fa-solid fa-trash text-xs"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                        <p x-show="ruleModal.conditions.length === 0" class="text-xs text-amber-500 mt-2">
+                            Adicione ao menos uma condição para a regra funcionar.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function scoringRules() {
+    const OPERATOR_LABELS = {
+        exists: 'Existe / preenchido',
+        empty: 'Vazio / ausente',
+        eq: 'Igual a',
+        neq: 'Diferente de',
+        contains: 'Contém',
+        in: 'Está na lista',
+        not_in: 'Não está na lista',
+        gt: 'Maior que',
+        gte: 'Maior ou igual a',
+        lt: 'Menor que',
+        lte: 'Menor ou igual a',
+        between: 'Entre (min e max)',
+        is_true: 'É verdadeiro',
+        is_false: 'É falso',
+        json_count_gte: 'Qtd JSON ≥',
+        json_count_lte: 'Qtd JSON ≤',
+    };
+
+    return {
+        loading: true,
+        recalculating: false,
+        rules: [],
+        fields: [],
+        selectedRuleId: null,
+        toast: { show: false, message: '', ok: true },
+        ruleModal: {
+            open: false,
+            id: null,
+            name: '',
+            description: '',
+            points: 10,
+            priority: 0,
+            is_active: true,
+            match_mode: 'all',
+            conditions: [],
+            saving: false,
+        },
+
+        init() {
+            this.loadAll();
+        },
+
+        getCookie(name) {
+            const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            return m ? decodeURIComponent(m[2]) : '';
+        },
+
+        showToast(message, ok = true) {
+            this.toast = { show: true, message, ok };
+            setTimeout(() => { this.toast.show = false; }, 2800);
+        },
+
+        operatorLabel(op) {
+            return OPERATOR_LABELS[op] || op;
+        },
+
+        fieldMeta(path) {
+            return this.fields.find(f => f.path === path) || { type: 'text', operators: [] };
+        },
+
+        operatorsFor(path) {
+            return this.fieldMeta(path).operators || ['exists', 'empty'];
+        },
+
+        needsValue(operator) {
+            return !['exists', 'empty', 'is_true', 'is_false'].includes(operator);
+        },
+
+        onFieldChange(cond) {
+            const ops = this.operatorsFor(cond.field_path);
+            if (!ops.includes(cond.operator)) {
+                cond.operator = ops[0] || 'exists';
+            }
+        },
+
+        emptyCondition() {
+            const firstField = this.fields[0];
+            return {
+                field_path: firstField ? firstField.path : '',
+                operator: firstField ? (firstField.operators[0] || 'exists') : 'exists',
+                valueScalar: '',
+                valueMin: null,
+                valueMax: null,
+                valueText: '',
+            };
+        },
+
+        addCondition() {
+            this.ruleModal.conditions.push(this.emptyCondition());
+        },
+
+        removeCondition(idx) {
+            this.ruleModal.conditions.splice(idx, 1);
+        },
+
+        buildConditionPayload(cond) {
+            const op = cond.operator;
+            if (['exists', 'empty', 'is_true', 'is_false'].includes(op)) {
+                return { field_path: cond.field_path, operator: op, value: null, sort_order: 0 };
+            }
+            if (op === 'between') {
+                return {
+                    field_path: cond.field_path,
+                    operator: op,
+                    value: { min: cond.valueMin, max: cond.valueMax },
+                };
+            }
+            if (op === 'in' || op === 'not_in') {
+                const list = (cond.valueText || '').split(',').map(s => s.trim()).filter(Boolean);
+                return { field_path: cond.field_path, operator: op, value: list };
+            }
+            let val = cond.valueScalar;
+            const meta = this.fieldMeta(cond.field_path);
+            if (meta.type === 'number' && val !== '' && val !== null) {
+                val = Number(val);
+            }
+            return { field_path: cond.field_path, operator: op, value: val };
+        },
+
+        parseConditionToForm(cond) {
+            const form = {
+                field_path: cond.field_path,
+                operator: cond.operator,
+                valueScalar: '',
+                valueMin: null,
+                valueMax: null,
+                valueText: '',
+            };
+            if (cond.operator === 'between' && cond.value && typeof cond.value === 'object') {
+                form.valueMin = cond.value.min;
+                form.valueMax = cond.value.max;
+            } else if ((cond.operator === 'in' || cond.operator === 'not_in') && Array.isArray(cond.value)) {
+                form.valueText = cond.value.join(', ');
+            } else if (cond.value !== null && cond.value !== undefined) {
+                form.valueScalar = cond.value;
+            }
+            return form;
+        },
+
+        async loadAll() {
+            this.loading = true;
+            try {
+                const [fieldsRes, rulesRes] = await Promise.all([
+                    fetch('/api/scoring-fields/', { credentials: 'same-origin' }),
+                    fetch('/api/scoring-rules/', { credentials: 'same-origin' }),
+                ]);
+                if (fieldsRes.ok) this.fields = await fieldsRes.json();
+                if (rulesRes.ok) this.rules = await rulesRes.json();
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        openRuleModal(rule = null) {
+            this.selectedRuleId = rule ? rule.id : null;
+            if (rule) {
+                this.ruleModal = {
+                    open: true,
+                    id: rule.id,
+                    name: rule.name,
+                    description: rule.description || '',
+                    points: rule.points,
+                    priority: rule.priority,
+                    is_active: rule.is_active,
+                    match_mode: rule.match_mode,
+                    conditions: (rule.conditions || []).map(c => this.parseConditionToForm(c)),
+                    saving: false,
+                };
+            } else {
+                this.ruleModal = {
+                    open: true,
+                    id: null,
+                    name: '',
+                    description: '',
+                    points: 10,
+                    priority: 0,
+                    is_active: true,
+                    match_mode: 'all',
+                    conditions: [this.emptyCondition()],
+                    saving: false,
+                };
+            }
+        },
+
+        selectRule(rule) {
+            this.openRuleModal(rule);
+        },
+
+        async saveRule() {
+            if (!this.ruleModal.name.trim()) {
+                this.showToast('Informe o nome da regra.', false);
+                return;
+            }
+            this.ruleModal.saving = true;
+            const payload = {
+                name: this.ruleModal.name.trim(),
+                description: this.ruleModal.description.trim(),
+                points: this.ruleModal.points,
+                priority: this.ruleModal.priority,
+                is_active: this.ruleModal.is_active,
+                match_mode: this.ruleModal.match_mode,
+                conditions: this.ruleModal.conditions.map((c, i) => ({
+                    ...this.buildConditionPayload(c),
+                    sort_order: i,
+                })),
+            };
+            const isEdit = !!this.ruleModal.id;
+            const url = isEdit ? '/api/scoring-rules/' + this.ruleModal.id + '/' : '/api/scoring-rules/';
+            try {
+                const r = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCookie('csrftoken'),
+                    },
+                    body: JSON.stringify(payload),
+                });
+                if (r.ok) {
+                    const saved = await r.json();
+                    this.showToast(isEdit ? 'Regra atualizada.' : 'Regra criada.');
+                    await this.loadAll();
+                    this.selectRule(saved);
+                } else {
+                    const err = await r.json().catch(() => ({}));
+                    this.showToast(err.detail || JSON.stringify(err) || 'Erro ao salvar.', false);
+                }
+            } catch (e) {
+                this.showToast('Erro: ' + e.message, false);
+            } finally {
+                this.ruleModal.saving = false;
+            }
+        },
+
+        async deleteRule() {
+            if (!this.ruleModal.id) return;
+            const ok = await NuviieModal.confirm(
+                'Excluir esta regra permanentemente? Todos os leads serão recalculados.',
+                'Excluir regra',
+                { danger: true, confirmLabel: 'Excluir' }
+            );
+            if (!ok) return;
+            try {
+                const r = await fetch('/api/scoring-rules/' + this.ruleModal.id + '/', {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                    headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
+                });
+                if (r.ok || r.status === 204) {
+                    this.showToast('Regra excluída.');
+                    this.selectedRuleId = null;
+                    this.ruleModal.open = false;
+                    await this.loadAll();
+                }
+            } catch (e) {
+                this.showToast('Erro: ' + e.message, false);
+            }
+        },
+
+        async recalculateAll() {
+            this.recalculating = true;
+            try {
+                const r = await fetch('/api/scoring-rules/recalculate/', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
+                });
+                if (r.ok) {
+                    const data = await r.json();
+                    this.showToast(data.recalculated + ' lead(s) recalculado(s).');
+                } else {
+                    this.showToast('Erro ao recalcular.', false);
+                }
+            } catch (e) {
+                this.showToast('Erro: ' + e.message, false);
+            } finally {
+                this.recalculating = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}
