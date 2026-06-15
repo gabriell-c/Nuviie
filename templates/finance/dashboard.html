@@ -25,6 +25,10 @@
             </div>
         </div>
         <div class="flex flex-wrap gap-2">
+            <button @click="openCategoryModal()"
+                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 hover:border-indigo-500/50">
+                <i class="fa-solid fa-tags text-indigo-500"></i> Categorias
+            </button>
             <button @click="exportData('xlsx')"
                     class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 hover:border-emerald-500/50">
                 <i class="fa-solid fa-file-excel text-emerald-500"></i> Export XLSX
@@ -32,6 +36,10 @@
             <button @click="exportData('csv')"
                     class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60">
                 <i class="fa-solid fa-file-csv text-sky-500"></i> CSV
+            </button>
+            <button @click="exportData('pdf')"
+                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 hover:border-red-500/40">
+                <i class="fa-solid fa-file-pdf text-red-500"></i> Export PDF
             </button>
             <button @click="openModal()"
                     class="btn-interactive inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl gradient-bg-primary text-white shadow-lg shadow-indigo-500/25">
@@ -47,7 +55,7 @@
                 <div class="nui-stat-icon bg-emerald-500/15 text-emerald-500"><i class="fa-solid fa-arrow-trend-up"></i></div>
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Entradas</span>
             </div>
-            <p class="text-2xl font-bold text-emerald-500 tabular-nums" x-text="fmtMoney(summary.income_confirmed)"></p>
+            <p class="nui-stat-value text-emerald-500" x-text="fmtMoney(summary.income_confirmed)"></p>
             <p class="text-[10px] text-slate-400 mt-1">Confirmadas no período</p>
         </div>
         <div class="nui-stat-card nui-animate-in nui-delay-2">
@@ -55,7 +63,7 @@
                 <div class="nui-stat-icon bg-red-500/15 text-red-500"><i class="fa-solid fa-arrow-trend-down"></i></div>
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Despesas</span>
             </div>
-            <p class="text-2xl font-bold text-red-500 tabular-nums" x-text="fmtMoney(summary.expense_confirmed)"></p>
+            <p class="nui-stat-value text-red-500" x-text="fmtMoney(summary.expense_confirmed)"></p>
             <p class="text-[10px] text-slate-400 mt-1">Saídas confirmadas</p>
         </div>
         <div class="nui-stat-card nui-animate-in nui-delay-3">
@@ -63,7 +71,7 @@
                 <div class="nui-stat-icon bg-indigo-500/15 text-indigo-500"><i class="fa-solid fa-scale-balanced"></i></div>
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Saldo</span>
             </div>
-            <p class="text-2xl font-bold text-slate-800 dark:text-white tabular-nums" x-text="fmtMoney(summary.balance)"></p>
+            <p class="nui-stat-value text-slate-800 dark:text-white" x-text="fmtMoney(summary.balance)"></p>
             <p class="text-[10px] text-slate-400 mt-1">Entradas − despesas</p>
         </div>
         <div class="nui-stat-card nui-animate-in nui-delay-4">
@@ -71,7 +79,7 @@
                 <div class="nui-stat-icon bg-amber-500/15 text-amber-500"><i class="fa-solid fa-clock"></i></div>
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">A receber</span>
             </div>
-            <p class="text-2xl font-bold text-amber-500 tabular-nums" x-text="fmtMoney(summary.pending_income)"></p>
+            <p class="nui-stat-value text-amber-500" x-text="fmtMoney(summary.pending_income)"></p>
             <p class="text-[10px] text-slate-400 mt-1">Pendentes de confirmação</p>
         </div>
     </div>
@@ -79,33 +87,97 @@
     <!-- Charts -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div class="glass-panel p-5 rounded-2xl lg:col-span-2 nui-animate-in nui-delay-4">
-            <div class="flex items-center gap-2 mb-4">
-                <i class="fa-solid fa-chart-column text-indigo-500 text-sm"></i>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Fluxo mensal</h3>
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-chart-column text-indigo-500 text-sm"></i>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400" x-text="chartFlowTitle()"></h3>
+                </div>
+                <span class="text-[10px] text-slate-500">Barras verdes = entradas · vermelhas = despesas</span>
             </div>
-            <canvas id="chartMonthly" height="120"></canvas>
+            <p class="text-[10px] text-slate-400 mb-3">Comparativo de quanto entrou vs quanto saiu no período filtrado (pendentes + confirmados).</p>
+            <div class="h-[220px] relative">
+                <canvas id="chartMonthly"></canvas>
+                <div x-show="!chartHasData" class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                    <i class="fa-solid fa-chart-simple text-3xl text-slate-300 dark:text-slate-600 mb-2"></i>
+                    <p class="text-xs text-slate-400">Sem movimentação no período</p>
+                </div>
+            </div>
         </div>
         <div class="glass-panel p-5 rounded-2xl nui-animate-in nui-delay-5">
-            <div class="flex items-center gap-2 mb-4">
-                <i class="fa-solid fa-chart-pie text-amber-500 text-sm"></i>
-                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Despesas por categoria</h3>
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-chart-pie text-amber-500 text-sm"></i>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Por categoria</h3>
+                </div>
+                <div class="nui-segment !p-0.5 !inline-flex">
+                    <button type="button" @click="chartDonutMode = 'expense'; renderCharts()"
+                            class="nui-segment-btn !py-1 !px-2 !text-[10px] !flex-none"
+                            :class="chartDonutMode === 'expense' && 'active-expense'">Despesas</button>
+                    <button type="button" @click="chartDonutMode = 'income'; renderCharts()"
+                            class="nui-segment-btn !py-1 !px-2 !text-[10px] !flex-none"
+                            :class="chartDonutMode === 'income' && 'active-income'">Entradas</button>
+                </div>
             </div>
-            <canvas id="chartDonut" height="180"></canvas>
+            <p class="text-[10px] text-slate-400 mb-3">Distribuição percentual por categoria no filtro atual.</p>
+            <div class="h-[220px] relative">
+                <canvas id="chartDonut"></canvas>
+                <div x-show="!chartDonutHasData" class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                    <i class="fa-solid fa-chart-pie text-3xl text-slate-300 dark:text-slate-600 mb-2"></i>
+                    <p class="text-xs text-slate-400">Nenhuma <span x-text="chartDonutMode === 'income' ? 'entrada' : 'despesa'"></span> no período</p>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Table section -->
-    <div class="glass-panel rounded-2xl overflow-hidden nui-animate-in nui-delay-5">
+    <div class="glass-panel rounded-2xl overflow-hidden nui-animate-in nui-delay-5"
+         :class="tableFullscreen && 'nui-table-fullscreen !rounded-none !border-0'"
+         @keydown.escape.window="tableFullscreen && (tableFullscreen = false)">
         <!-- Filters -->
         <div class="px-4 py-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
-            <div class="flex items-center gap-2">
-                <i class="fa-solid fa-filter text-slate-400 text-xs"></i>
-                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Filtros</span>
+            <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-filter text-slate-400 text-xs"></i>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Lançamentos</span>
+                </div>
+                <button type="button" @click="tableFullscreen = !tableFullscreen"
+                        class="btn-interactive inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-500">
+                    <i class="fa-solid" :class="tableFullscreen ? 'fa-compress' : 'fa-expand'"></i>
+                    <span x-text="tableFullscreen ? 'Sair tela cheia' : 'Tela cheia'"></span>
+                </button>
+            </div>
+            <!-- Período -->
+            <div class="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <div class="flex items-center gap-2">
+                    <i class="fa-regular fa-calendar text-slate-400 text-xs"></i>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Período</span>
+                    <span class="text-[10px] text-indigo-400 font-medium" x-text="periodLabel()"></span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    <template x-for="p in periodOptions" :key="p.id">
+                        <button type="button" @click="setPeriod(p.id)"
+                                class="nui-pill text-[11px]" :class="filters.period === p.id && 'active'"
+                                x-text="p.label"></button>
+                    </template>
+                </div>
+                <div x-show="filters.period === 'single'" class="flex flex-wrap gap-2 items-center">
+                    <label class="text-[10px] text-slate-400 font-semibold">Data específica</label>
+                    <input type="text" x-model="filters.date_on" @change="applyPeriodDates()"
+                           placeholder="AAAA-MM-DD" class="nui-input !py-1.5 !text-sm w-40">
+                </div>
+                <div x-show="filters.period === 'range'" class="flex flex-wrap gap-2 items-center">
+                    <label class="text-[10px] text-slate-400 font-semibold">De</label>
+                    <input type="text" x-model="filters.date_from" @change="applyPeriodDates()"
+                           placeholder="AAAA-MM-DD" class="nui-input !py-1.5 !text-sm w-36">
+                    <label class="text-[10px] text-slate-400 font-semibold">Até</label>
+                    <input type="text" x-model="filters.date_to" @change="applyPeriodDates()"
+                           placeholder="AAAA-MM-DD" class="nui-input !py-1.5 !text-sm w-36">
+                </div>
             </div>
             <div class="flex flex-col lg:flex-row gap-3">
                 <div class="nui-input-wrap flex-1 min-w-[200px]">
                     <i class="fa-solid fa-magnifying-glass nui-input-icon"></i>
-                    <input type="search" x-model.debounce.350ms="filters.search" @input="loadEntries()"
+                    <input type="search" x-model.debounce.350ms="filters.search" @input="refreshAll()"
                            placeholder="Buscar título, cliente ou notas..."
                            class="nui-input">
                 </div>
@@ -149,7 +221,7 @@
                     </button>
                     <div x-show="open" @click.outside="open = false" x-cloak class="nui-dropdown !w-44 right-0 left-auto">
                         <template x-for="opt in orderingOptions" :key="opt.value">
-                            <button type="button" @click="filters.ordering = opt.value; open = false; loadEntries()"
+                            <button type="button" @click="filters.ordering = opt.value; open = false; refreshAll()"
                                     class="nui-dropdown-item" :class="filters.ordering === opt.value && 'active'">
                                 <i class="fa-solid text-[10px]" :class="opt.icon"></i>
                                 <span x-text="opt.label"></span>
@@ -205,8 +277,15 @@
                                 </div>
                             </td>
                             <td class="px-4 py-3">
-                                <span class="inline-flex items-center gap-1.5 text-xs text-slate-500">
-                                    <span class="w-2 h-2 rounded-full shrink-0" :style="'background:' + (e.category_color || '#6366f1')"></span>
+                                <span class="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                                    <span class="nui-cat-icon" :style="'background:' + (e.category_color || '#6366f1') + '22;color:' + (e.category_color || '#6366f1')">
+                                        <template x-if="e.category_icon_svg">
+                                            <span x-html="e.category_icon_svg"></span>
+                                        </template>
+                                        <template x-if="!e.category_icon_svg">
+                                            <i class="fa-solid text-[10px]" :class="e.category_icon || 'fa-circle'"></i>
+                                        </template>
+                                    </span>
                                     <span x-text="e.category_name"></span>
                                 </span>
                             </td>
@@ -336,17 +415,17 @@
                         </div>
 
                         <!-- Date picker custom -->
-                        <div class="nui-field relative" @click.outside="ui.dateOpen = false">
+                        <div class="nui-field nui-calendar-anchor" @click.outside="ui.dateOpen = false">
                             <label><i class="fa-regular fa-calendar"></i> Data</label>
                             <button type="button" @click="ui.dateOpen = !ui.dateOpen"
                                     class="nui-select-trigger w-full" :class="ui.dateOpen && 'open'">
-                                <span class="flex items-center gap-2">
-                                    <i class="fa-regular fa-calendar text-slate-400 text-xs"></i>
-                                    <span x-text="formatDateDisplay(modal.date)"></span>
+                                <span class="flex items-center gap-2 truncate">
+                                    <i class="fa-regular fa-calendar text-slate-400 text-xs shrink-0"></i>
+                                    <span class="truncate" x-text="formatDateDisplay(modal.date)"></span>
                                 </span>
-                                <i class="fa-solid fa-chevron-down chevron"></i>
+                                <i class="fa-solid fa-chevron-down chevron shrink-0"></i>
                             </button>
-                            <div x-show="ui.dateOpen" x-cloak class="nui-calendar left-0 right-0">
+                            <div x-show="ui.dateOpen" x-cloak class="nui-calendar in-modal">
                                 <div class="flex items-center justify-between mb-3">
                                     <button type="button" @click="calPrevMonth()" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center">
                                         <i class="fa-solid fa-chevron-left text-xs"></i>
@@ -384,14 +463,28 @@
                             <label><i class="fa-solid fa-folder-open"></i> Categoria</label>
                             <button type="button" @click="ui.categoryOpen = !ui.categoryOpen"
                                     class="nui-select-trigger" :class="ui.categoryOpen && 'open'">
-                                <span class="truncate" x-text="categoryLabel(modal.category)"></span>
-                                <i class="fa-solid fa-chevron-down chevron"></i>
+                                <span class="flex items-center gap-2 truncate min-w-0">
+                                    <span class="nui-cat-icon shrink-0" x-show="getCategory(modal.category)"
+                                          :style="getCategory(modal.category) ? 'background:' + getCategory(modal.category).color + '22;color:' + getCategory(modal.category).color : ''">
+                                        <template x-if="getCategory(modal.category)?.icon_svg">
+                                            <span x-html="getCategory(modal.category).icon_svg"></span>
+                                        </template>
+                                        <template x-if="getCategory(modal.category) && !getCategory(modal.category).icon_svg">
+                                            <i class="fa-solid text-[10px]" :class="getCategory(modal.category).icon"></i>
+                                        </template>
+                                    </span>
+                                    <span class="truncate" x-text="categoryLabel(modal.category)"></span>
+                                </span>
+                                <i class="fa-solid fa-chevron-down chevron shrink-0"></i>
                             </button>
                             <div x-show="ui.categoryOpen" x-cloak class="nui-dropdown">
                                 <template x-for="c in filteredCategories()" :key="c.id">
                                     <button type="button" @click="modal.category = c.id; ui.categoryOpen = false"
                                             class="nui-dropdown-item" :class="modal.category == c.id && 'active'">
-                                        <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="'background:' + c.color"></span>
+                                        <span class="nui-cat-icon shrink-0" :style="'background:' + c.color + '22;color:' + c.color">
+                                            <template x-if="c.icon_svg"><span x-html="c.icon_svg"></span></template>
+                                            <template x-if="!c.icon_svg"><i class="fa-solid text-[10px]" :class="c.icon"></i></template>
+                                        </span>
                                         <span x-text="c.name"></span>
                                     </button>
                                 </template>
@@ -422,14 +515,63 @@
                         </div>
                     </div>
 
-                    <!-- Lead -->
+                    <!-- Lead search picker -->
                     <div class="nui-field">
                         <label><i class="fa-solid fa-user-tie"></i> Lead / Cliente <span class="normal-case font-normal text-slate-500">(opcional)</span></label>
-                        <div class="nui-input-wrap">
-                            <i class="fa-solid fa-hashtag nui-input-icon"></i>
-                            <input type="text" inputmode="numeric" pattern="[0-9]*" x-model="modal.lead"
-                                   placeholder="ID do lead no CRM" class="nui-input">
-                        </div>
+                        <template x-if="modal.leadSelected">
+                            <div class="nui-lead-selected">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <div class="w-9 h-9 rounded-lg bg-indigo-500/15 text-indigo-500 flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-user text-sm"></i>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate" x-text="modal.leadSelected.name"></p>
+                                        <p class="text-[10px] text-slate-400 truncate">
+                                            <span x-text="modal.leadSelected.city || 'Sem cidade'"></span>
+                                            · <span class="capitalize" x-text="modal.leadSelected.status"></span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <button type="button" @click="clearLead()" class="text-xs text-red-400 hover:text-red-500 font-semibold shrink-0 ml-2">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </template>
+                        <template x-if="!modal.leadSelected">
+                            <div class="nui-lead-picker">
+                                <div class="p-2 border-b border-slate-100 dark:border-slate-800">
+                                    <div class="nui-input-wrap">
+                                        <i class="fa-solid fa-magnifying-glass nui-input-icon"></i>
+                                        <input type="search" x-model.debounce.350ms="leadSearchQuery" @input="searchLeads()"
+                                               placeholder="Buscar lead por nome, cidade ou nicho..."
+                                               class="nui-input !py-2 !text-sm">
+                                    </div>
+                                    <p class="text-[10px] text-slate-400 mt-1.5 px-1">Digite ao menos 2 caracteres para buscar no CRM</p>
+                                </div>
+                                <div class="max-h-36 overflow-y-auto">
+                                    <div x-show="leadSearchLoading" class="p-4 text-center text-xs text-slate-400">
+                                        <i class="fa-solid fa-spinner fa-spin mr-1"></i> Buscando...
+                                    </div>
+                                    <template x-for="l in leadSearchResults" :key="l.id">
+                                        <button type="button" @click="selectLead(l)" class="nui-lead-result">
+                                            <div class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-indigo-500 shrink-0">
+                                                <i class="fa-solid fa-user text-xs"></i>
+                                            </div>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="font-semibold text-slate-800 dark:text-slate-100 truncate" x-text="l.name"></p>
+                                                <p class="text-[10px] text-slate-400 truncate">
+                                                    <span x-text="l.category || 'Lead'"></span>
+                                                    <span x-show="l.city"> · <span x-text="l.city"></span></span>
+                                                </p>
+                                            </div>
+                                            <span class="text-[10px] font-bold uppercase text-slate-400 capitalize shrink-0" x-text="l.status"></span>
+                                        </button>
+                                    </template>
+                                    <p x-show="leadSearchQuery.length >= 2 && !leadSearchLoading && leadSearchResults.length === 0"
+                                       class="p-4 text-center text-xs text-slate-400">Nenhum lead encontrado</p>
+                                </div>
+                            </div>
+                        </template>
                     </div>
 
                     <!-- Recurring toggle -->
@@ -512,6 +654,126 @@
             </div>
         </div>
     </template>
+
+    <!-- Modal Categorias CRUD -->
+    <template x-teleport="body">
+        <div x-show="catModal.open" x-cloak class="fixed inset-0 z-[9995] flex items-center justify-center p-4"
+             @keydown.escape.window="catModal.open = false">
+            <div x-show="catModal.open"
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+                 class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="catModal.open = false"></div>
+            <div x-show="catModal.open"
+                 x-transition:enter="transition ease-out duration-350"
+                 x-transition:enter-start="opacity-0 scale-95 translate-y-6"
+                 x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-250"
+                 x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+                 class="relative w-full max-w-2xl glass-panel rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-700 nui-modal-panel"
+                 @click.stop>
+                <div class="sticky top-0 z-10 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-t-2xl flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-500/15 text-indigo-500 flex items-center justify-center">
+                            <i class="fa-solid fa-tags"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-base text-slate-900 dark:text-white">Categorias financeiras</h3>
+                            <p class="text-[10px] text-slate-400">Cor, ícone Font Awesome ou SVG personalizado</p>
+                        </div>
+                    </div>
+                    <button @click="catModal.open = false" class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="px-6 py-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Lista -->
+                    <div class="space-y-2 max-h-[420px] overflow-y-auto">
+                        <p class="text-[10px] font-bold uppercase text-slate-400 mb-2">Suas categorias</p>
+                        <template x-for="c in categories" :key="'list-'+c.id">
+                            <div class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition group">
+                                <span class="nui-cat-icon" :style="'background:' + c.color + '22;color:' + c.color">
+                                    <template x-if="c.icon_svg"><span x-html="c.icon_svg"></span></template>
+                                    <template x-if="!c.icon_svg"><i class="fa-solid text-[10px]" :class="c.icon"></i></template>
+                                </span>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-semibold truncate" x-text="c.name"></p>
+                                    <p class="text-[10px] text-slate-400 capitalize" x-text="c.category_type === 'income' ? 'Entrada' : 'Despesa'"></p>
+                                </div>
+                                <div class="flex gap-1 opacity-70 group-hover:opacity-100">
+                                    <button @click="editCategory(c)" class="w-7 h-7 rounded-lg text-indigo-500 hover:bg-indigo-500/10"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                                    <button @click="deleteCategory(c)" class="w-7 h-7 rounded-lg text-red-400 hover:bg-red-500/10"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Form -->
+                    <div class="space-y-4">
+                        <p class="text-[10px] font-bold uppercase text-slate-400" x-text="catModal.id ? 'Editar categoria' : 'Nova categoria'"></p>
+                        <div class="nui-field">
+                            <label><i class="fa-solid fa-font"></i> Nome</label>
+                            <input type="text" x-model="catModal.name" class="nui-input" placeholder="Ex: Serviço Web">
+                        </div>
+                        <div class="nui-field">
+                            <label><i class="fa-solid fa-shuffle"></i> Tipo</label>
+                            <div class="nui-segment">
+                                <button type="button" @click="catModal.category_type = 'income'"
+                                        class="nui-segment-btn" :class="catModal.category_type === 'income' && 'active-income'">Entrada</button>
+                                <button type="button" @click="catModal.category_type = 'expense'"
+                                        class="nui-segment-btn" :class="catModal.category_type === 'expense' && 'active-expense'">Despesa</button>
+                            </div>
+                        </div>
+                        <div class="nui-field">
+                            <label><i class="fa-solid fa-palette"></i> Cor</label>
+                            <div class="flex flex-wrap gap-2 mb-2">
+                                <template x-for="col in colorPresets" :key="col">
+                                    <button type="button" @click="catModal.color = col"
+                                            class="w-8 h-8 rounded-lg border-2 transition"
+                                            :style="'background:' + col"
+                                            :class="catModal.color === col ? 'border-slate-900 dark:border-white scale-110' : 'border-transparent'"></button>
+                                </template>
+                            </div>
+                            <input type="text" x-model="catModal.color" class="nui-input font-mono text-sm" placeholder="#6366f1">
+                        </div>
+                        <div class="nui-field">
+                            <label><i class="fa-solid fa-icons"></i> Ícone Font Awesome</label>
+                            <div class="flex flex-wrap gap-1.5 mb-2">
+                                <template x-for="ic in iconPresets" :key="ic">
+                                    <button type="button" @click="catModal.icon = ic; catModal.icon_svg = ''"
+                                            class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:border-indigo-500 hover:text-indigo-500 transition"
+                                            :class="catModal.icon === ic && !catModal.icon_svg && 'border-indigo-500 text-indigo-500 bg-indigo-500/10'">
+                                        <i class="fa-solid text-xs" :class="ic"></i>
+                                    </button>
+                                </template>
+                            </div>
+                            <input type="text" x-model="catModal.icon" class="nui-input font-mono text-xs" placeholder="fa-globe">
+                        </div>
+                        <div class="nui-field">
+                            <label><i class="fa-solid fa-code"></i> SVG personalizado <span class="normal-case font-normal">(opcional — sobrescreve FA)</span></label>
+                            <textarea x-model="catModal.icon_svg" rows="3" class="nui-input font-mono text-[11px] resize-y"
+                                      placeholder='<svg viewBox="0 0 24 24" fill="currentColor">...</svg>'></textarea>
+                            <div class="flex items-center gap-3 mt-2">
+                                <span class="text-[10px] text-slate-400">Preview:</span>
+                                <div class="nui-svg-preview" :style="'background:' + catModal.color + '18;color:' + catModal.color">
+                                    <template x-if="catModal.icon_svg"><span x-html="catModal.icon_svg"></span></template>
+                                    <template x-if="!catModal.icon_svg"><i class="fa-solid" :class="catModal.icon"></i></template>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="saveCategory()" :disabled="catModal.saving"
+                                class="btn-interactive w-full py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-bold disabled:opacity-60">
+                            <i class="fa-solid mr-1" :class="catModal.saving ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+                            <span x-text="catModal.id ? 'Salvar alterações' : 'Criar categoria'"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
 </div>
 {% endblock %}
 
@@ -520,20 +782,51 @@
 function financeDashboard() {
     return {
         loading: false,
+        tableFullscreen: false,
+        chartDonutMode: 'expense',
+        chartHasData: false,
+        chartDonutHasData: false,
+        chartGranularity: 'month',
         entries: [],
         categories: [],
         summary: { income_confirmed: 0, expense_confirmed: 0, balance: 0, pending_income: 0 },
-        filters: { search: '', entry_type: '', status: '', ordering: '-date' },
+        filters: {
+            search: '', entry_type: '', status: '', ordering: '-date',
+            period: 'all', date_on: '', date_from: '', date_to: '',
+        },
+        periodOptions: [
+            { id: 'all', label: 'Tudo' },
+            { id: 'today', label: 'Hoje' },
+            { id: '3d', label: '3 dias' },
+            { id: '7d', label: '7 dias' },
+            { id: '30d', label: '30 dias' },
+            { id: '90d', label: '90 dias' },
+            { id: '365d', label: '1 ano' },
+            { id: 'single', label: 'Data' },
+            { id: 'range', label: 'Intervalo' },
+        ],
         pagination: { page: 1, next: null, previous: null },
+        leadSearchQuery: '',
+        leadSearchResults: [],
+        leadSearchLoading: false,
         modal: {
             open: false, saving: false, id: null,
             entry_type: 'income', title: '', amount: '', amountDisplay: '',
             date: '', category: '', status: 'pending', lead: '',
+            leadSelected: null,
             notes: '', is_recurring: false, file: null, fileName: '',
         },
+        catModal: {
+            open: false, saving: false, id: null,
+            name: '', category_type: 'income', color: '#6366f1',
+            icon: 'fa-circle', icon_svg: '',
+        },
+        colorPresets: ['#6366f1','#10b981','#ef4444','#f59e0b','#8b5cf6','#06b6d4','#ec4899','#64748b'],
+        iconPresets: ['fa-globe','fa-server','fa-bullhorn','fa-repeat','fa-cart-shopping','fa-briefcase','fa-house','fa-car','fa-utensils','fa-heart-pulse','fa-graduation-cap','fa-wrench'],
         ui: { dateOpen: false, categoryOpen: false, statusOpen: false, fileDrag: false },
         cal: { year: new Date().getFullYear(), month: new Date().getMonth() },
         charts: { monthly: null, donut: null },
+        chartCache: null,
         orderingOptions: [
             { value: '-date', label: 'Data ↓ recente', icon: 'fa-arrow-down' },
             { value: 'date', label: 'Data ↑ antiga', icon: 'fa-arrow-up' },
@@ -543,9 +836,41 @@ function financeDashboard() {
 
         async init() {
             await this.loadCategories();
-            await this.loadSummary();
+            await this.refreshAll();
+            window.addEventListener('resize', () => this.renderCharts());
+        },
+
+        async refreshAll() {
             await this.loadEntries();
             await this.loadCharts();
+        },
+
+        chartFlowTitle() {
+            return this.chartGranularity === 'day' ? 'Fluxo diário' : 'Fluxo mensal';
+        },
+
+        periodLabel() {
+            const p = this.periodOptions.find(x => x.id === this.filters.period);
+            if (this.filters.period === 'single' && this.filters.date_on) {
+                return this.formatDate(this.filters.date_on);
+            }
+            if (this.filters.period === 'range' && this.filters.date_from && this.filters.date_to) {
+                return this.formatDate(this.filters.date_from) + ' → ' + this.formatDate(this.filters.date_to);
+            }
+            return p ? p.label : '';
+        },
+
+        setPeriod(id) {
+            this.filters.period = id;
+            this.pagination.page = 1;
+            if (id !== 'single') this.filters.date_on = '';
+            if (id !== 'range') { this.filters.date_from = ''; this.filters.date_to = ''; }
+            if (id !== 'single' && id !== 'range') this.refreshAll();
+        },
+
+        applyPeriodDates() {
+            this.pagination.page = 1;
+            this.refreshAll();
         },
 
         getCookie(n) {
@@ -576,7 +901,7 @@ function financeDashboard() {
         setFilter(key, val) {
             this.filters[key] = val;
             this.pagination.page = 1;
-            this.loadEntries();
+            this.refreshAll();
         },
 
         filteredCategories() {
@@ -588,14 +913,39 @@ function financeDashboard() {
             return c ? c.name : 'Selecionar categoria';
         },
 
-        queryParams() {
+        getCategory(id) {
+            return this.categories.find(x => x.id == id) || null;
+        },
+
+        formatMonthLabel(ym) {
+            if (!ym) return '';
+            const [y, m] = ym.split('-');
+            const d = new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1);
+            return d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+        },
+
+        queryParams(includePage = true) {
             const p = new URLSearchParams();
-            p.set('page', this.pagination.page);
+            if (includePage) p.set('page', this.pagination.page);
             if (this.filters.search) p.set('search', this.filters.search);
             if (this.filters.entry_type) p.set('entry_type', this.filters.entry_type);
             if (this.filters.status) p.set('status', this.filters.status);
             if (this.filters.ordering) p.set('ordering', this.filters.ordering);
+            if (this.filters.period && this.filters.period !== 'all') {
+                p.set('period', this.filters.period);
+            }
+            if (this.filters.period === 'single' && this.filters.date_on) {
+                p.set('date_on', this.filters.date_on);
+            }
+            if (this.filters.period === 'range') {
+                if (this.filters.date_from) p.set('date_from', this.filters.date_from);
+                if (this.filters.date_to) p.set('date_to', this.filters.date_to);
+            }
             return p.toString();
+        },
+
+        chartQueryParams() {
+            return this.queryParams(false);
         },
 
         async loadCategories() {
@@ -625,48 +975,97 @@ function financeDashboard() {
         },
 
         async loadCharts() {
-            const r = await fetch('/api/finance/entries/chart-data/');
-            if (!r.ok) return;
-            const d = await r.json();
-            if (this.charts.monthly) this.charts.monthly.destroy();
-            if (this.charts.donut) this.charts.donut.destroy();
-            const gridColor = document.documentElement.classList.contains('dark') ? 'rgba(148,163,184,0.1)' : 'rgba(148,163,184,0.2)';
-            this.charts.monthly = new Chart(document.getElementById('chartMonthly'), {
+            if (typeof Chart === 'undefined') return;
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            try {
+                const r = await fetch('/api/finance/entries/chart-data/?' + this.chartQueryParams());
+                if (!r.ok) return;
+                this.chartCache = await r.json();
+                this.chartGranularity = this.chartCache.granularity || 'month';
+                this.chartHasData = !!this.chartCache.has_data;
+                this.renderCharts();
+            } catch (e) {
+                console.error('Erro ao carregar gráficos', e);
+            }
+        },
+
+        renderCharts() {
+            if (typeof Chart === 'undefined' || !this.chartCache) return;
+            const d = this.chartCache;
+            const elM = document.getElementById('chartMonthly');
+            const elD = document.getElementById('chartDonut');
+            if (!elM || !elD) return;
+
+            if (this.charts.monthly) { this.charts.monthly.destroy(); this.charts.monthly = null; }
+            if (this.charts.donut) { this.charts.donut.destroy(); this.charts.donut = null; }
+
+            const isDark = document.documentElement.classList.contains('dark');
+            const gridColor = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.2)';
+            const tickColor = isDark ? '#94a3b8' : '#64748b';
+
+            const rawLabels = d.monthly_labels || [];
+            const labels = rawLabels.map(l =>
+                d.granularity === 'day' ? this.formatDate(l) : this.formatMonthLabel(l),
+            );
+            const incomeData = (d.monthly_income || []).map(Number);
+            const expenseData = (d.monthly_expense || []).map(Number);
+
+            this.charts.monthly = new Chart(elM, {
                 type: 'bar',
                 data: {
-                    labels: d.monthly_labels,
+                    labels: labels.length ? labels : ['—'],
                     datasets: [
-                        { label: 'Entradas', data: d.monthly_income.map(Number), backgroundColor: '#10b981', borderRadius: 6 },
-                        { label: 'Despesas', data: d.monthly_expense.map(Number), backgroundColor: '#ef4444', borderRadius: 6 },
+                        {
+                            label: 'Entradas', data: incomeData.length ? incomeData : [0],
+                            backgroundColor: 'rgba(16, 185, 129, 0.85)', borderRadius: 6, borderSkipped: false,
+                        },
+                        {
+                            label: 'Despesas', data: expenseData.length ? expenseData : [0],
+                            backgroundColor: 'rgba(239, 68, 68, 0.85)', borderRadius: 6, borderSkipped: false,
+                        },
                     ],
                 },
                 options: {
                     responsive: true,
-                    animation: { duration: 800, easing: 'easeOutQuart' },
-                    plugins: { legend: { labels: { usePointStyle: true, padding: 16 } } },
+                    maintainAspectRatio: false,
+                    animation: { duration: 600 },
+                    plugins: { legend: { labels: { usePointStyle: true, padding: 12, color: tickColor } } },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: gridColor } },
-                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: tickColor } },
+                        x: { grid: { display: false }, ticks: { color: tickColor, maxRotation: 45 } },
                     },
                 },
             });
-            const catLabels = Object.keys(d.expense_by_category);
-            const catVals = Object.values(d.expense_by_category).map(Number);
-            this.charts.donut = new Chart(document.getElementById('chartDonut'), {
+
+            const donutSource = this.chartDonutMode === 'income'
+                ? (d.income_by_category || {})
+                : (d.expense_by_category || {});
+            const catLabels = Object.keys(donutSource);
+            const catVals = Object.values(donutSource).map(Number);
+            this.chartDonutHasData = catVals.some(v => v > 0);
+            const colors = catLabels.map(name => (d.category_colors && d.category_colors[name]) || '#6366f1');
+
+            this.charts.donut = new Chart(elD, {
                 type: 'doughnut',
                 data: {
                     labels: catLabels.length ? catLabels : ['Sem dados'],
                     datasets: [{
                         data: catVals.length ? catVals : [1],
-                        backgroundColor: ['#6366f1','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#10b981'],
+                        backgroundColor: catLabels.length ? colors : ['#334155'],
                         borderWidth: 0,
                     }],
                 },
                 options: {
                     responsive: true,
-                    animation: { animateRotate: true, duration: 900 },
-                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 12, font: { size: 11 } } } },
-                    cutout: '65%',
+                    maintainAspectRatio: false,
+                    animation: { duration: 600 },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, padding: 8, font: { size: 10 }, color: tickColor },
+                        },
+                    },
+                    cutout: '62%',
                 },
             });
         },
@@ -677,6 +1076,8 @@ function financeDashboard() {
         /* ── Modal ── */
         openModal(entry = null) {
             this.ui = { dateOpen: false, categoryOpen: false, statusOpen: false, fileDrag: false };
+            this.leadSearchQuery = '';
+            this.leadSearchResults = [];
             const today = new Date().toISOString().slice(0, 10);
             if (entry) {
                 this.modal = {
@@ -684,7 +1085,9 @@ function financeDashboard() {
                     entry_type: entry.entry_type, title: entry.title,
                     amount: entry.amount, amountDisplay: this.fmtMoney(entry.amount).replace('R$ ', ''),
                     date: entry.date, category: entry.category, status: entry.status,
-                    lead: entry.lead || '', notes: entry.notes || '',
+                    lead: entry.lead || '',
+                    leadSelected: entry.lead ? { id: entry.lead, name: entry.lead_name || 'Lead #' + entry.lead, city: '', status: '' } : null,
+                    notes: entry.notes || '',
                     is_recurring: false, file: null, fileName: '',
                 };
             } else {
@@ -693,7 +1096,8 @@ function financeDashboard() {
                     open: true, saving: false, id: null,
                     entry_type: 'income', title: '', amount: '', amountDisplay: '',
                     date: today, category: cat ? cat.id : '', status: 'pending',
-                    lead: '', notes: '', is_recurring: false, file: null, fileName: '',
+                    lead: '', leadSelected: null,
+                    notes: '', is_recurring: false, file: null, fileName: '',
                 };
             }
             const parts = this.modal.date.split('-');
@@ -793,6 +1197,102 @@ function financeDashboard() {
             if (this.$refs.fileInput) this.$refs.fileInput.value = '';
         },
 
+        async searchLeads() {
+            const q = this.leadSearchQuery.trim();
+            if (q.length < 2) {
+                this.leadSearchResults = [];
+                return;
+            }
+            this.leadSearchLoading = true;
+            try {
+                const r = await fetch('/api/finance/entries/search-leads/?q=' + encodeURIComponent(q));
+                if (r.ok) this.leadSearchResults = await r.json();
+            } finally {
+                this.leadSearchLoading = false;
+            }
+        },
+
+        selectLead(lead) {
+            this.modal.lead = lead.id;
+            this.modal.leadSelected = lead;
+            this.leadSearchQuery = '';
+            this.leadSearchResults = [];
+        },
+
+        clearLead() {
+            this.modal.lead = '';
+            this.modal.leadSelected = null;
+        },
+
+        openCategoryModal() {
+            this.catModal = {
+                open: true, saving: false, id: null,
+                name: '', category_type: 'income', color: '#6366f1',
+                icon: 'fa-circle', icon_svg: '',
+            };
+        },
+
+        editCategory(c) {
+            this.catModal = {
+                open: true, saving: false, id: c.id,
+                name: c.name, category_type: c.category_type,
+                color: c.color, icon: c.icon, icon_svg: c.icon_svg || '',
+            };
+        },
+
+        async saveCategory() {
+            if (!this.catModal.name.trim()) {
+                await NuviieModal.alert('Informe o nome da categoria.', 'Campo obrigatório');
+                return;
+            }
+            this.catModal.saving = true;
+            const payload = {
+                name: this.catModal.name.trim(),
+                category_type: this.catModal.category_type,
+                color: this.catModal.color,
+                icon: this.catModal.icon || 'fa-circle',
+                icon_svg: this.catModal.icon_svg || '',
+            };
+            const url = this.catModal.id
+                ? `/api/finance/categories/${this.catModal.id}/`
+                : '/api/finance/categories/';
+            try {
+                const r = await fetch(url, {
+                    method: this.catModal.id ? 'PATCH' : 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
+                    body: JSON.stringify(payload),
+                });
+                if (r.ok) {
+                    await this.loadCategories();
+                    await this.refreshAll();
+                    this.catModal.id = null;
+                    this.catModal.name = '';
+                    this.catModal.icon_svg = '';
+                    this.catModal.icon = 'fa-circle';
+                } else {
+                    const err = await r.json().catch(() => ({}));
+                    await NuviieModal.alert(err.detail || 'Erro ao salvar categoria.', 'Erro');
+                }
+            } finally {
+                this.catModal.saving = false;
+            }
+        },
+
+        async deleteCategory(c) {
+            if (!await NuviieModal.confirm('Excluir categoria "' + c.name + '"?', 'Confirmar', { danger: true, confirmLabel: 'Excluir' })) return;
+            const r = await fetch(`/api/finance/categories/${c.id}/`, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
+            });
+            if (r.ok) {
+                await this.loadCategories();
+                await this.refreshAll();
+            } else {
+                const err = await r.json().catch(() => ({}));
+                await NuviieModal.alert(err.detail || 'Não foi possível excluir.', 'Erro');
+            }
+        },
+
         async saveEntry() {
             this.formatAmountInput();
             if (!this.modal.title.trim()) {
@@ -811,7 +1311,7 @@ function financeDashboard() {
             fd.append('date', this.modal.date);
             fd.append('category', this.modal.category);
             fd.append('status', this.modal.status);
-            if (this.modal.lead) fd.append('lead', String(this.modal.lead).replace(/\D/g, ''));
+            if (this.modal.lead) fd.append('lead', String(this.modal.lead));
             fd.append('notes', this.modal.notes || '');
             fd.append('is_recurring', this.modal.is_recurring ? 'true' : 'false');
             if (this.modal.is_recurring) {
@@ -831,8 +1331,7 @@ function financeDashboard() {
                 });
                 if (r.ok) {
                     this.closeModal();
-                    await this.loadEntries();
-                    await this.loadCharts();
+                    await this.refreshAll();
                 } else {
                     const err = await r.json().catch(() => ({}));
                     await NuviieModal.alert(err.detail || JSON.stringify(err) || 'Erro ao salvar.', 'Erro');
@@ -845,8 +1344,7 @@ function financeDashboard() {
         async deleteEntry(e) {
             if (!await NuviieModal.confirm('Excluir este lançamento?', 'Confirmar exclusão', { danger: true, confirmLabel: 'Excluir' })) return;
             await fetch(`/api/finance/entries/${e.id}/`, { method: 'DELETE', headers: { 'X-CSRFToken': this.getCookie('csrftoken') } });
-            await this.loadEntries();
-            await this.loadCharts();
+            await this.refreshAll();
         },
 
         exportData(fmt) {

@@ -12,6 +12,7 @@ class FinanceCategory(models.Model):
     category_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     color = models.CharField(max_length=7, default='#6366f1')
     icon = models.CharField(max_length=50, default='fa-circle')
+    icon_svg = models.TextField(blank=True, default='', help_text='SVG inline opcional')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

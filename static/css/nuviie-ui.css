@@ -373,8 +373,103 @@
 .nui-badge-confirmed { background: rgba(16, 185, 129, 0.15); color: #059669; }
 .dark .nui-badge-confirmed { color: #34d399; }
 
-/* ── Modal overlay ── */
+/* ── Stat numbers ── */
+.nui-stat-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+@media (min-width: 1024px) {
+    .nui-stat-value { font-size: 2rem; }
+}
+
+/* ── Calendar in modal — no horizontal overflow ── */
+.nui-calendar-anchor { position: relative; }
+.nui-calendar.in-modal {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    left: auto;
+    width: 15.5rem;
+    max-width: 100%;
+    z-index: 70;
+}
 .nui-modal-panel {
     max-height: min(90vh, 720px);
     overflow-y: auto;
+    overflow-x: hidden;
 }
+
+/* ── Lead picker ── */
+.nui-lead-picker {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.875rem;
+    overflow: hidden;
+    background: rgba(255,255,255,0.5);
+}
+.dark .nui-lead-picker {
+    border-color: #334155;
+    background: rgba(15,23,42,0.5);
+}
+.nui-lead-result {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    text-align: left;
+    font-size: 0.8125rem;
+    transition: background 0.15s;
+    cursor: pointer;
+}
+.nui-lead-result:hover { background: rgba(99,102,241,0.08); }
+.nui-lead-selected {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.625rem 0.875rem;
+    background: rgba(99,102,241,0.08);
+    border-radius: 0.75rem;
+    border: 1px solid rgba(99,102,241,0.2);
+}
+
+/* ── Category icon box ── */
+.nui-cat-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+.nui-cat-icon svg { width: 1rem; height: 1rem; }
+
+/* ── Fullscreen table ── */
+.nui-table-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9980;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    animation: nui-fade-in 0.25s ease both;
+}
+.dark .nui-table-fullscreen { background: #020617; }
+
+/* ── SVG preview box ── */
+.nui-svg-preview {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.625rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e2e8f0;
+}
+.dark .nui-svg-preview { border-color: #334155; }
+.nui-svg-preview svg { width: 1.25rem; height: 1.25rem; }
+

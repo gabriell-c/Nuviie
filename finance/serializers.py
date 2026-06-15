@@ -1,17 +1,25 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from .models import FinanceCategory, FinanceEntry
 
 
 class FinanceCategorySerializer(serializers.ModelSerializer):
+    entry_count = serializers.SerializerMethodField()
+
     class Meta:
         model = FinanceCategory
-        fields = ['id', 'name', 'category_type', 'color', 'icon', 'created_at']
+        fields = ['id', 'name', 'category_type', 'color', 'icon', 'icon_svg', 'entry_count', 'created_at']
+
+    def get_entry_count(self, obj):
+        return obj.entries.exclude(status='cancelled').count()
 
 
 class FinanceEntrySerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     category_color = serializers.CharField(source='category.color', read_only=True)
+    category_icon = serializers.CharField(source='category.icon', read_only=True)
+    category_icon_svg = serializers.CharField(source='category.icon_svg', read_only=True)
     lead_name = serializers.CharField(source='lead.name', read_only=True, allow_null=True)
     contract_name = serializers.CharField(source='contract.client_name', read_only=True, allow_null=True)
     attachment_url = serializers.SerializerMethodField()
@@ -20,7 +28,7 @@ class FinanceEntrySerializer(serializers.ModelSerializer):
         model = FinanceEntry
         fields = [
             'id', 'entry_type', 'title', 'amount', 'date', 'due_date',
-            'category', 'category_name', 'category_color',
+            'category', 'category_name', 'category_color', 'category_icon', 'category_icon_svg',
             'lead', 'lead_name', 'contract', 'contract_name',
             'status', 'attachment', 'attachment_url', 'attachment_kind',
             'is_recurring', 'recurrence_rule', 'parent_recurring',
