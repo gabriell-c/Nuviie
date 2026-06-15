@@ -151,6 +151,22 @@ NuviieMaps.scrollToWebResults = async () => {
   await NuviieMaps.sleep(1200);
 };
 
+NuviieMaps.scrollToTopContact = async () => {
+  const scrollScript = (scrollTop) => {
+    const containers = [
+      document.querySelector('div[role="main"]'),
+      document.querySelector('.DxyBCb'),
+      document.querySelector('.bJzME'),
+      document.querySelector('.siAUzd'),
+    ];
+    const p = containers.find((c) => c && c.scrollHeight > window.innerHeight);
+    if (p) p.scrollTop = scrollTop;
+    else window.scrollTo(0, scrollTop);
+  };
+  scrollScript(0);
+  await NuviieMaps.sleep(800);
+};
+
 NuviieMaps.revealContactButtons = async () => {
   const selectors = [
     'button[data-item-id*="phone"]',

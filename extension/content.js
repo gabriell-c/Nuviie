@@ -26,28 +26,30 @@ NuviieMaps.extractSinglePlace = async (linkInfo, options) => {
   await NuviieMaps.scrollPanel();
   await NuviieMaps.expandHours();
 
+  const contactSnapshot = NuviieMaps.extractContactFields();
+
   const aboutAmenities = await NuviieMaps.visitAboutTab();
   const reviews = await NuviieMaps.visitReviewsTab();
 
   await NuviieMaps.revealContactButtons();
   await NuviieMaps.revealContactButtons();
 
+  await NuviieMaps.scrollToTopContact();
   await NuviieMaps.scrollToWebResults();
   await NuviieMaps.waitForWebResultsIframe(name);
 
   let jsData = NuviieMaps.extractAll();
-  if (!jsData.facebook || !jsData.instagram) {
+  jsData = NuviieMaps.mergeExtractData(jsData, contactSnapshot);
+  if (!jsData.facebook || !jsData.instagram || !jsData.website) {
     await NuviieMaps.sleep(800);
     await NuviieMaps.waitForWebResultsIframe(name, 3000);
     const retry = NuviieMaps.extractAll();
-    for (const [k, v] of Object.entries(retry)) {
-      if (v && !jsData[k]) jsData[k] = v;
-    }
+    jsData = NuviieMaps.mergeExtractData(jsData, NuviieMaps.mergeExtractData(retry, contactSnapshot));
   }
   if (!jsData.phone || !jsData.address) {
     await NuviieMaps.revealContactButtons();
     const retry = NuviieMaps.extractAll();
-    jsData = { ...jsData, ...Object.fromEntries(Object.entries(retry).filter(([, v]) => v)) };
+    jsData = NuviieMaps.mergeExtractData(jsData, NuviieMaps.mergeExtractData(retry, contactSnapshot));
   }
 
   const hoursExtra = NuviieMaps.extractHours();

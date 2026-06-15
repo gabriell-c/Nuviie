@@ -67,6 +67,15 @@ NuviieMaps.mapToLead = (raw, { city, niche, mapsUrl, reviews, aboutAmenities, ho
   let twitter = js.twitter || null;
   let linkedin = js.linkedin || null;
 
+  if (!rawWebsite && js.menu && js.menu !== 'disponível') {
+    const menuType = NuviieMaps.detectWebsiteType(js.menu);
+    if (menuType === 'website') {
+      rawWebsite = js.menu;
+      websiteType = menuType;
+      website = rawWebsite;
+    }
+  }
+
   if (!twitter && js.tiktok) {
     const tt = String(js.tiktok).replace(/^@/, '');
     twitter = tt.startsWith('http') ? tt : `https://www.tiktok.com/@${tt}`;

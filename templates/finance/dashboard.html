@@ -1,0 +1,858 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/nuviie-ui.css' %}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="nui max-w-7xl mx-auto space-y-6 pb-8" x-data="financeDashboard()" x-init="init()">
+
+    <!-- Header -->
+    <div class="nui-animate-in flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-start gap-4">
+            <div class="nui-stat-icon bg-gradient-to-br from-emerald-500/20 to-indigo-500/20 text-emerald-500 shrink-0">
+                <i class="fa-solid fa-wallet"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Controle Financeiro</h1>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span><i class="fa-solid fa-users text-[10px] text-indigo-400"></i> Workspace compartilhado</span>
+                    <span class="text-slate-300 dark:text-slate-700">·</span>
+                    <span><i class="fa-solid fa-chart-line text-[10px] text-emerald-400"></i> Fluxo em tempo real</span>
+                </p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button @click="exportData('xlsx')"
+                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 hover:border-emerald-500/50">
+                <i class="fa-solid fa-file-excel text-emerald-500"></i> Export XLSX
+            </button>
+            <button @click="exportData('csv')"
+                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60">
+                <i class="fa-solid fa-file-csv text-sky-500"></i> CSV
+            </button>
+            <button @click="openModal()"
+                    class="btn-interactive inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl gradient-bg-primary text-white shadow-lg shadow-indigo-500/25">
+                <i class="fa-solid fa-circle-plus"></i> Novo lançamento
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="nui-stat-card nui-animate-in nui-delay-1">
+            <div class="flex items-center justify-between mb-3">
+                <div class="nui-stat-icon bg-emerald-500/15 text-emerald-500"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Entradas</span>
+            </div>
+            <p class="text-2xl font-bold text-emerald-500 tabular-nums" x-text="fmtMoney(summary.income_confirmed)"></p>
+            <p class="text-[10px] text-slate-400 mt-1">Confirmadas no período</p>
+        </div>
+        <div class="nui-stat-card nui-animate-in nui-delay-2">
+            <div class="flex items-center justify-between mb-3">
+                <div class="nui-stat-icon bg-red-500/15 text-red-500"><i class="fa-solid fa-arrow-trend-down"></i></div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Despesas</span>
+            </div>
+            <p class="text-2xl font-bold text-red-500 tabular-nums" x-text="fmtMoney(summary.expense_confirmed)"></p>
+            <p class="text-[10px] text-slate-400 mt-1">Saídas confirmadas</p>
+        </div>
+        <div class="nui-stat-card nui-animate-in nui-delay-3">
+            <div class="flex items-center justify-between mb-3">
+                <div class="nui-stat-icon bg-indigo-500/15 text-indigo-500"><i class="fa-solid fa-scale-balanced"></i></div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Saldo</span>
+            </div>
+            <p class="text-2xl font-bold text-slate-800 dark:text-white tabular-nums" x-text="fmtMoney(summary.balance)"></p>
+            <p class="text-[10px] text-slate-400 mt-1">Entradas − despesas</p>
+        </div>
+        <div class="nui-stat-card nui-animate-in nui-delay-4">
+            <div class="flex items-center justify-between mb-3">
+                <div class="nui-stat-icon bg-amber-500/15 text-amber-500"><i class="fa-solid fa-clock"></i></div>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">A receber</span>
+            </div>
+            <p class="text-2xl font-bold text-amber-500 tabular-nums" x-text="fmtMoney(summary.pending_income)"></p>
+            <p class="text-[10px] text-slate-400 mt-1">Pendentes de confirmação</p>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="glass-panel p-5 rounded-2xl lg:col-span-2 nui-animate-in nui-delay-4">
+            <div class="flex items-center gap-2 mb-4">
+                <i class="fa-solid fa-chart-column text-indigo-500 text-sm"></i>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Fluxo mensal</h3>
+            </div>
+            <canvas id="chartMonthly" height="120"></canvas>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl nui-animate-in nui-delay-5">
+            <div class="flex items-center gap-2 mb-4">
+                <i class="fa-solid fa-chart-pie text-amber-500 text-sm"></i>
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Despesas por categoria</h3>
+            </div>
+            <canvas id="chartDonut" height="180"></canvas>
+        </div>
+    </div>
+
+    <!-- Table section -->
+    <div class="glass-panel rounded-2xl overflow-hidden nui-animate-in nui-delay-5">
+        <!-- Filters -->
+        <div class="px-4 py-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-filter text-slate-400 text-xs"></i>
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Filtros</span>
+            </div>
+            <div class="flex flex-col lg:flex-row gap-3">
+                <div class="nui-input-wrap flex-1 min-w-[200px]">
+                    <i class="fa-solid fa-magnifying-glass nui-input-icon"></i>
+                    <input type="search" x-model.debounce.350ms="filters.search" @input="loadEntries()"
+                           placeholder="Buscar título, cliente ou notas..."
+                           class="nui-input">
+                </div>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase mr-1">Tipo</span>
+                    <button type="button" @click="setFilter('entry_type', '')"
+                            class="nui-pill" :class="!filters.entry_type && 'active'">
+                        <i class="fa-solid fa-layer-group text-[10px]"></i> Todos
+                    </button>
+                    <button type="button" @click="setFilter('entry_type', 'income')"
+                            class="nui-pill" :class="filters.entry_type === 'income' && 'active'">
+                        <i class="fa-solid fa-arrow-up text-[10px] text-emerald-500"></i> Entradas
+                    </button>
+                    <button type="button" @click="setFilter('entry_type', 'expense')"
+                            class="nui-pill" :class="filters.entry_type === 'expense' && 'active'">
+                        <i class="fa-solid fa-arrow-down text-[10px] text-red-500"></i> Despesas
+                    </button>
+                </div>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase mr-1">Status</span>
+                    <button type="button" @click="setFilter('status', '')"
+                            class="nui-pill" :class="!filters.status && 'active'">Todos</button>
+                    <button type="button" @click="setFilter('status', 'pending')"
+                            class="nui-pill" :class="filters.status === 'pending' && 'active'">
+                        <i class="fa-solid fa-hourglass-half text-[10px] text-amber-500"></i> Pendente
+                    </button>
+                    <button type="button" @click="setFilter('status', 'confirmed')"
+                            class="nui-pill" :class="filters.status === 'confirmed' && 'active'">
+                        <i class="fa-solid fa-circle-check text-[10px] text-emerald-500"></i> Confirmado
+                    </button>
+                </div>
+                <!-- Custom sort dropdown -->
+                <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false">
+                    <button type="button" @click="open = !open"
+                            class="nui-select-trigger !w-auto min-w-[140px]" :class="open && 'open'">
+                        <span class="flex items-center gap-2 truncate">
+                            <i class="fa-solid fa-arrow-down-wide-short text-slate-400 text-xs"></i>
+                            <span x-text="orderingLabel()"></span>
+                        </span>
+                        <i class="fa-solid fa-chevron-down chevron"></i>
+                    </button>
+                    <div x-show="open" @click.outside="open = false" x-cloak class="nui-dropdown !w-44 right-0 left-auto">
+                        <template x-for="opt in orderingOptions" :key="opt.value">
+                            <button type="button" @click="filters.ordering = opt.value; open = false; loadEntries()"
+                                    class="nui-dropdown-item" :class="filters.ordering === opt.value && 'active'">
+                                <i class="fa-solid text-[10px]" :class="opt.icon"></i>
+                                <span x-text="opt.label"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="text-slate-400 uppercase text-[10px] bg-slate-50/80 dark:bg-slate-900/50">
+                    <tr>
+                        <th class="px-4 py-3 font-bold"><i class="fa-regular fa-calendar mr-1"></i> Data</th>
+                        <th class="px-4 py-3 font-bold"><i class="fa-solid fa-tag mr-1"></i> Título</th>
+                        <th class="px-4 py-3 font-bold"><i class="fa-solid fa-folder mr-1"></i> Categoria</th>
+                        <th class="px-4 py-3 font-bold"><i class="fa-solid fa-user mr-1"></i> Cliente</th>
+                        <th class="px-4 py-3 font-bold"><i class="fa-solid fa-coins mr-1"></i> Valor</th>
+                        <th class="px-4 py-3 font-bold"><i class="fa-solid fa-circle-dot mr-1"></i> Status</th>
+                        <th class="px-4 py-3 font-bold text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-if="!loading && entries.length === 0">
+                        <tr>
+                            <td colspan="7" class="px-4 py-16 text-center">
+                                <div class="inline-flex flex-col items-center gap-3 nui-animate-in">
+                                    <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center">
+                                        <i class="fa-solid fa-receipt text-2xl text-indigo-400"></i>
+                                    </div>
+                                    <p class="font-semibold text-slate-600 dark:text-slate-300">Nenhum lançamento encontrado</p>
+                                    <p class="text-xs text-slate-400 max-w-xs">Crie um novo lançamento ou ajuste os filtros acima.</p>
+                                    <button @click="openModal()" class="mt-1 px-4 py-2 text-xs font-semibold rounded-xl gradient-bg-primary text-white">
+                                        <i class="fa-solid fa-plus mr-1"></i> Criar primeiro lançamento
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-for="(e, idx) in entries" :key="e.id">
+                        <tr class="nui-table-row border-b border-slate-50 dark:border-slate-800/50 hover:bg-indigo-500/[0.03] dark:hover:bg-indigo-500/[0.06] transition-colors"
+                            :style="'animation-delay:' + (idx * 0.04) + 's'">
+                            <td class="px-4 py-3 text-slate-500 tabular-nums whitespace-nowrap" x-text="formatDate(e.date)"></td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs"
+                                          :class="e.entry_type === 'income' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'">
+                                        <i class="fa-solid" :class="e.entry_type === 'income' ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
+                                    </span>
+                                    <span class="font-semibold text-slate-800 dark:text-slate-100" x-text="e.title"></span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                                    <span class="w-2 h-2 rounded-full shrink-0" :style="'background:' + (e.category_color || '#6366f1')"></span>
+                                    <span x-text="e.category_name"></span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-slate-500" x-text="e.lead_name || '—'"></td>
+                            <td class="px-4 py-3 font-bold tabular-nums whitespace-nowrap"
+                                :class="e.entry_type === 'income' ? 'text-emerald-500' : 'text-red-500'"
+                                x-text="(e.entry_type === 'expense' ? '− ' : '+ ') + fmtMoney(e.amount)"></td>
+                            <td class="px-4 py-3">
+                                <span class="nui-badge"
+                                      :class="e.status === 'confirmed' ? 'nui-badge-confirmed' : 'nui-badge-pending'">
+                                    <i class="fa-solid text-[8px]" :class="e.status === 'confirmed' ? 'fa-check' : 'fa-clock'"></i>
+                                    <span x-text="e.status === 'confirmed' ? 'Confirmado' : 'Pendente'"></span>
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-right whitespace-nowrap">
+                                <button @click="openModal(e)" title="Editar"
+                                        class="w-8 h-8 rounded-lg inline-flex items-center justify-center text-indigo-500 hover:bg-indigo-500/10 transition">
+                                    <i class="fa-solid fa-pen text-xs"></i>
+                                </button>
+                                <button @click="deleteEntry(e)" title="Excluir"
+                                        class="w-8 h-8 rounded-lg inline-flex items-center justify-center text-red-400 hover:bg-red-500/10 transition ml-1">
+                                    <i class="fa-solid fa-trash text-xs"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-400">
+            <span class="flex items-center gap-2">
+                <i class="fa-solid fa-list-ul"></i>
+                <span x-text="'Página ' + pagination.page + ' · ' + entries.length + ' itens'"></span>
+            </span>
+            <div class="flex gap-2">
+                <button @click="prevPage()" :disabled="!pagination.previous"
+                        class="btn-interactive inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 text-slate-600 dark:text-slate-300">
+                    <i class="fa-solid fa-chevron-left text-[10px]"></i> Anterior
+                </button>
+                <button @click="nextPage()" :disabled="!pagination.next"
+                        class="btn-interactive inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 text-slate-600 dark:text-slate-300">
+                    Próxima <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal CRUD -->
+    <template x-teleport="body">
+        <div x-show="modal.open" x-cloak class="fixed inset-0 z-[9990] flex items-center justify-center p-4"
+             @keydown.escape.window="closeModal()">
+            <!-- Backdrop -->
+            <div x-show="modal.open"
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+                 @click="closeModal()"></div>
+
+            <!-- Panel -->
+            <div x-show="modal.open"
+                 x-transition:enter="transition ease-out duration-350"
+                 x-transition:enter-start="opacity-0 scale-95 translate-y-6"
+                 x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-250"
+                 x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+                 class="relative w-full max-w-lg glass-panel rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-700 nui-modal-panel"
+                 @click.stop>
+
+                <!-- Modal header -->
+                <div class="sticky top-0 z-10 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-t-2xl flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                             :class="modal.entry_type === 'income' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'">
+                            <i class="fa-solid" :class="modal.id ? 'fa-pen-to-square' : 'fa-circle-plus'"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-base text-slate-900 dark:text-white" x-text="modal.id ? 'Editar lançamento' : 'Novo lançamento'"></h3>
+                            <p class="text-[10px] text-slate-400" x-text="modal.entry_type === 'income' ? 'Registrar entrada de receita' : 'Registrar despesa'"></p>
+                        </div>
+                    </div>
+                    <button @click="closeModal()" class="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="px-6 py-5 space-y-5">
+                    <!-- Tipo segment -->
+                    <div class="nui-field">
+                        <label><i class="fa-solid fa-shuffle"></i> Tipo de lançamento</label>
+                        <div class="nui-segment">
+                            <button type="button" @click="setModalType('income')"
+                                    class="nui-segment-btn" :class="modal.entry_type === 'income' && 'active-income'">
+                                <i class="fa-solid fa-arrow-trend-up"></i> Entrada
+                            </button>
+                            <button type="button" @click="setModalType('expense')"
+                                    class="nui-segment-btn" :class="modal.entry_type === 'expense' && 'active-expense'">
+                                <i class="fa-solid fa-arrow-trend-down"></i> Despesa
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Título -->
+                    <div class="nui-field">
+                        <label><i class="fa-solid fa-heading"></i> Título</label>
+                        <div class="nui-input-wrap">
+                            <i class="fa-solid fa-pencil nui-input-icon"></i>
+                            <input type="text" x-model="modal.title" placeholder="Ex: Pagamento cliente — parcela 1" class="nui-input">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- Valor -->
+                        <div class="nui-field">
+                            <label><i class="fa-solid fa-brazilian-real-sign"></i> Valor</label>
+                            <div class="nui-input-wrap">
+                                <i class="fa-solid fa-coins nui-input-icon"></i>
+                                <input type="text" inputmode="decimal" x-model="modal.amountDisplay"
+                                       @blur="formatAmountInput()" placeholder="0,00" class="nui-input tabular-nums">
+                            </div>
+                        </div>
+
+                        <!-- Date picker custom -->
+                        <div class="nui-field relative" @click.outside="ui.dateOpen = false">
+                            <label><i class="fa-regular fa-calendar"></i> Data</label>
+                            <button type="button" @click="ui.dateOpen = !ui.dateOpen"
+                                    class="nui-select-trigger w-full" :class="ui.dateOpen && 'open'">
+                                <span class="flex items-center gap-2">
+                                    <i class="fa-regular fa-calendar text-slate-400 text-xs"></i>
+                                    <span x-text="formatDateDisplay(modal.date)"></span>
+                                </span>
+                                <i class="fa-solid fa-chevron-down chevron"></i>
+                            </button>
+                            <div x-show="ui.dateOpen" x-cloak class="nui-calendar left-0 right-0">
+                                <div class="flex items-center justify-between mb-3">
+                                    <button type="button" @click="calPrevMonth()" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center">
+                                        <i class="fa-solid fa-chevron-left text-xs"></i>
+                                    </button>
+                                    <span class="text-sm font-bold capitalize" x-text="calMonthLabel()"></span>
+                                    <button type="button" @click="calNextMonth()" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center">
+                                        <i class="fa-solid fa-chevron-right text-xs"></i>
+                                    </button>
+                                </div>
+                                <div class="grid grid-cols-7 gap-0.5 mb-1">
+                                    <template x-for="d in ['D','S','T','Q','Q','S','S']" :key="d">
+                                        <div class="text-[10px] font-bold text-slate-400 text-center py-1" x-text="d"></div>
+                                    </template>
+                                </div>
+                                <div class="grid grid-cols-7 gap-0.5">
+                                    <template x-for="(cell, ci) in calCells()" :key="ci">
+                                        <button type="button"
+                                                @click="cell.day && pickDate(cell.day)"
+                                                class="nui-cal-day"
+                                                :class="{
+                                                    'empty': !cell.day,
+                                                    'selected': cell.day && isSelectedDate(cell.day),
+                                                    'today': cell.day && isToday(cell.day) && !isSelectedDate(cell.day),
+                                                }"
+                                                x-text="cell.day || ''"></button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- Categoria dropdown -->
+                        <div class="nui-field relative" @click.outside="ui.categoryOpen = false">
+                            <label><i class="fa-solid fa-folder-open"></i> Categoria</label>
+                            <button type="button" @click="ui.categoryOpen = !ui.categoryOpen"
+                                    class="nui-select-trigger" :class="ui.categoryOpen && 'open'">
+                                <span class="truncate" x-text="categoryLabel(modal.category)"></span>
+                                <i class="fa-solid fa-chevron-down chevron"></i>
+                            </button>
+                            <div x-show="ui.categoryOpen" x-cloak class="nui-dropdown">
+                                <template x-for="c in filteredCategories()" :key="c.id">
+                                    <button type="button" @click="modal.category = c.id; ui.categoryOpen = false"
+                                            class="nui-dropdown-item" :class="modal.category == c.id && 'active'">
+                                        <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="'background:' + c.color"></span>
+                                        <span x-text="c.name"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Status dropdown -->
+                        <div class="nui-field relative" @click.outside="ui.statusOpen = false">
+                            <label><i class="fa-solid fa-circle-dot"></i> Status</label>
+                            <button type="button" @click="ui.statusOpen = !ui.statusOpen"
+                                    class="nui-select-trigger" :class="ui.statusOpen && 'open'">
+                                <span class="flex items-center gap-2">
+                                    <i class="fa-solid text-[10px]" :class="modal.status === 'confirmed' ? 'fa-circle-check text-emerald-500' : 'fa-clock text-amber-500'"></i>
+                                    <span x-text="modal.status === 'confirmed' ? 'Confirmado' : 'Pendente'"></span>
+                                </span>
+                                <i class="fa-solid fa-chevron-down chevron"></i>
+                            </button>
+                            <div x-show="ui.statusOpen" x-cloak class="nui-dropdown">
+                                <button type="button" @click="modal.status = 'pending'; ui.statusOpen = false"
+                                        class="nui-dropdown-item" :class="modal.status === 'pending' && 'active'">
+                                    <i class="fa-solid fa-clock text-amber-500 text-[10px]"></i> Pendente
+                                </button>
+                                <button type="button" @click="modal.status = 'confirmed'; ui.statusOpen = false"
+                                        class="nui-dropdown-item" :class="modal.status === 'confirmed' && 'active'">
+                                    <i class="fa-solid fa-circle-check text-emerald-500 text-[10px]"></i> Confirmado
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lead -->
+                    <div class="nui-field">
+                        <label><i class="fa-solid fa-user-tie"></i> Lead / Cliente <span class="normal-case font-normal text-slate-500">(opcional)</span></label>
+                        <div class="nui-input-wrap">
+                            <i class="fa-solid fa-hashtag nui-input-icon"></i>
+                            <input type="text" inputmode="numeric" pattern="[0-9]*" x-model="modal.lead"
+                                   placeholder="ID do lead no CRM" class="nui-input">
+                        </div>
+                    </div>
+
+                    <!-- Recurring toggle -->
+                    <div class="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-lg bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                <i class="fa-solid fa-repeat text-sm"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">Recorrente mensal</p>
+                                <p class="text-[10px] text-slate-400">Gera lançamentos automáticos todo mês</p>
+                            </div>
+                        </div>
+                        <button type="button" @click="modal.is_recurring = !modal.is_recurring"
+                                class="nui-toggle" :class="modal.is_recurring && 'on'" role="switch"
+                                :aria-checked="modal.is_recurring">
+                            <span class="nui-toggle-knob"></span>
+                        </button>
+                    </div>
+
+                    <!-- File dropzone -->
+                    <div class="nui-field">
+                        <label>
+                            <i class="fa-solid fa-paperclip"></i>
+                            <span x-text="modal.entry_type === 'expense' ? 'Extrato / comprovante' : 'Comprovante de pagamento'"></span>
+                        </label>
+                        <div class="nui-dropzone"
+                             :class="[modal.fileName && 'has-file', ui.fileDrag && 'dragover']"
+                             @click="$refs.fileInput.click()"
+                             @dragover.prevent="ui.fileDrag = true"
+                             @dragleave.prevent="ui.fileDrag = false"
+                             @drop.prevent="handleFileDrop($event)">
+                            <input type="file" x-ref="fileInput" class="hidden" accept=".pdf,.png,.jpg,.jpeg,.webp"
+                                   @change="handleFileSelect($event)">
+                            <template x-if="!modal.fileName">
+                                <div class="space-y-2">
+                                    <div class="w-12 h-12 mx-auto rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+                                        <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                                    </div>
+                                    <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">Arraste ou clique para anexar</p>
+                                    <p class="text-[10px] text-slate-400">PDF, PNG ou JPG — máx. recomendado 5 MB</p>
+                                </div>
+                            </template>
+                            <template x-if="modal.fileName">
+                                <div class="flex items-center justify-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-emerald-500/15 text-emerald-500 flex items-center justify-center">
+                                        <i class="fa-solid fa-file-circle-check"></i>
+                                    </div>
+                                    <div class="text-left">
+                                        <p class="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate max-w-[200px]" x-text="modal.fileName"></p>
+                                        <button type="button" @click.stop="clearFile()" class="text-[10px] text-red-400 hover:text-red-500 font-semibold mt-0.5">
+                                            <i class="fa-solid fa-trash-can mr-1"></i> Remover
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Notas -->
+                    <div class="nui-field">
+                        <label><i class="fa-solid fa-note-sticky"></i> Notas</label>
+                        <textarea x-model="modal.notes" rows="3" placeholder="Observações internas..."
+                                  class="nui-input resize-y min-h-[80px]"></textarea>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="sticky bottom-0 px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-b-2xl flex justify-end gap-2">
+                    <button @click="closeModal()"
+                            class="btn-interactive px-5 py-2.5 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                        Cancelar
+                    </button>
+                    <button @click="saveEntry()" :disabled="modal.saving"
+                            class="btn-interactive inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl gradient-bg-primary text-white shadow-lg shadow-indigo-500/20 disabled:opacity-60">
+                        <i class="fa-solid" :class="modal.saving ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+                        <span x-text="modal.saving ? 'Salvando...' : 'Salvar lançamento'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function financeDashboard() {
+    return {
+        loading: false,
+        entries: [],
+        categories: [],
+        summary: { income_confirmed: 0, expense_confirmed: 0, balance: 0, pending_income: 0 },
+        filters: { search: '', entry_type: '', status: '', ordering: '-date' },
+        pagination: { page: 1, next: null, previous: null },
+        modal: {
+            open: false, saving: false, id: null,
+            entry_type: 'income', title: '', amount: '', amountDisplay: '',
+            date: '', category: '', status: 'pending', lead: '',
+            notes: '', is_recurring: false, file: null, fileName: '',
+        },
+        ui: { dateOpen: false, categoryOpen: false, statusOpen: false, fileDrag: false },
+        cal: { year: new Date().getFullYear(), month: new Date().getMonth() },
+        charts: { monthly: null, donut: null },
+        orderingOptions: [
+            { value: '-date', label: 'Data ↓ recente', icon: 'fa-arrow-down' },
+            { value: 'date', label: 'Data ↑ antiga', icon: 'fa-arrow-up' },
+            { value: '-amount', label: 'Valor ↓ maior', icon: 'fa-arrow-down-wide-short' },
+            { value: 'amount', label: 'Valor ↑ menor', icon: 'fa-arrow-up-wide-short' },
+        ],
+
+        async init() {
+            await this.loadCategories();
+            await this.loadSummary();
+            await this.loadEntries();
+            await this.loadCharts();
+        },
+
+        getCookie(n) {
+            const m = document.cookie.match(new RegExp('(^| )' + n + '=([^;]+)'));
+            return m ? decodeURIComponent(m[2]) : '';
+        },
+
+        fmtMoney(v) {
+            const n = Number(v) || 0;
+            return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+        },
+
+        formatDate(iso) {
+            if (!iso) return '—';
+            return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR');
+        },
+
+        formatDateDisplay(iso) {
+            if (!iso) return 'Selecionar data';
+            return this.formatDate(iso);
+        },
+
+        orderingLabel() {
+            const o = this.orderingOptions.find(x => x.value === this.filters.ordering);
+            return o ? o.label : 'Ordenar';
+        },
+
+        setFilter(key, val) {
+            this.filters[key] = val;
+            this.pagination.page = 1;
+            this.loadEntries();
+        },
+
+        filteredCategories() {
+            return this.categories.filter(c => c.category_type === this.modal.entry_type);
+        },
+
+        categoryLabel(id) {
+            const c = this.categories.find(x => x.id == id);
+            return c ? c.name : 'Selecionar categoria';
+        },
+
+        queryParams() {
+            const p = new URLSearchParams();
+            p.set('page', this.pagination.page);
+            if (this.filters.search) p.set('search', this.filters.search);
+            if (this.filters.entry_type) p.set('entry_type', this.filters.entry_type);
+            if (this.filters.status) p.set('status', this.filters.status);
+            if (this.filters.ordering) p.set('ordering', this.filters.ordering);
+            return p.toString();
+        },
+
+        async loadCategories() {
+            const r = await fetch('/api/finance/categories/');
+            if (r.ok) this.categories = await r.json();
+        },
+
+        async loadSummary() {
+            const r = await fetch('/api/finance/entries/summary/?' + this.queryParams());
+            if (r.ok) this.summary = await r.json();
+        },
+
+        async loadEntries() {
+            this.loading = true;
+            try {
+                const r = await fetch('/api/finance/entries/?' + this.queryParams());
+                if (r.ok) {
+                    const data = await r.json();
+                    this.entries = data.results || data;
+                    this.pagination.next = data.next;
+                    this.pagination.previous = data.previous;
+                }
+                await this.loadSummary();
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async loadCharts() {
+            const r = await fetch('/api/finance/entries/chart-data/');
+            if (!r.ok) return;
+            const d = await r.json();
+            if (this.charts.monthly) this.charts.monthly.destroy();
+            if (this.charts.donut) this.charts.donut.destroy();
+            const gridColor = document.documentElement.classList.contains('dark') ? 'rgba(148,163,184,0.1)' : 'rgba(148,163,184,0.2)';
+            this.charts.monthly = new Chart(document.getElementById('chartMonthly'), {
+                type: 'bar',
+                data: {
+                    labels: d.monthly_labels,
+                    datasets: [
+                        { label: 'Entradas', data: d.monthly_income.map(Number), backgroundColor: '#10b981', borderRadius: 6 },
+                        { label: 'Despesas', data: d.monthly_expense.map(Number), backgroundColor: '#ef4444', borderRadius: 6 },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    animation: { duration: 800, easing: 'easeOutQuart' },
+                    plugins: { legend: { labels: { usePointStyle: true, padding: 16 } } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: gridColor } },
+                        x: { grid: { display: false } },
+                    },
+                },
+            });
+            const catLabels = Object.keys(d.expense_by_category);
+            const catVals = Object.values(d.expense_by_category).map(Number);
+            this.charts.donut = new Chart(document.getElementById('chartDonut'), {
+                type: 'doughnut',
+                data: {
+                    labels: catLabels.length ? catLabels : ['Sem dados'],
+                    datasets: [{
+                        data: catVals.length ? catVals : [1],
+                        backgroundColor: ['#6366f1','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#10b981'],
+                        borderWidth: 0,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    animation: { animateRotate: true, duration: 900 },
+                    plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 12, font: { size: 11 } } } },
+                    cutout: '65%',
+                },
+            });
+        },
+
+        prevPage() { if (this.pagination.page > 1) { this.pagination.page--; this.loadEntries(); } },
+        nextPage() { if (this.pagination.next) { this.pagination.page++; this.loadEntries(); } },
+
+        /* ── Modal ── */
+        openModal(entry = null) {
+            this.ui = { dateOpen: false, categoryOpen: false, statusOpen: false, fileDrag: false };
+            const today = new Date().toISOString().slice(0, 10);
+            if (entry) {
+                this.modal = {
+                    open: true, saving: false, id: entry.id,
+                    entry_type: entry.entry_type, title: entry.title,
+                    amount: entry.amount, amountDisplay: this.fmtMoney(entry.amount).replace('R$ ', ''),
+                    date: entry.date, category: entry.category, status: entry.status,
+                    lead: entry.lead || '', notes: entry.notes || '',
+                    is_recurring: false, file: null, fileName: '',
+                };
+            } else {
+                const cat = this.categories.find(c => c.category_type === 'income');
+                this.modal = {
+                    open: true, saving: false, id: null,
+                    entry_type: 'income', title: '', amount: '', amountDisplay: '',
+                    date: today, category: cat ? cat.id : '', status: 'pending',
+                    lead: '', notes: '', is_recurring: false, file: null, fileName: '',
+                };
+            }
+            const parts = this.modal.date.split('-');
+            if (parts.length === 3) {
+                this.cal.year = parseInt(parts[0], 10);
+                this.cal.month = parseInt(parts[1], 10) - 1;
+            }
+        },
+
+        closeModal() {
+            this.modal.open = false;
+            this.ui.dateOpen = false;
+        },
+
+        setModalType(type) {
+            this.modal.entry_type = type;
+            const cats = this.filteredCategories();
+            if (cats.length && !cats.find(c => c.id == this.modal.category)) {
+                this.modal.category = cats[0].id;
+            }
+        },
+
+        parseAmount(str) {
+            if (!str) return '';
+            const s = String(str).replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
+            const n = parseFloat(s);
+            return isNaN(n) ? '' : n.toFixed(2);
+        },
+
+        formatAmountInput() {
+            const parsed = this.parseAmount(this.modal.amountDisplay);
+            if (parsed) {
+                this.modal.amount = parsed;
+                this.modal.amountDisplay = Number(parsed).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+        },
+
+        /* ── Calendar ── */
+        calMonthLabel() {
+            const d = new Date(this.cal.year, this.cal.month, 1);
+            return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        },
+
+        calPrevMonth() {
+            if (this.cal.month === 0) { this.cal.month = 11; this.cal.year--; }
+            else this.cal.month--;
+        },
+
+        calNextMonth() {
+            if (this.cal.month === 11) { this.cal.month = 0; this.cal.year++; }
+            else this.cal.month++;
+        },
+
+        calCells() {
+            const first = new Date(this.cal.year, this.cal.month, 1);
+            const last = new Date(this.cal.year, this.cal.month + 1, 0);
+            const startPad = first.getDay();
+            const cells = [];
+            for (let i = 0; i < startPad; i++) cells.push({ day: null });
+            for (let d = 1; d <= last.getDate(); d++) cells.push({ day: d });
+            return cells;
+        },
+
+        pickDate(day) {
+            const m = String(this.cal.month + 1).padStart(2, '0');
+            const d = String(day).padStart(2, '0');
+            this.modal.date = `${this.cal.year}-${m}-${d}`;
+            this.ui.dateOpen = false;
+        },
+
+        isSelectedDate(day) {
+            if (!this.modal.date) return false;
+            const p = this.modal.date.split('-');
+            return parseInt(p[0],10) === this.cal.year && parseInt(p[1],10) - 1 === this.cal.month && parseInt(p[2],10) === day;
+        },
+
+        isToday(day) {
+            const t = new Date();
+            return t.getFullYear() === this.cal.year && t.getMonth() === this.cal.month && t.getDate() === day;
+        },
+
+        /* ── File upload ── */
+        handleFileSelect(e) {
+            const f = e.target.files[0];
+            if (f) { this.modal.file = f; this.modal.fileName = f.name; }
+        },
+
+        handleFileDrop(e) {
+            this.ui.fileDrag = false;
+            const f = e.dataTransfer.files[0];
+            if (f) { this.modal.file = f; this.modal.fileName = f.name; }
+        },
+
+        clearFile() {
+            this.modal.file = null;
+            this.modal.fileName = '';
+            if (this.$refs.fileInput) this.$refs.fileInput.value = '';
+        },
+
+        async saveEntry() {
+            this.formatAmountInput();
+            if (!this.modal.title.trim()) {
+                await NuviieModal.alert('Informe um título para o lançamento.', 'Campo obrigatório');
+                return;
+            }
+            if (!this.modal.amount) {
+                await NuviieModal.alert('Informe um valor válido.', 'Campo obrigatório');
+                return;
+            }
+            this.modal.saving = true;
+            const fd = new FormData();
+            fd.append('entry_type', this.modal.entry_type);
+            fd.append('title', this.modal.title.trim());
+            fd.append('amount', this.modal.amount);
+            fd.append('date', this.modal.date);
+            fd.append('category', this.modal.category);
+            fd.append('status', this.modal.status);
+            if (this.modal.lead) fd.append('lead', String(this.modal.lead).replace(/\D/g, ''));
+            fd.append('notes', this.modal.notes || '');
+            fd.append('is_recurring', this.modal.is_recurring ? 'true' : 'false');
+            if (this.modal.is_recurring) {
+                fd.append('recurrence_rule', JSON.stringify({
+                    frequency: 'monthly',
+                    day_of_month: new Date(this.modal.date + 'T12:00:00').getDate(),
+                }));
+            }
+            fd.append('attachment_kind', this.modal.entry_type === 'expense' ? 'statement' : 'receipt');
+            if (this.modal.file) fd.append('attachment', this.modal.file);
+            const url = this.modal.id ? `/api/finance/entries/${this.modal.id}/` : '/api/finance/entries/';
+            try {
+                const r = await fetch(url, {
+                    method: this.modal.id ? 'PATCH' : 'POST',
+                    headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
+                    body: fd,
+                });
+                if (r.ok) {
+                    this.closeModal();
+                    await this.loadEntries();
+                    await this.loadCharts();
+                } else {
+                    const err = await r.json().catch(() => ({}));
+                    await NuviieModal.alert(err.detail || JSON.stringify(err) || 'Erro ao salvar.', 'Erro');
+                }
+            } finally {
+                this.modal.saving = false;
+            }
+        },
+
+        async deleteEntry(e) {
+            if (!await NuviieModal.confirm('Excluir este lançamento?', 'Confirmar exclusão', { danger: true, confirmLabel: 'Excluir' })) return;
+            await fetch(`/api/finance/entries/${e.id}/`, { method: 'DELETE', headers: { 'X-CSRFToken': this.getCookie('csrftoken') } });
+            await this.loadEntries();
+            await this.loadCharts();
+        },
+
+        exportData(fmt) {
+            window.location.href = `/api/finance/entries/export/?export_format=${fmt}&` + this.queryParams();
+        },
+    };
+}
+</script>
+{% endblock %}

@@ -116,6 +116,46 @@
   </div>
 
   <div id="instagramFilters" class="filters instagram-only hidden">
+    <p class="filter-section-title">Filtros de perfil</p>
+    <div class="filter-row">
+      <label for="websiteFilter">Site na bio</label>
+      <select id="websiteFilter">
+        <option value="any">Qualquer</option>
+        <option value="no_real_site">Sem site próprio</option>
+        <option value="has_real_site">Com site próprio</option>
+      </select>
+    </div>
+    <p class="filter-hint filter-hint-static">Sem site = sem URL própria ou só WhatsApp, Linktree, Facebook, bit.ly etc.</p>
+    <div class="filter-row filter-row-split">
+      <div>
+        <label for="minFollowers">Seguidores mín.</label>
+        <input id="minFollowers" type="number" min="0" placeholder="—">
+      </div>
+      <div>
+        <label for="maxFollowers">Seguidores máx.</label>
+        <input id="maxFollowers" type="number" min="0" placeholder="—">
+      </div>
+    </div>
+    <div class="filter-row filter-row-split">
+      <div>
+        <label for="minPosts">Publicações mín.</label>
+        <input id="minPosts" type="number" min="0" placeholder="—">
+      </div>
+      <div>
+        <label for="maxPosts">Publicações máx.</label>
+        <input id="maxPosts" type="number" min="0" placeholder="—">
+      </div>
+    </div>
+    <div class="filter-row">
+      <label for="lastPostWithin">Última postagem</label>
+      <select id="lastPostWithin">
+        <option value="any">Qualquer data</option>
+        <option value="24h">Últimas 24 horas</option>
+        <option value="3d">Últimos 3 dias</option>
+        <option value="7d">Últimos 7 dias</option>
+        <option value="30d">Últimos 30 dias</option>
+      </select>
+    </div>
     <label class="checkbox-row">
       <input type="checkbox" id="onlyVerified">
       <span>Somente verificados</span>
@@ -128,17 +168,11 @@
   </div>
 
   <div class="actions">
-    <button id="btnStart" class="btn primary">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <button id="btnToggle" class="btn primary">
+      <svg id="btnToggleIcon" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="5 3 19 12 5 21 5 3"/>
       </svg>
-      <span id="btnStartLabel">Extrair completo</span>
-    </button>
-    <button id="btnStop" class="btn secondary">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="6" y="6" width="12" height="12" rx="1"/>
-      </svg>
-      Parar
+      <span id="btnToggleLabel">Extrair completo</span>
     </button>
   </div>
 

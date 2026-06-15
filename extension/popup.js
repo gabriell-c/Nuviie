@@ -1,6 +1,7 @@
 const NM = {
   mode: 'maps',
   leads: [],
+  extracting: false,
   progress: { current: 0, total: 0, status: 'idle', message: 'Pronto.' },
 };
 
@@ -60,7 +61,7 @@ function startProgressPoll() {
       applyProgressUpdate(local.nuviieProgress, (local.nuviieLeads || []).length);
       if (local.nuviieProgress.status === 'done' || local.nuviieProgress.status === 'error' || local.nuviieProgress.status === 'stopped') {
         NM.leads = local.nuviieLeads || [];
-        document.getElementById('btnStart').disabled = false;
+        setToggleButton(false);
         stopProgressPoll();
       }
     } catch {
@@ -75,6 +76,45 @@ function applyProgressUpdate(progress, leadsCount) {
   setProgress(progress.current, progress.total);
   setStatus(progress.message, progress.status);
   document.getElementById('leadCount').textContent = String(leadsCount ?? NM.leads.length);
+  const running = progress.status === 'running';
+  if (running !== NM.extracting) setToggleButton(running);
+}
+
+function setToggleButton(running) {
+  NM.extracting = !!running;
+  const btn = document.getElementById('btnToggle');
+  const label = document.getElementById('btnToggleLabel');
+  const icon = document.getElementById('btnToggleIcon');
+  if (!btn || !label || !icon) return;
+
+  if (NM.extracting) {
+    btn.classList.remove('primary');
+    btn.classList.add('danger');
+    label.textContent = 'Parar';
+    icon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="1"/>';
+  } else {
+    btn.classList.remove('danger');
+    btn.classList.add('primary');
+    label.textContent = NM.mode === 'instagram' ? 'Extrair Instagram' : 'Extrair completo';
+    icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
+  }
+}
+
+function parseOptionalInt(value) {
+  if (value === '' || value == null) return null;
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+function readInstagramFiltersFromForm() {
+  return {
+    websiteFilter: document.getElementById('websiteFilter')?.value || 'any',
+    minFollowers: parseOptionalInt(document.getElementById('minFollowers')?.value),
+    maxFollowers: parseOptionalInt(document.getElementById('maxFollowers')?.value),
+    minPosts: parseOptionalInt(document.getElementById('minPosts')?.value),
+    maxPosts: parseOptionalInt(document.getElementById('maxPosts')?.value),
+    lastPostWithin: document.getElementById('lastPostWithin')?.value || 'any',
+  };
 }
 
 async function getActiveTab() {
@@ -120,14 +160,14 @@ function applyModeUI(mode) {
 
   const nicheLabel = document.getElementById('nicheLabel');
   const limitLabel = document.getElementById('limitLabel');
-  const btnStartLabel = document.getElementById('btnStartLabel');
+  const btnToggleLabel = document.getElementById('btnToggleLabel');
   const nicheInput = document.getElementById('niche');
   const limitInput = document.getElementById('limit');
 
   if (mode === 'instagram') {
     nicheLabel.textContent = 'Nicho / segmento *';
     limitLabel.textContent = 'Quantidade de perfis';
-    btnStartLabel.textContent = 'Extrair Instagram';
+    if (btnToggleLabel && !NM.extracting) btnToggleLabel.textContent = 'Extrair Instagram';
     nicheInput.placeholder = 'Ex: dentista';
     limitInput.placeholder = '20';
     limitInput.min = '1';
@@ -135,7 +175,7 @@ function applyModeUI(mode) {
   } else {
     nicheLabel.textContent = 'Nicho / segmento';
     limitLabel.textContent = 'Limite (0 = todos visíveis)';
-    btnStartLabel.textContent = 'Extrair completo';
+    if (btnToggleLabel && !NM.extracting) btnToggleLabel.textContent = 'Extrair completo';
     nicheInput.placeholder = 'Ex: advogado';
     limitInput.placeholder = '0';
     limitInput.min = '0';
@@ -154,6 +194,12 @@ async function loadSettings() {
     nuviieToken: '',
     onlyVerified: false,
     onlyWithBioLink: false,
+    websiteFilter: 'any',
+    minFollowers: '',
+    maxFollowers: '',
+    minPosts: '',
+    maxPosts: '',
+    lastPostWithin: 'any',
     mode: 'maps',
   });
   const local = await chrome.storage.local.get({
@@ -168,6 +214,12 @@ async function loadSettings() {
   document.getElementById('nuviieToken').value = data.nuviieToken;
   document.getElementById('onlyVerified').checked = data.onlyVerified;
   document.getElementById('onlyWithBioLink').checked = data.onlyWithBioLink;
+  document.getElementById('websiteFilter').value = data.websiteFilter || 'any';
+  document.getElementById('minFollowers').value = data.minFollowers ?? '';
+  document.getElementById('maxFollowers').value = data.maxFollowers ?? '';
+  document.getElementById('minPosts').value = data.minPosts ?? '';
+  document.getElementById('maxPosts').value = data.maxPosts ?? '';
+  document.getElementById('lastPostWithin').value = data.lastPostWithin || 'any';
 
   const mode = local.nuviieMode || data.mode || 'maps';
   applyModeUI(mode);
@@ -186,6 +238,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   const mode = NM.mode;
+  const igFilters = readInstagramFiltersFromForm();
   const payload = {
     city: document.getElementById('city').value.trim(),
     niche: document.getElementById('niche').value.trim(),
@@ -193,6 +246,12 @@ async function saveSettings() {
     nuviieToken: document.getElementById('nuviieToken').value.trim(),
     onlyVerified: document.getElementById('onlyVerified').checked,
     onlyWithBioLink: document.getElementById('onlyWithBioLink').checked,
+    websiteFilter: igFilters.websiteFilter,
+    minFollowers: document.getElementById('minFollowers').value,
+    maxFollowers: document.getElementById('maxFollowers').value,
+    minPosts: document.getElementById('minPosts').value,
+    maxPosts: document.getElementById('maxPosts').value,
+    lastPostWithin: igFilters.lastPostWithin,
     mode,
   };
   const limitVal = parseInt(document.getElementById('limit').value, 10);
@@ -202,6 +261,7 @@ async function saveSettings() {
     payload.limit = limitVal || 0;
   }
   await chrome.storage.sync.set(payload);
+  payload.instagramFilters = igFilters;
   return payload;
 }
 
@@ -244,7 +304,7 @@ async function refreshMapsState() {
     setProgress(NM.progress.current, NM.progress.total);
     setStatus(NM.progress.message || 'Pronto.', NM.progress.status);
     document.getElementById('leadCount').textContent = String(NM.leads.length);
-    document.getElementById('btnStart').disabled = !!state.running;
+    setToggleButton(!!state.running);
   } catch (e) {
     setStatus(e.message, 'error');
   }
@@ -257,7 +317,7 @@ async function refreshInstagramState() {
       NM.leads = state.leads || [];
       NM.progress = state.progress || NM.progress;
       applyProgressUpdate(NM.progress, NM.leads.length);
-      document.getElementById('btnStart').disabled = !!state.running;
+      setToggleButton(!!state.running);
       if (state.running) startProgressPoll();
     }
   } catch (e) {
@@ -287,21 +347,35 @@ document.getElementById('tabInstagram').addEventListener('click', async () => {
   await refreshState();
 });
 
-document.getElementById('btnStart').addEventListener('click', async () => {
+document.getElementById('btnToggle').addEventListener('click', async () => {
+  if (NM.extracting) {
+    try {
+      if (NM.mode === 'instagram') {
+        await chrome.runtime.sendMessage({ type: 'STOP_INSTAGRAM_EXTRACTION' });
+      } else {
+        await sendToMapsTab({ type: 'STOP_EXTRACTION' });
+      }
+      setStatus('Parando...', 'running');
+    } catch (e) {
+      setStatus(e.message, 'error');
+    }
+    return;
+  }
+
   const settings = await saveSettings();
   if (!settings.city) {
     setStatus('Informe a cidade.', 'error');
     return;
   }
 
-  document.getElementById('btnStart').disabled = true;
+  setToggleButton(true);
   setStatus('Iniciando extração...', 'running');
 
   try {
     if (NM.mode === 'instagram') {
       if (!settings.niche) {
         setStatus('Informe o nicho.', 'error');
-        document.getElementById('btnStart').disabled = false;
+        setToggleButton(false);
         return;
       }
       chrome.runtime.sendMessage({
@@ -313,12 +387,18 @@ document.getElementById('btnStart').addEventListener('click', async () => {
           filters: {
             onlyVerified: settings.onlyVerified,
             onlyWithBioLink: settings.onlyWithBioLink,
+            websiteFilter: settings.websiteFilter,
+            minFollowers: settings.instagramFilters.minFollowers,
+            maxFollowers: settings.instagramFilters.maxFollowers,
+            minPosts: settings.instagramFilters.minPosts,
+            maxPosts: settings.instagramFilters.maxPosts,
+            lastPostWithin: settings.instagramFilters.lastPostWithin,
           },
         },
       }).then((resp) => {
         if (resp && resp.ok === false) {
           setStatus(resp.error || 'Falha ao iniciar.', 'error');
-          document.getElementById('btnStart').disabled = false;
+          setToggleButton(false);
           stopProgressPoll();
         }
       }).catch((e) => {
@@ -328,7 +408,7 @@ document.getElementById('btnStart').addEventListener('click', async () => {
             : (e.message || 'Erro ao iniciar extração.'),
           'error',
         );
-        document.getElementById('btnStart').disabled = false;
+        setToggleButton(false);
         stopProgressPoll();
       });
       startProgressPoll();
@@ -343,23 +423,11 @@ document.getElementById('btnStart').addEventListener('click', async () => {
           delayMax: 3000,
         },
       });
+      setToggleButton(true);
     }
   } catch (e) {
     setStatus(e.message, 'error');
-    document.getElementById('btnStart').disabled = false;
-  }
-});
-
-document.getElementById('btnStop').addEventListener('click', async () => {
-  try {
-    if (NM.mode === 'instagram') {
-      await chrome.runtime.sendMessage({ type: 'STOP_INSTAGRAM_EXTRACTION' });
-    } else {
-      await sendToMapsTab({ type: 'STOP_EXTRACTION' });
-    }
-    setStatus('Parando...', 'running');
-  } catch (e) {
-    setStatus(e.message, 'error');
+    setToggleButton(false);
   }
 });
 
@@ -420,6 +488,7 @@ chrome.runtime.onMessage.addListener((msg) => {
     if (msg.mode === 'instagram' && NM.mode !== 'instagram') return;
     if (msg.mode === 'instagram') {
       applyProgressUpdate(msg.progress, msg.leadsCount);
+      setToggleButton(msg.progress?.status === 'running');
       return;
     }
     if (NM.mode === 'instagram') return;
@@ -427,13 +496,14 @@ chrome.runtime.onMessage.addListener((msg) => {
     setProgress(msg.progress.current, msg.progress.total);
     setStatus(msg.progress.message, msg.progress.status);
     document.getElementById('leadCount').textContent = String(msg.leadsCount || 0);
+    setToggleButton(msg.progress?.status === 'running');
   }
   if (msg.type === 'EXTRACTION_DONE') {
     if (msg.mode === 'instagram' && NM.mode !== 'instagram') return;
     if (msg.mode !== 'instagram' && NM.mode === 'instagram') return;
     NM.leads = msg.leads || [];
     NM.progress = msg.progress;
-    document.getElementById('btnStart').disabled = false;
+    setToggleButton(false);
     applyProgressUpdate(NM.progress, NM.leads.length);
     stopProgressPoll();
   }

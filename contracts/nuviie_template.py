@@ -46,6 +46,18 @@ FIELD_SCHEMA: list[dict] = [
     {
         'group': 'Valores e pagamento',
         'fields': [
+            {'key': 'modelo_pagamento', 'label': 'Modelo de pagamento', 'type': 'select',
+             'options': [
+                 ('vista_antes', 'À vista — antes da entrega'),
+                 ('vista_depois', 'À vista — após a entrega'),
+                 ('parcelado', 'Parcelado (cartão)'),
+                 ('metade_antes_depois', 'Metade antes / metade depois'),
+             ],
+             'default': 'vista_antes'},
+            {'key': 'vista_quando', 'label': 'À vista (quando)', 'type': 'select',
+             'options': ['antes', 'depois'], 'default': 'antes'},
+            {'key': 'primeiro_vencimento', 'label': '1º vencimento / pagamento', 'type': 'date'},
+            {'key': 'data_assinatura_iso', 'label': 'Data assinatura (ISO)', 'type': 'date'},
             {'key': 'valor_total', 'label': 'Valor total (R$)', 'type': 'money', 'required': True},
             {'key': 'valor_total_extenso', 'label': 'Valor total por extenso', 'type': 'text'},
             {'key': 'valor_vista', 'label': 'Valor à vista com desconto (R$)', 'type': 'money'},

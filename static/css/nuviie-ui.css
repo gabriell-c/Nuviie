@@ -1,0 +1,380 @@
+/* Nuviie UI Components — selects, dates, uploads, toggles, animations */
+
+/* Hide native controls globally inside .nui scope */
+.nui input[type="number"]::-webkit-inner-spin-button,
+.nui input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.nui input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* ── Animations ── */
+@keyframes nui-fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nui-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes nui-scale-in {
+    from { opacity: 0; transform: scale(0.92) translateY(12px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes nui-shimmer-bar {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.nui-animate-in {
+    animation: nui-fade-up 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.nui-delay-1 { animation-delay: 0.06s; }
+.nui-delay-2 { animation-delay: 0.12s; }
+.nui-delay-3 { animation-delay: 0.18s; }
+.nui-delay-4 { animation-delay: 0.24s; }
+.nui-delay-5 { animation-delay: 0.30s; }
+.nui-delay-6 { animation-delay: 0.36s; }
+
+/* ── Field wrapper ── */
+.nui-field label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+    margin-bottom: 0.375rem;
+}
+.dark .nui-field label { color: #64748b; }
+.nui-field label i { font-size: 0.625rem; opacity: 0.85; }
+
+/* ── Text input ── */
+.nui-input {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, 0.6);
+    color: #0f172a;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    outline: none;
+}
+.dark .nui-input {
+    border-color: #334155;
+    background: rgba(15, 23, 42, 0.6);
+    color: #f1f5f9;
+}
+.nui-input:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.nui-input-wrap {
+    position: relative;
+}
+.nui-input-wrap .nui-input-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 0.8rem;
+    pointer-events: none;
+}
+.nui-input-wrap .nui-input { padding-left: 2.25rem; }
+
+/* ── Custom select ── */
+.nui-select-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: rgba(255, 255, 255, 0.6);
+    color: #0f172a;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+.dark .nui-select-trigger {
+    border-color: #334155;
+    background: rgba(15, 23, 42, 0.6);
+    color: #f1f5f9;
+}
+.nui-select-trigger:hover { border-color: #6366f1; }
+.nui-select-trigger.open {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+.nui-select-trigger .chevron {
+    transition: transform 0.2s;
+    color: #94a3b8;
+    font-size: 0.65rem;
+}
+.nui-select-trigger.open .chevron { transform: rotate(180deg); }
+
+.nui-dropdown {
+    position: absolute;
+    z-index: 50;
+    margin-top: 0.25rem;
+    width: 100%;
+    max-height: 14rem;
+    overflow-y: auto;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.15);
+    padding: 0.25rem;
+    animation: nui-scale-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dark .nui-dropdown {
+    border-color: #334155;
+    background: #0f172a;
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5);
+}
+.nui-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    border-radius: 0.5rem;
+    color: #334155;
+    cursor: pointer;
+    transition: background 0.15s;
+    text-align: left;
+}
+.dark .nui-dropdown-item { color: #cbd5e1; }
+.nui-dropdown-item:hover { background: #f1f5f9; }
+.dark .nui-dropdown-item:hover { background: #1e293b; }
+.nui-dropdown-item.active {
+    background: rgba(99, 102, 241, 0.1);
+    color: #6366f1;
+    font-weight: 600;
+}
+
+/* ── Segmented control (tipo entrada/despesa) ── */
+.nui-segment {
+    display: flex;
+    padding: 0.25rem;
+    border-radius: 0.875rem;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    gap: 0.25rem;
+}
+.dark .nui-segment {
+    background: #1e293b;
+    border-color: #334155;
+}
+.nui-segment-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border-radius: 0.625rem;
+    color: #64748b;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    cursor: pointer;
+}
+.nui-segment-btn.active-income {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+.nui-segment-btn.active-expense {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+/* ── Toggle switch ── */
+.nui-toggle {
+    position: relative;
+    width: 2.75rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    background: #cbd5e1;
+    cursor: pointer;
+    transition: background 0.25s;
+    flex-shrink: 0;
+}
+.dark .nui-toggle { background: #475569; }
+.nui-toggle.on { background: #6366f1; }
+.nui-toggle-knob {
+    position: absolute;
+    top: 0.1875rem;
+    left: 0.1875rem;
+    width: 1.125rem;
+    height: 1.125rem;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nui-toggle.on .nui-toggle-knob { transform: translateX(1.25rem); }
+
+/* ── File dropzone ── */
+.nui-dropzone {
+    border: 2px dashed #cbd5e1;
+    border-radius: 0.875rem;
+    padding: 1.25rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s;
+    background: rgba(99, 102, 241, 0.03);
+}
+.dark .nui-dropzone {
+    border-color: #475569;
+    background: rgba(99, 102, 241, 0.06);
+}
+.nui-dropzone:hover, .nui-dropzone.dragover {
+    border-color: #6366f1;
+    background: rgba(99, 102, 241, 0.08);
+}
+.nui-dropzone.has-file {
+    border-style: solid;
+    border-color: #10b981;
+    background: rgba(16, 185, 129, 0.06);
+}
+
+/* ── Date picker popup ── */
+.nui-calendar {
+    position: absolute;
+    z-index: 60;
+    margin-top: 0.25rem;
+    width: 17rem;
+    padding: 0.75rem;
+    border-radius: 0.875rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.2);
+    animation: nui-scale-in 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.dark .nui-calendar {
+    border-color: #334155;
+    background: #0f172a;
+}
+.nui-cal-day {
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.nui-cal-day:hover:not(.empty):not(.selected) {
+    background: #f1f5f9;
+}
+.dark .nui-cal-day:hover:not(.empty):not(.selected) { background: #1e293b; }
+.nui-cal-day.selected {
+    background: #6366f1;
+    color: #fff;
+    font-weight: 700;
+}
+.nui-cal-day.today:not(.selected) {
+    box-shadow: inset 0 0 0 1px #6366f1;
+    color: #6366f1;
+    font-weight: 600;
+}
+.nui-cal-day.empty { cursor: default; }
+
+/* ── Filter pills ── */
+.nui-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.dark .nui-pill {
+    border-color: #334155;
+    color: #94a3b8;
+}
+.nui-pill:hover { border-color: #6366f1; color: #6366f1; }
+.nui-pill.active {
+    background: rgba(99, 102, 241, 0.12);
+    border-color: #6366f1;
+    color: #6366f1;
+}
+
+/* ── Stat cards ── */
+.nui-stat-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    padding: 1.125rem 1.25rem;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(12px);
+    transition: transform 0.25s, box-shadow 0.25s;
+}
+.dark .nui-stat-card {
+    border-color: rgba(51, 65, 85, 0.8);
+    background: rgba(15, 23, 42, 0.75);
+}
+.nui-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -8px rgba(99, 102, 241, 0.15);
+}
+.nui-stat-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+}
+
+/* ── Table row animation ── */
+.nui-table-row {
+    animation: nui-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Status badge ── */
+.nui-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-radius: 9999px;
+}
+.nui-badge-pending { background: rgba(245, 158, 11, 0.15); color: #d97706; }
+.dark .nui-badge-pending { color: #fbbf24; }
+.nui-badge-confirmed { background: rgba(16, 185, 129, 0.15); color: #059669; }
+.dark .nui-badge-confirmed { color: #34d399; }
+
+/* ── Modal overlay ── */
+.nui-modal-panel {
+    max-height: min(90vh, 720px);
+    overflow-y: auto;
+}

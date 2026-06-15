@@ -13,6 +13,16 @@ class ScoringRule(models.Model):
     priority = models.IntegerField(default=0, help_text='Ordem de exibição no breakdown (maior primeiro).')
     is_active = models.BooleanField(default=True)
     match_mode = models.CharField(max_length=3, choices=MATCH_MODE_CHOICES, default='all')
+    scope = models.CharField(
+        max_length=20,
+        choices=[
+            ('global', 'Geral'),
+            ('instagram', 'Instagram'),
+            ('google_maps', 'Google Maps'),
+        ],
+        default='global',
+        help_text='Regras Instagram/Google Maps só avaliam leads dessa origem.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

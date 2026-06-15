@@ -101,6 +101,7 @@
                                      {% elif code == 'negociacao' %} bg-amber-500
                                      {% elif code == 'retornou' %} bg-purple-500
                                      {% elif code == 'fechado' %} bg-emerald-500
+                                     {% elif code == 'finalizado' %} bg-teal-500
                                      {% else %} bg-slate-400 {% endif %}"></span>
                         <span class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{{ display }}</span>
                     </div>
@@ -122,8 +123,11 @@
                     <!-- Cards -->
                     <template x-for="lead in getLeadsByStatus('{{ code }}')" :key="lead.id">
                         <div :data-id="lead.id" @click="openDetails(lead.id)"
-                             class="bg-white dark:bg-slate-850 p-4 rounded-xl border border-slate-200/60 dark:border-slate-800/60 shadow-sm cursor-grab hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition duration-150 relative group"
-                             :class="selectedIds.includes(lead.id) ? 'ring-2 ring-indigo-500 border-indigo-400' : ''">
+                             class="bg-white dark:bg-slate-850 p-4 rounded-xl border shadow-sm cursor-grab hover:shadow-md transition duration-150 relative group"
+                             :class="[
+                                 selectedIds.includes(lead.id) ? 'ring-2 ring-indigo-500 border-indigo-400' : 'border-slate-200/60 dark:border-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700',
+                                 deadlineCardClass(lead)
+                             ]">
 
                             <input type="checkbox"
                                    :checked="selectedIds.includes(lead.id)"
@@ -379,6 +383,78 @@
                                 </p>
                             </div>
                         </template>
+                    </div>
+
+                    <!-- Projeto / Sites -->
+                    <div class="glass-panel p-5 rounded-2xl space-y-4">
+                        <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Projeto / Sites</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" x-show="!editMode">
+                            <div>
+                                <span class="text-[10px] text-slate-400 block mb-1">Site Preview</span>
+                                <a x-show="currentLead.preview_site_url" :href="currentLead.preview_site_url" target="_blank"
+                                   class="text-xs text-indigo-500 hover:underline break-all" x-text="currentLead.preview_site_url"></a>
+                                <span x-show="!currentLead.preview_site_url" class="text-xs text-slate-400">—</span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400 block mb-1">Site Final</span>
+                                <a x-show="currentLead.final_site_url" :href="currentLead.final_site_url" target="_blank"
+                                   class="text-xs text-emerald-500 hover:underline break-all" x-text="currentLead.final_site_url"></a>
+                                <span x-show="!currentLead.final_site_url" class="text-xs text-slate-400">—</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" x-show="editMode">
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">URL Preview</label>
+                                <input type="url" x-model="currentLead.preview_site_url" placeholder="https://preview..."
+                                       class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/50">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-1">URL Site Final</label>
+                                <input type="url" x-model="currentLead.final_site_url" placeholder="https://..."
+                                       class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/50">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Contrato & Prazo -->
+                    <div class="glass-panel p-5 rounded-2xl space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Contrato & Prazo</h4>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                                  :class="{
+                                      'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300': currentLead.deadline_urgency === 'danger',
+                                      'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300': currentLead.deadline_urgency === 'warning',
+                                      'bg-slate-100 text-slate-500': currentLead.deadline_urgency === 'none' || !currentLead.deadline_urgency
+                                  }"
+                                  x-show="currentLead.project_deadline && currentLead.status === 'fechado'"
+                                  x-text="currentLead.days_until_deadline != null ? (currentLead.days_until_deadline + ' dia(s)') : ''"></span>
+                        </div>
+                        <template x-if="currentLead.contract_summary">
+                            <div class="text-xs space-y-2">
+                                <p><span class="text-slate-400">Cliente:</span> <strong x-text="currentLead.contract_summary.client_name"></strong></p>
+                                <p x-show="currentLead.contract_value"><span class="text-slate-400">Valor:</span> <strong x-text="'R$ ' + Number(currentLead.contract_value).toLocaleString('pt-BR', {minimumFractionDigits: 2})"></strong></p>
+                                <p x-show="currentLead.project_deadline"><span class="text-slate-400">Prazo:</span> <strong x-text="formatDeadline(currentLead.project_deadline)"></strong></p>
+                                <a :href="currentLead.contract_summary.download_path" target="_blank"
+                                   class="inline-flex items-center gap-1 text-indigo-500 hover:underline text-[11px]">
+                                    <i class="fa-regular fa-file-pdf"></i> Baixar contrato
+                                </a>
+                            </div>
+                        </template>
+                        <template x-if="!currentLead.contract_summary">
+                            <p class="text-xs text-slate-400">Nenhum contrato associado.</p>
+                        </template>
+                        <div class="flex flex-wrap gap-2 pt-1">
+                            <select x-model="linkContractId" class="text-xs px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-1 min-w-[140px]">
+                                <option value="">Associar contrato...</option>
+                                <template x-for="c in availableContracts" :key="c.id">
+                                    <option :value="c.id" x-text="(c.client_name || c.name) + ' — ' + c.created_at"></option>
+                                </template>
+                            </select>
+                            <button @click="linkContractToLead()" :disabled="!linkContractId"
+                                    class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white disabled:opacity-40">
+                                Associar
+                            </button>
+                        </div>
                     </div>
 
                     <!-- View/Edit Fields -->
@@ -942,6 +1018,8 @@
             noteSaving: false,
             currentLead: {},
             newNoteText: '',
+            availableContracts: [],
+            linkContractId: '',
             
             filters: {
                 search: '',
@@ -964,6 +1042,7 @@
                 this.fetchLeads().then(() => {
                     this.initSortable();
                 });
+                this.fetchContracts();
                 window.addEventListener('nuviie-leads-updated', () => {
                     const openId = this.detailsModalOpen && this.currentLead?.id
                         ? this.currentLead.id
@@ -994,6 +1073,54 @@
                 if (s > 0) return 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
                 if (s < 0) return 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20';
                 return 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700';
+            },
+
+            deadlineCardClass(lead) {
+                if (!lead || lead.status !== 'fechado') return '';
+                const u = lead.deadline_urgency;
+                if (u === 'danger') return 'border-red-400 dark:border-red-600 bg-red-50/80 dark:bg-red-950/30';
+                if (u === 'warning') return 'border-amber-400 dark:border-amber-600 bg-amber-50/80 dark:bg-amber-950/30';
+                return '';
+            },
+
+            formatDeadline(iso) {
+                if (!iso) return '—';
+                const d = new Date(iso + 'T12:00:00');
+                return d.toLocaleDateString('pt-BR');
+            },
+
+            async fetchContracts() {
+                try {
+                    const r = await fetch('/contracts/api/contracts/?unlinked=1', {
+                        headers: { 'Accept': 'application/json' },
+                    });
+                    if (r.ok) {
+                        const data = await r.json();
+                        this.availableContracts = Array.isArray(data) ? data : (data.results || []);
+                    }
+                } catch (e) { /* ignore */ }
+            },
+
+            async linkContractToLead() {
+                if (!this.linkContractId || !this.currentLead?.id) return;
+                try {
+                    const r = await fetch(`/contracts/api/contracts/${this.linkContractId}/link-lead/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({ lead_id: this.currentLead.id }),
+                    });
+                    if (r.ok) {
+                        this.linkContractId = '';
+                        await this.fetchContracts();
+                        await this.openDetails(this.currentLead.id);
+                        await this.fetchLeads();
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
             },
             
             async fetchLeads() {

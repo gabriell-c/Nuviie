@@ -39,3 +39,4 @@ idna==3.18
 urllib3==2.7.0
 python-dateutil==2.9.0.post0
 tzdata==2026.2
+openpyxl==3.1.5

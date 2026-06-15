@@ -253,6 +253,44 @@ const NuviieInstagramRunner = {
   passesFilters(lead, filters) {
     if (filters.onlyVerified && !lead.is_verified) return false;
     if (filters.onlyWithBioLink && !NuviieInstagramMap.hasBioLink(lead)) return false;
+
+    const websiteFilter = filters.websiteFilter || 'any';
+    if (websiteFilter === 'no_real_site' && NuviieInstagramMap.hasRealWebsite(lead)) return false;
+    if (websiteFilter === 'has_real_site' && !NuviieInstagramMap.hasRealWebsite(lead)) return false;
+
+    const amenities = lead.amenities && typeof lead.amenities === 'object' ? lead.amenities : {};
+    const followers = amenities.follower_count != null ? Number(amenities.follower_count) : null;
+    const posts = lead.total_photos != null
+      ? Number(lead.total_photos)
+      : (amenities.post_count != null ? Number(amenities.post_count) : null);
+
+    if (filters.minFollowers != null && filters.minFollowers !== '') {
+      const min = Number(filters.minFollowers);
+      if (followers == null || Number.isNaN(min) || followers < min) return false;
+    }
+    if (filters.maxFollowers != null && filters.maxFollowers !== '') {
+      const max = Number(filters.maxFollowers);
+      if (followers == null || Number.isNaN(max) || followers > max) return false;
+    }
+    if (filters.minPosts != null && filters.minPosts !== '') {
+      const min = Number(filters.minPosts);
+      if (posts == null || Number.isNaN(min) || posts < min) return false;
+    }
+    if (filters.maxPosts != null && filters.maxPosts !== '') {
+      const max = Number(filters.maxPosts);
+      if (posts == null || Number.isNaN(max) || posts > max) return false;
+    }
+
+    const lastPostWithin = filters.lastPostWithin || 'any';
+    if (lastPostWithin !== 'any') {
+      const ts = amenities.latest_post_at;
+      if (ts == null) return false;
+      const maxDays = { '24h': 1, '3d': 3, '7d': 7, '30d': 30 }[lastPostWithin];
+      if (!maxDays) return false;
+      const daysAgo = (Date.now() / 1000 - Number(ts)) / 86400;
+      if (daysAgo > maxDays) return false;
+    }
+
     return true;
   },
 

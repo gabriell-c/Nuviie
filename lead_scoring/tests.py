@@ -3,7 +3,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from leads.models import Lead
-from lead_scoring.engine import calculate_score, evaluate_condition, get_field_value
+from lead_scoring.engine import calculate_score, evaluate_condition, get_field_value, get_field_registry
 from lead_scoring.models import ScoringCondition, ScoringRule
 
 User = get_user_model()
@@ -131,6 +131,45 @@ class ScoringEngineTestCase(TestCase):
         )
         self.assertEqual(get_field_value(lead, 'effective_post_count'), 25)
 
+    def test_scope_instagram_rule_ignored_for_maps_lead(self):
+        rule = ScoringRule.objects.create(
+            name='IG only',
+            points=30,
+            scope='instagram',
+            is_active=True,
+        )
+        ScoringCondition.objects.create(
+            rule=rule,
+            field_path='instagram',
+            operator='exists',
+        )
+        maps_lead = Lead.objects.create(
+            user=self.user,
+            name='Maps',
+            source='google_maps',
+            instagram='@maps',
+        )
+        result = calculate_score(maps_lead)
+        self.assertEqual(result['total'], 0)
+        self.assertEqual(len(result['matched_rules']), 0)
+        self.assertEqual(len(result['unmatched_rules']), 0)
+
+        ig_lead = Lead.objects.create(
+            user=self.user,
+            name='IG',
+            source='instagram',
+            instagram='@ig',
+        )
+        result_ig = calculate_score(ig_lead)
+        self.assertEqual(result_ig['total'], 30)
+
+    def test_field_registry_includes_groups(self):
+        registry = get_field_registry()
+        groups = {item['group'] for item in registry}
+        self.assertIn('instagram', groups)
+        self.assertIn('google_maps', groups)
+        self.assertIn('general', groups)
+
 
 class ScoringAPITestCase(TestCase):
     def setUp(self):
@@ -168,6 +207,32 @@ class ScoringAPITestCase(TestCase):
         data = response.json()
         self.assertEqual(data['name'], 'Teste API')
         self.assertEqual(len(data['conditions']), 1)
+
+    def test_create_rule_with_scope(self):
+        response = self.client.post(
+            '/api/scoring-rules/',
+            {
+                'name': 'Regra IG',
+                'points': 10,
+                'priority': 0,
+                'is_active': True,
+                'match_mode': 'all',
+                'scope': 'instagram',
+                'conditions': [
+                    {'field_path': 'is_verified', 'operator': 'is_true', 'value': None},
+                ],
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()['scope'], 'instagram')
+        self.assertEqual(response.json()['scope_display'], 'Instagram')
+
+    def test_scoring_fields_have_group(self):
+        response = self.client.get('/api/scoring-fields/')
+        self.assertEqual(response.status_code, 200)
+        follower = next(f for f in response.json() if f['path'] == 'amenities.follower_count')
+        self.assertEqual(follower['group'], 'instagram')
 
     def test_recalculate_endpoint(self):
         Lead.objects.create(user=self.user, name='L1', source='google_maps')

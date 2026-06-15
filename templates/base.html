@@ -111,6 +111,11 @@
                 <i class="fa-solid fa-chart-pie text-lg"></i>
                 <span>Dashboard</span>
             </a>
+
+            <a href="{% url 'finance_dashboard' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'finance' %} bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-wallet text-lg"></i>
+                <span>Controle Financeiro</span>
+            </a>
             
             <div class="pt-4 pb-2">
                 <span class="px-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">Ferramentas</span>
@@ -224,6 +229,7 @@
                 <span class="text-slate-300 dark:text-slate-700">/</span>
                 <span class="text-xs font-medium text-slate-500 dark:text-slate-400 capitalize">
                     {% if current_page == 'dashboard' %}Dashboard
+                    {% elif current_page == 'finance' %}Controle Financeiro
                     {% elif current_page == 'import_leads' %}Importar Leads
                     {% elif current_page == 'instagram_scraper' %}Instagram Scraper
                     {% elif current_page == 'kanban' %}CRM Kanban
@@ -237,8 +243,33 @@
                 </span>
             </div>
             
-            <div class="flex items-center space-x-4">
-                <span class="text-xs text-slate-400 dark:text-slate-500">Último acesso: {% now "d/m/Y H:i" %}</span>
+            <div class="flex items-center space-x-4" x-data="nuviieNotifications()" x-init="init()">
+                <div class="relative">
+                    <button @click="open = !open" class="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500" title="Notificações">
+                        <i class="fa-solid fa-bell"></i>
+                        <span x-show="count > 0" x-text="count > 9 ? '9+' : count"
+                              class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"></span>
+                    </button>
+                    <div x-show="open" @click.outside="open = false" x-cloak
+                         class="absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50">
+                        <div class="p-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                            <span class="text-xs font-bold uppercase text-slate-400">Notificações</span>
+                            <button @click="markAllRead()" class="text-[10px] text-indigo-500">Marcar todas</button>
+                        </div>
+                        <template x-if="items.length === 0">
+                            <p class="p-4 text-xs text-slate-400 text-center">Nenhuma notificação</p>
+                        </template>
+                        <template x-for="n in items" :key="n.id">
+                            <div class="p-3 border-b border-slate-50 dark:border-slate-800/50 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                                 :class="!n.read_at ? 'bg-indigo-50/50 dark:bg-indigo-950/20' : ''"
+                                 @click="markRead(n)">
+                                <p class="font-semibold text-slate-800 dark:text-slate-200" x-text="n.title"></p>
+                                <p class="text-slate-500 mt-0.5" x-text="n.message"></p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <span class="text-xs text-slate-400 dark:text-slate-500 hidden lg:inline">Último acesso: {% now "d/m/Y H:i" %}</span>
                 <div class="h-4 w-px bg-slate-200 dark:bg-slate-800"></div>
                 <a href="{% url 'profile' %}" class="flex items-center space-x-2 hover:opacity-85 transition">
                     <div class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700">
@@ -290,6 +321,71 @@
     </main>
 
     {% include 'components/nuviie_modal.html' %}
+
+    <script>
+    function nuviieNotifications() {
+        return {
+            open: false,
+            count: 0,
+            items: [],
+            knownIds: new Set(),
+            async init() {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    try { await Notification.requestPermission(); } catch (e) {}
+                }
+                await this.refresh(true);
+                setInterval(() => this.refresh(false), 120000);
+            },
+            getCookie(name) {
+                const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+                return m ? decodeURIComponent(m[2]) : '';
+            },
+            pushBrowser(n) {
+                if (!('Notification' in window) || Notification.permission !== 'granted') return;
+                try {
+                    new Notification(n.title, { body: n.message, tag: 'nuviie-' + n.id });
+                } catch (e) {}
+            },
+            async refresh(initial = false) {
+                try {
+                    const [cR, lR] = await Promise.all([
+                        fetch('/api/notifications/unread-count/'),
+                        fetch('/api/notifications/?page_size=15'),
+                    ]);
+                    if (cR.ok) {
+                        const c = await cR.json();
+                        this.count = c.count || 0;
+                    }
+                    if (lR.ok) {
+                        const data = await lR.json();
+                        const list = Array.isArray(data) ? data : (data.results || []);
+                        if (!initial) {
+                            list.filter(n => !n.read_at && !this.knownIds.has(n.id)).forEach(n => this.pushBrowser(n));
+                        }
+                        list.forEach(n => this.knownIds.add(n.id));
+                        this.items = list;
+                    }
+                } catch (e) {}
+            },
+            async markRead(n) {
+                await fetch(`/api/notifications/${n.id}/mark-read/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
+                });
+                n.read_at = new Date().toISOString();
+                this.count = Math.max(0, this.count - 1);
+            },
+            async markAllRead() {
+                await fetch('/api/notifications/mark-all-read/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
+                });
+                this.items.forEach(n => { n.read_at = new Date().toISOString(); });
+                this.count = 0;
+            },
+        };
+    }
+    </script>
 
     {% block extra_scripts %}{% endblock %}
 </body>

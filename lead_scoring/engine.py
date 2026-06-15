@@ -64,7 +64,8 @@ FIELD_REGISTRY: list[dict[str, Any]] = [
          ('contatado', 'Contatado'),
          ('negociacao', 'Em Negociação'),
          ('retornou', 'Retornou'),
-         ('fechado', 'Fechado (Ganho)'),
+         ('fechado', 'Em Produção'),
+         ('finalizado', 'Projeto Entregue'),
          ('perdido', 'Perdido'),
      ]},
     {'path': 'is_verified', 'label': 'Verificado (Instagram)', 'type': 'boolean'},
@@ -72,15 +73,36 @@ FIELD_REGISTRY: list[dict[str, Any]] = [
 
 FIELD_REGISTRY_MAP = {item['path']: item for item in FIELD_REGISTRY}
 
+SCOPE_LABELS = {
+    'global': 'Geral',
+    'instagram': 'Instagram',
+    'google_maps': 'Google Maps',
+}
+
+
+def rule_applies_to_lead(rule, lead) -> bool:
+    """Regras com escopo específico só avaliam leads da mesma origem."""
+    scope = getattr(rule, 'scope', 'global') or 'global'
+    if scope == 'global':
+        return True
+    if scope == 'instagram':
+        return lead.source == 'instagram'
+    if scope == 'google_maps':
+        return lead.source == 'google_maps'
+    return True
+
 
 def get_field_registry() -> list[dict[str, Any]]:
     """Retorna registro de campos com operadores permitidos para a API/UI."""
+    from .field_groups import field_group_for_path
+
     result = []
     for field in FIELD_REGISTRY:
         entry = {
             'path': field['path'],
             'label': field['label'],
             'type': field['type'],
+            'group': field_group_for_path(field['path']),
             'operators': OPERATORS_BY_TYPE.get(field['type'], []),
         }
         if 'choices' in field:
@@ -353,6 +375,7 @@ def evaluate_rule(lead, rule) -> dict[str, Any]:
         'points': rule.points,
         'priority': rule.priority,
         'match_mode': rule.match_mode,
+        'scope': getattr(rule, 'scope', 'global'),
         'matched': matched,
         'conditions': condition_results,
     }
@@ -368,6 +391,8 @@ def calculate_score(lead) -> dict[str, Any]:
     unmatched_rules = []
 
     for rule in rules:
+        if not rule_applies_to_lead(rule, lead):
+            continue
         result = evaluate_rule(lead, rule)
         if result['matched']:
             total += rule.points

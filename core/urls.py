@@ -41,6 +41,8 @@ urlpatterns = [
     path('monitoring/', include('monitoring.urls')),
     path('', include('prompt_library.urls')),
     path('', include('lead_scoring.urls')),
+    path('', include('finance.urls')),
+    path('', include('notifications.urls')),
 ]
 
 if settings.DEBUG:

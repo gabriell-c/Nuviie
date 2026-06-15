@@ -30,30 +30,79 @@
     <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
         <!-- Lista de regras -->
         <div class="lg:col-span-4 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden min-h-[280px] lg:min-h-0">
-            <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
-                <h2 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Regras ativas</h2>
+            <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 space-y-2">
+                <h2 class="text-xs font-bold uppercase text-slate-400 tracking-wider">Regras</h2>
+                <div class="flex flex-wrap gap-1">
+                    <template x-for="tab in scopeTabs" :key="tab.id">
+                        <button type="button" @click="scopeFilter = tab.id"
+                                class="px-2 py-1 rounded-lg text-[10px] font-semibold transition"
+                                :class="scopeFilter === tab.id
+                                    ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400'
+                                    : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'">
+                            <i class="fa-solid mr-1" :class="tab.icon"></i>
+                            <span x-text="tab.label"></span>
+                            <span class="ml-1 opacity-70" x-text="'(' + countRulesByScope(tab.id) + ')'"></span>
+                        </button>
+                    </template>
+                </div>
             </div>
             <div class="flex-1 overflow-y-auto p-2 space-y-1">
-                <template x-for="rule in rules" :key="rule.id">
-                    <button @click="selectRule(rule)"
-                            class="w-full text-left px-3 py-3 rounded-xl transition border"
-                            :class="selectedRuleId === rule.id ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800' : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'">
-                        <div class="flex items-center justify-between gap-2 mb-1">
-                            <span class="text-sm font-bold text-slate-800 dark:text-slate-200 truncate" x-text="rule.name"></span>
-                            <span class="text-xs font-bold shrink-0 px-2 py-0.5 rounded-lg"
-                                  :class="rule.points >= 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'"
-                                  x-text="rule.points_display + ' pts'"></span>
-                        </div>
-                        <div class="flex items-center gap-2 text-[10px] text-slate-400">
-                            <span x-text="rule.condition_count + ' condição(ões)'"></span>
-                            <span>·</span>
-                            <span x-show="!rule.is_active" class="text-amber-500">Inativa</span>
-                            <span x-show="rule.is_active" class="text-emerald-500">Ativa</span>
-                        </div>
-                    </button>
+                <template x-if="scopeFilter === 'all'">
+                    <div class="space-y-3">
+                        <template x-for="section in groupedRuleSections" :key="section.scope">
+                            <div x-show="section.rules.length">
+                                <p class="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                    <i class="fa-solid" :class="scopeIcon(section.scope)"></i>
+                                    <span x-text="scopeLabel(section.scope)"></span>
+                                </p>
+                                <div class="space-y-1">
+                                    <template x-for="rule in section.rules" :key="rule.id">
+                                        <button type="button" @click="selectRule(rule)"
+                                                class="w-full text-left px-3 py-3 rounded-xl transition border"
+                                                :class="selectedRuleId === rule.id
+                                                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800'
+                                                    : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'">
+                                            <div class="flex items-center justify-between gap-2 mb-1">
+                                                <span class="text-sm font-bold text-slate-800 dark:text-slate-200 truncate" x-text="rule.name"></span>
+                                                <span class="text-xs font-bold shrink-0 px-2 py-0.5 rounded-lg"
+                                                      :class="rule.points >= 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'"
+                                                      x-text="rule.points_display + ' pts'"></span>
+                                            </div>
+                                            <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                                                <span x-text="rule.condition_count + ' condição(ões)'"></span>
+                                                <span x-show="!rule.is_active" class="text-amber-500">Inativa</span>
+                                            </div>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
                 </template>
-                <div x-show="!loading && rules.length === 0" class="text-center py-8 text-slate-400 text-xs px-2">
-                    Nenhuma regra. Crie a primeira acima.
+                <template x-if="scopeFilter !== 'all'">
+                    <div class="space-y-1">
+                        <template x-for="rule in filteredRules" :key="rule.id">
+                            <button type="button" @click="selectRule(rule)"
+                                    class="w-full text-left px-3 py-3 rounded-xl transition border"
+                                    :class="selectedRuleId === rule.id
+                                        ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800'
+                                        : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50'">
+                                <div class="flex items-center justify-between gap-2 mb-1">
+                                    <span class="text-sm font-bold text-slate-800 dark:text-slate-200 truncate" x-text="rule.name"></span>
+                                    <span class="text-xs font-bold shrink-0 px-2 py-0.5 rounded-lg"
+                                          :class="rule.points >= 0 ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'"
+                                          x-text="rule.points_display + ' pts'"></span>
+                                </div>
+                                <div class="flex items-center gap-2 text-[10px] text-slate-400">
+                                    <span x-text="rule.condition_count + ' condição(ões)'"></span>
+                                    <span x-show="!rule.is_active" class="text-amber-500">Inativa</span>
+                                </div>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+                <div x-show="!loading && filteredRules.length === 0" class="text-center py-8 text-slate-400 text-xs px-2">
+                    Nenhuma regra neste escopo.
                 </div>
             </div>
         </div>
@@ -110,6 +159,16 @@
                                 <option value="any">Qualquer condição (OR)</option>
                             </select>
                         </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-500 uppercase mb-1">Escopo</label>
+                            <select x-model="ruleModal.scope"
+                                    class="w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                                <option value="global">Geral (todos os leads)</option>
+                                <option value="instagram">Somente Instagram</option>
+                                <option value="google_maps">Somente Google Maps</option>
+                            </select>
+                            <p class="text-[10px] text-slate-400 mt-1">Regras de escopo específico só pontuam leads dessa origem.</p>
+                        </div>
                         <div class="flex items-end">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" x-model="ruleModal.is_active" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
@@ -137,8 +196,12 @@
                                             <select x-model="cond.field_path" @change="onFieldChange(cond)"
                                                     class="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-800 dark:text-white">
                                                 <option value="">Selecione...</option>
-                                                <template x-for="f in fields" :key="f.path">
-                                                    <option :value="f.path" x-text="f.label"></option>
+                                                <template x-for="group in fieldGroups" :key="group.id">
+                                                    <optgroup :label="group.label">
+                                                        <template x-for="f in group.fields" :key="f.path">
+                                                            <option :value="f.path" x-text="f.label"></option>
+                                                        </template>
+                                                    </optgroup>
                                                 </template>
                                             </select>
                                         </div>
@@ -222,11 +285,26 @@ function scoringRules() {
         json_count_lte: 'Qtd JSON ≤',
     };
 
+    const SCOPE_TABS = [
+        { id: 'all', label: 'Todas', icon: 'fa-layer-group' },
+        { id: 'global', label: 'Geral', icon: 'fa-globe' },
+        { id: 'instagram', label: 'Instagram', icon: 'fa-brands fa-instagram' },
+        { id: 'google_maps', label: 'Maps', icon: 'fa-map-location-dot' },
+    ];
+    const SCOPE_ORDER = ['global', 'instagram', 'google_maps'];
+    const GROUP_LABELS = {
+        general: 'Geral',
+        instagram: 'Instagram',
+        google_maps: 'Google Maps',
+    };
+
     return {
         loading: true,
         recalculating: false,
         rules: [],
         fields: [],
+        scopeFilter: 'all',
+        scopeTabs: SCOPE_TABS,
         selectedRuleId: null,
         toast: { show: false, message: '', ok: true },
         ruleModal: {
@@ -238,8 +316,49 @@ function scoringRules() {
             priority: 0,
             is_active: true,
             match_mode: 'all',
+            scope: 'global',
             conditions: [],
             saving: false,
+        },
+
+        get filteredRules() {
+            if (this.scopeFilter === 'all') return this.rules;
+            return this.rules.filter(r => (r.scope || 'global') === this.scopeFilter);
+        },
+
+        get groupedRuleSections() {
+            return SCOPE_ORDER.map(scope => ({
+                scope,
+                rules: this.rules.filter(r => (r.scope || 'global') === scope),
+            }));
+        },
+
+        get fieldGroups() {
+            const groups = [
+                { id: 'general', label: GROUP_LABELS.general, fields: [] },
+                { id: 'instagram', label: GROUP_LABELS.instagram, fields: [] },
+                { id: 'google_maps', label: GROUP_LABELS.google_maps, fields: [] },
+            ];
+            for (const f of this.fields) {
+                const g = groups.find(x => x.id === (f.group || 'general'));
+                if (g) g.fields.push(f);
+            }
+            return groups.filter(g => g.fields.length);
+        },
+
+        countRulesByScope(scopeId) {
+            if (scopeId === 'all') return this.rules.length;
+            return this.rules.filter(r => (r.scope || 'global') === scopeId).length;
+        },
+
+        scopeLabel(scope) {
+            return GROUP_LABELS[scope] || scope;
+        },
+
+        scopeIcon(scope) {
+            if (scope === 'instagram') return 'fa-brands fa-instagram';
+            if (scope === 'google_maps') return 'fa-map-location-dot';
+            return 'fa-globe';
         },
 
         init() {
@@ -369,6 +488,7 @@ function scoringRules() {
                     priority: rule.priority,
                     is_active: rule.is_active,
                     match_mode: rule.match_mode,
+                    scope: rule.scope || 'global',
                     conditions: (rule.conditions || []).map(c => this.parseConditionToForm(c)),
                     saving: false,
                 };
@@ -382,6 +502,7 @@ function scoringRules() {
                     priority: 0,
                     is_active: true,
                     match_mode: 'all',
+                    scope: this.scopeFilter !== 'all' ? this.scopeFilter : 'global',
                     conditions: [this.emptyCondition()],
                     saving: false,
                 };
@@ -405,6 +526,7 @@ function scoringRules() {
                 priority: this.ruleModal.priority,
                 is_active: this.ruleModal.is_active,
                 match_mode: this.ruleModal.match_mode,
+                scope: this.ruleModal.scope || 'global',
                 conditions: this.ruleModal.conditions.map((c, i) => ({
                     ...this.buildConditionPayload(c),
                     sort_order: i,

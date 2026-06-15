@@ -7,7 +7,7 @@ _SITE_TYPE_PATTERNS = [
     ('whatsapp', re.compile(r'(?:wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com)', re.I)),
     ('facebook', re.compile(r'(?:facebook\.com|fb\.com|fb\.me)/', re.I)),
     ('youtube', re.compile(r'youtube\.com/', re.I)),
-    ('linktree', re.compile(r'(?:linktr\.ee|linkinbio\.|bio\.site|beacons\.ai|linky\.bio|milkshake\.app)', re.I)),
+    ('linktree', re.compile(r'(?:linktr\.ee|linkinbio\.|bio\.site|beacons\.ai|linky\.bio|milkshake\.app|bit\.ly|bitly\.com|tinyurl\.com|goo\.gl|t\.co)', re.I)),
     ('other_social', re.compile(r'(?:tiktok\.com|twitter\.com|x\.com|snapchat\.com|pinterest\.com|threads\.net)', re.I)),
 ]
 

@@ -30,6 +30,9 @@ class LeadSerializer(serializers.ModelSerializer):
     instagram_link = serializers.SerializerMethodField()
     profile_picture_display_url = serializers.SerializerMethodField()
     notes = LeadNoteSerializer(many=True, read_only=True)
+    deadline_urgency = serializers.SerializerMethodField()
+    days_until_deadline = serializers.SerializerMethodField()
+    contract_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
@@ -40,6 +43,9 @@ class LeadSerializer(serializers.ModelSerializer):
             'bio', 'address', 'rating', 'review_count',
             'recent_reviews', 'business_hours',
             'maps_url', 'maps_share_url', 'maps_link',
+            'preview_site_url', 'final_site_url',
+            'contract', 'project_deadline', 'contract_value',
+            'deadline_urgency', 'days_until_deadline', 'contract_summary',
             'source', 'source_display', 'status', 'status_display',
             'quality_score', 'score_breakdown', 'is_verified', 'whatsapp_link',
             'price_range', 'plus_code', 'amenities', 'total_photos',
@@ -72,6 +78,23 @@ class LeadSerializer(serializers.ModelSerializer):
         from .profile_picture_utils import get_profile_picture_display_url
         request = self.context.get('request')
         return get_profile_picture_display_url(obj, request)
+
+    def get_deadline_urgency(self, obj):
+        return obj.deadline_urgency()
+
+    def get_days_until_deadline(self, obj):
+        return obj.days_until_deadline()
+
+    def get_contract_summary(self, obj):
+        if not obj.contract_id:
+            return None
+        c = obj.contract
+        return {
+            'id': c.id,
+            'client_name': c.client_name or c.name,
+            'payment_mode': (c.payment_plan or {}).get('mode'),
+            'download_path': f'/contracts/history/{c.id}/download/',
+        }
 
     def _normalize_phone(self, phone):
         import re

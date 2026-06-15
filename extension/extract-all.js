@@ -9,32 +9,79 @@ NuviieMaps.normalizeSearchToken = (s) => (s || '')
     .replace(/[^a-z0-9 ]/g, ' ')
     .trim();
 
+NuviieMaps.CONTACT_BAD_DOMAINS = /google|goo\.gl|gstatic|schema\.org|googleusercontent|googleapis/i;
+
+NuviieMaps.isLikelyRatingCategory = (text) => {
+    if (!text) return true;
+    const t = text.trim();
+    if (/^\d+[.,]\d+(\(\d+\))?$/.test(t)) return true;
+    if (/estrelas?|stars?|avalia/i.test(t)) return true;
+    return false;
+};
+
+NuviieMaps.normalizeDomainText = (text) => {
+    const raw = (text || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw.replace(/[?#].*/, '');
+    const m = raw.match(/\b((?:[a-z0-9-]+\.)+[a-z]{2,}(?:\.[a-z]{2,})?)\b/i);
+    if (!m) return '';
+    const domain = m[1].toLowerCase();
+    if (NuviieMaps.CONTACT_BAD_DOMAINS.test(domain)) return '';
+    if (/^(instagram|facebook|youtube|twitter|linkedin|tiktok|wa)\./i.test(domain)) return '';
+    if (/^(maps|goo)\./i.test(domain)) return '';
+    return `https://${domain.replace(/^www\./i, '')}`;
+};
+
+NuviieMaps.mergeExtractData = (primary, secondary) => {
+    const out = { ...(primary || {}) };
+    for (const [k, v] of Object.entries(secondary || {})) {
+        if (v != null && v !== '' && !out[k]) out[k] = v;
+    }
+    return out;
+};
+
 NuviieMaps.getWebResultsContext = (placeName) => {
     const detailRoot = document.querySelector('[role="main"]') || document.body;
     const nameNorm = NuviieMaps.normalizeSearchToken(placeName);
     const nameTokens = nameNorm.split(' ').filter((w) => w.length >= 3);
 
-    const frames = new Set();
+    const frames = [];
+    const seen = new Set();
     for (const root of [detailRoot, document.body]) {
-        root.querySelectorAll('iframe.rvN3ke, iframe[src*="/search"]').forEach((f) => frames.add(f));
+        root.querySelectorAll('iframe.rvN3ke, iframe[src*="/search"]').forEach((f) => {
+            if (!seen.has(f)) {
+                seen.add(f);
+                frames.push(f);
+            }
+        });
     }
 
-    for (const frame of frames) {
+    const tryFrame = (frame, requireNameMatch) => {
         try {
-            let frameQuery = '';
-            try {
-                frameQuery = NuviieMaps.normalizeSearchToken(decodeURIComponent(frame.getAttribute('src') || ''));
-            } catch (e) {
-                frameQuery = NuviieMaps.normalizeSearchToken(frame.getAttribute('src') || '');
+            if (requireNameMatch && nameTokens.length) {
+                let frameQuery = '';
+                try {
+                    frameQuery = NuviieMaps.normalizeSearchToken(decodeURIComponent(frame.getAttribute('src') || ''));
+                } catch (e) {
+                    frameQuery = NuviieMaps.normalizeSearchToken(frame.getAttribute('src') || '');
+                }
+                if (!nameTokens.some((t) => frameQuery.includes(t))) return null;
             }
-            // Exige que pelo menos um token forte do nome apareça na query do iframe
-            if (nameTokens.length && !nameTokens.some((t) => frameQuery.includes(t))) continue;
-
             const fdoc = frame.contentDocument || frame.contentWindow?.document;
-            if (fdoc) {
-                return { frame, fdoc, fwin: frame.contentWindow, nameTokens };
-            }
+            if (fdoc) return { frame, fdoc, fwin: frame.contentWindow, nameTokens };
         } catch (e) { /* iframe blocked */ }
+        return null;
+    };
+
+    const detailFrames = frames.filter((f) => detailRoot === document.body || detailRoot.contains(f));
+
+    for (const frame of detailFrames) {
+        const ctx = tryFrame(frame, true);
+        if (ctx) return ctx;
+    }
+    for (const frame of detailFrames) {
+        const ctx = tryFrame(frame, false);
+        if (ctx) return ctx;
     }
     return null;
 };
@@ -89,9 +136,12 @@ NuviieMaps.detectCardPlatform = (card) => {
 };
 
 NuviieMaps.parseSearchResultCard = (R, card, bad) => {
+    const cardLink = card.querySelector('a[href]');
+    if (cardLink?.href) NuviieMaps.applySocialUrl(R, cardLink.href, bad);
+
     const cidPsb = card.querySelector('.CIdPsb');
     const faviconAlt = card.querySelector('img.l5D6lb')?.getAttribute('alt') || '';
-    const urlText = (cidPsb?.textContent || faviconAlt || '').trim();
+    const urlText = (cidPsb?.textContent || faviconAlt || card.textContent || '').trim();
     const platform = NuviieMaps.detectCardPlatform(card);
     let url = NuviieMaps.breadcrumbToUrl(urlText);
 
@@ -211,7 +261,9 @@ NuviieMaps.extractFromWebResults = (R, ctx, bad) => {
     }
 
     // 2) Cards "Resultados da Web" — SEMPRE parsear (W_jd pode estar incompleto)
-    for (const card of fdoc.querySelectorAll('#gsr .V2ynS, .RMrS6d, div.V2ynS')) {
+    for (const card of fdoc.querySelectorAll(
+        '#gsr .V2ynS, .RMrS6d, div.V2ynS, #gsr a[data-hveid], [data-hveid].V2ynS'
+    )) {
         NuviieMaps.parseSearchResultCard(R, card, bad);
     }
 
@@ -264,6 +316,85 @@ NuviieMaps.applySocialFromText = (R, bodyText, bad) => {
         const ttM = bodyText.match(/tiktok\.com\s*[›\/>\s]+\s*@?([A-Za-z0-9._]{2,50})/i);
         if (ttM && !bad.has(ttM[1].toLowerCase())) R.tiktok = '@' + ttM[1].replace(/\s.*$/, '');
     }
+};
+
+NuviieMaps.extractWebResultsFromMainPanel = (R, bad) => {
+    const detailRoot = document.querySelector('[role="main"]') || document.body;
+    const headings = ['Resultados da Web', 'Web results', 'Resultados web'];
+    let section = null;
+
+    for (const el of detailRoot.querySelectorAll('h2, div, span, button')) {
+        const t = (el.textContent || '').trim();
+        if (headings.some((h) => t === h || t.startsWith(h))) {
+            section = el.closest('div[jsaction]') || el.parentElement?.parentElement || el.parentElement;
+            break;
+        }
+    }
+
+    const searchRoot = section || detailRoot;
+    for (const card of searchRoot.querySelectorAll(
+        '#gsr .V2ynS, .RMrS6d, div.V2ynS, [data-hveid], a[href*="instagram.com"], a[href*="facebook.com"]'
+    )) {
+        if (card.matches('a[href]')) {
+            NuviieMaps.applySocialUrl(R, card.href, bad);
+        } else {
+            NuviieMaps.parseSearchResultCard(R, card, bad);
+        }
+    }
+};
+
+NuviieMaps.extractContactFields = () => {
+    const R = {
+        website: null, instagram: null, facebook: null, youtube: null,
+        twitter: null, linkedin: null, tiktok: null, phone: null, whatsapp_link: null,
+    };
+    const bad = new Set(['explore','reel','reels','p','stories','tv','accounts',
+                         'tags','share','sharer','intent','home','watch','results',
+                         'search','jobs','feed','ads','about','legal','privacy',
+                         'support','notifications','explore','highlights']);
+    const detailRoot = document.querySelector('[role="main"]') || document.body;
+
+    for (const sel of [
+        'a[data-item-id="authority"]',
+        'button[data-item-id="authority"]',
+        'a[data-item-id*="authority"]',
+        'a[aria-label*="Website"]',
+        'a[aria-label*="website"]',
+        'a[aria-label*="site"]',
+        'a[aria-label*="Site"]',
+    ]) {
+        detailRoot.querySelectorAll(sel).forEach((el) => {
+            const href = el.href || el.getAttribute('href') || el.getAttribute('data-href') || '';
+            if (href) NuviieMaps.applySocialUrl(R, href, bad);
+        });
+    }
+
+    detailRoot.querySelectorAll('[aria-label]').forEach((el) => {
+        const lbl = el.getAttribute('aria-label') || '';
+        const siteM = lbl.match(/(?:website|site)[:\s]+(.+)/i);
+        if (siteM) {
+            const url = NuviieMaps.normalizeDomainText(siteM[1]) || siteM[1].trim();
+            if (url) NuviieMaps.applySocialUrl(R, url, bad);
+        }
+    });
+
+    detailRoot.querySelectorAll('div.Io6YTe, div.AeaXub').forEach((el) => {
+        const t = el.textContent.trim();
+        const parent = el.closest('a[href]');
+        if (parent?.href) NuviieMaps.applySocialUrl(R, parent.href, bad);
+        const domainUrl = NuviieMaps.normalizeDomainText(t);
+        if (domainUrl) NuviieMaps.applySocialUrl(R, domainUrl, bad);
+        else NuviieMaps.applySocialFromText(R, t, bad);
+    });
+
+    detailRoot.querySelectorAll(
+        'a[href*="instagram.com"], a[href*="facebook.com"], a[href*="wa.me"], ' +
+        'a[href*="linkedin.com"], a[href*="youtube.com"], a[href*="twitter.com"], a[href*="x.com"]'
+    ).forEach((a) => {
+        NuviieMaps.applySocialUrl(R, a.href, bad);
+    });
+
+    return R;
 };
 
 NuviieMaps.extractAll = () => {
@@ -493,7 +624,8 @@ NuviieMaps.extractAll = () => {
     for (const catEl of catCandidates) {
         if (!catEl) continue;
         const catText = catEl.textContent.trim();
-        if (catText && !notCat.has(catText) && catText.length > 2 && catText.length < 80) {
+        if (catText && !notCat.has(catText) && catText.length > 2 && catText.length < 80
+            && !NuviieMaps.isLikelyRatingCategory(catText)) {
             R.category = catText;
             break;
         }
@@ -624,6 +756,13 @@ NuviieMaps.extractAll = () => {
     // mesmo Instagram (de um anúncio fixo) "vazar" para todos os leads.
     // Por isso restringimos a busca ao painel de detalhes do lugar.
     const detailRoot = document.querySelector('[role="main"]') || document.body;
+
+    NuviieMaps.extractWebResultsFromMainPanel(R, bad);
+
+    const contactFields = NuviieMaps.extractContactFields();
+    Object.entries(contactFields).forEach(([k, v]) => {
+        if (v && !R[k]) R[k] = v;
+    });
 
     // ── "Resultados da Web" — links extras (Instagram, LinkedIn, Facebook etc.)
     // ficam dentro de um <iframe src="/search?q=..."> que é MESMA ORIGEM

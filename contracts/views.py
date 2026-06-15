@@ -9,6 +9,8 @@ from django.conf import settings
 
 from audit.services import log_activity
 
+from .payment_plan import build_payment_plan
+
 from .models import GeneratedContract
 from .nuviie_template import (
     FIELD_SCHEMA,
@@ -47,12 +49,15 @@ def generate_view(request):
                 generate_nuviie_contract_pdf(filled_data, output_filepath, contract_name)
 
             rel_file_path = f'generated_contracts/{filename}'
+            payment_plan = build_payment_plan(filled_data)
             contract = GeneratedContract.objects.create(
                 user=request.user,
                 template=None,
                 name=contract_name,
                 filled_data=filled_data,
                 pdf_file=rel_file_path,
+                client_name=filled_data.get('nome_cliente', ''),
+                payment_plan=payment_plan,
             )
 
             log_activity(
@@ -68,24 +73,38 @@ def generate_view(request):
             messages.success(request, f"Contrato '{contract_name}' gerado com sucesso!")
             if export_format == 'docx':
                 return redirect('download_contract', contract_id=contract.id)
-            return redirect('contracts_history')
+            from django.urls import reverse
+            return redirect(reverse('template_list') + '?tab=meus')
 
         except Exception as e:
             messages.error(request, f'Falha ao gerar contrato: {e}')
 
+    contracts = GeneratedContract.objects.select_related('lead').all()[:200]
     return render(request, 'contracts/generate.html', {
         'field_schema': FIELD_SCHEMA,
         'field_schema_json': json.dumps(FIELD_SCHEMA),
         'sections_json': json.dumps(preview_sections_for_js()),
         'defaults_json': json.dumps(default_values()),
         'placeholder_labels_json': json.dumps(PLACEHOLDER_LABELS),
+        'contracts_json': json.dumps([
+            {
+                'id': c.id,
+                'name': c.name,
+                'client_name': c.client_name or c.filled_data.get('nome_cliente', ''),
+                'lead_id': c.lead_id,
+                'lead_name': c.lead.name if c.lead else None,
+                'created_at': c.created_at.strftime('%d/%m/%Y %H:%M'),
+                'payment_mode': (c.payment_plan or {}).get('mode'),
+            }
+            for c in contracts
+        ]),
         'current_page': 'contracts',
     })
 
 
 @login_required
 def contracts_history_view(request):
-    contracts = GeneratedContract.objects.filter(user=request.user)
+    contracts = GeneratedContract.objects.select_related('lead').all()
     return render(request, 'contracts/history.html', {
         'contracts': contracts,
         'current_page': 'contracts',
@@ -94,7 +113,7 @@ def contracts_history_view(request):
 
 @login_required
 def delete_contract_view(request, contract_id):
-    contract = get_object_or_404(GeneratedContract, id=contract_id, user=request.user)
+    contract = get_object_or_404(GeneratedContract, id=contract_id)
     name = contract.name
     if contract.pdf_file and os.path.exists(contract.pdf_file.path):
         os.remove(contract.pdf_file.path)
@@ -114,7 +133,7 @@ def delete_contract_view(request, contract_id):
 
 @login_required
 def download_contract_view(request, contract_id):
-    contract = get_object_or_404(GeneratedContract, id=contract_id, user=request.user)
+    contract = get_object_or_404(GeneratedContract, id=contract_id)
 
     if not contract.pdf_file or not os.path.exists(contract.pdf_file.path):
         raise Http404('Arquivo de contrato não encontrado.')

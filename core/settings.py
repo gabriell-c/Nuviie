@@ -88,6 +88,8 @@ INSTALLED_APPS = [
     'monitoring',
     'prompt_library',
     'lead_scoring',
+    'finance',
+    'notifications',
 ]
 
 MIDDLEWARE = [

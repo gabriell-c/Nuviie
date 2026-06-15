@@ -28,6 +28,7 @@ class ScoringRuleSerializer(serializers.ModelSerializer):
     conditions = ScoringConditionSerializer(many=True)
     condition_count = serializers.SerializerMethodField()
     points_display = serializers.SerializerMethodField()
+    scope_display = serializers.CharField(source='get_scope_display', read_only=True)
 
     class Meta:
         model = ScoringRule
@@ -40,12 +41,17 @@ class ScoringRuleSerializer(serializers.ModelSerializer):
             'priority',
             'is_active',
             'match_mode',
+            'scope',
+            'scope_display',
             'conditions',
             'condition_count',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'condition_count', 'points_display']
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'condition_count',
+            'points_display', 'scope_display',
+        ]
 
     def get_condition_count(self, obj):
         return obj.conditions.count()

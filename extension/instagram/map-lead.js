@@ -7,7 +7,7 @@ const SITE_TYPE_PATTERNS = [
   ['facebook', /(?:facebook\.com|fb\.com|fb\.me)\//i],
   ['youtube', /youtube\.com\//i],
   ['linkedin', /linkedin\.com\//i],
-  ['linktree', /(?:linktr\.ee|linkinbio\.|bio\.site|beacons\.ai|linky\.bio|milkshake\.app)/i],
+  ['linktree', /(?:linktr\.ee|linkinbio\.|bio\.site|beacons\.ai|linky\.bio|milkshake\.app|bit\.ly|bitly\.com|tinyurl\.com|goo\.gl|t\.co)/i],
   ['other_social', /(?:tiktok\.com|twitter\.com|x\.com|snapchat\.com|pinterest\.com|threads\.net)/i],
 ];
 
@@ -39,22 +39,178 @@ NuviieInstagramMap.formatPhoneBr = (normalized) => {
 
 NuviieInstagramMap.extractPhoneFromBio = (bio) => {
   if (!bio) return null;
-  const m = bio.match(/\(?\d{2}\)?\s?(?:9\s?\d{4}|\d{4})[-\s]?\d{4}/);
-  return m ? m[0] : null;
+  const text = String(bio);
+
+  const labeled = text.match(
+    /(?:tel(?:efone)?|fone|cel(?:ular)?|whats(?:app)?|zap|contato|📞|☎️?)[:\s]*([+\d\s().\-]{10,24})/i,
+  );
+  if (labeled) {
+    const candidate = labeled[1].trim();
+    if (candidate.replace(/\D/g, '').length >= 10) return candidate;
+  }
+
+  const wa = text.match(/wa\.me\/(\d{10,15})/i);
+  if (wa) return wa[1];
+
+  const patterns = [
+    /\+55\s*\(?\d{2}\)?\s*(?:9\s?\d{4}|\d{4})[-\s]?\d{4}/,
+    /\(?\d{2}\)?\s*(?:9\s?\d{4}|\d{4})[-\s]?\d{4}/,
+    /\b(\d{2})\s*(?:9\s?\d{4}|\d{4})[-\s]?(\d{4})\b/,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) return m[0].trim();
+  }
+  return null;
 };
 
 NuviieInstagramMap.extractAddressFromBio = (bio) => {
   if (!bio) return null;
-  const m = bio.match(
-    /((?:Av\.|Avenida |Rua |Rodovia |Rod\. |Alameda |Al\. |Travessa |Trav\. |Praça )[^\n]{8,200}?\d{5}-?\d{3})/i,
+  const text = String(bio).trim();
+
+  const labeled = text.match(
+    /(?:📍|Endere[cç]o|Local|Localiza[cç][aã]o|Onde estamos)[:\s\-–—]*([^\n]{10,250})/i,
   );
-  return m ? m[1].trim() : null;
+  if (labeled) {
+    const addr = labeled[1].trim().replace(/^[\-–—]\s*/, '');
+    if (addr.length >= 10) return addr;
+  }
+
+  const withCep = text.match(
+    /((?:Av\.|Avenida |Rua |Rodovia |Rod\. |Alameda |Al\. |Travessa |Trav\. |Pra[cç]a )[^\n]{8,200}?\d{5}-?\d{3})/i,
+  );
+  if (withCep) return withCep[1].trim();
+
+  const streetNum = text.match(
+    /((?:Av\.?|Avenida|Rua|R\.|Alameda|Travessa|Pra[cç]a|Rod\.?|Estrada)\s+[^\n,]{2,80},?\s*\d{1,6}(?:\s*[-–—]\s*[^\n]{3,80})?)/i,
+  );
+  if (streetNum) return streetNum[1].trim();
+
+  return null;
+};
+
+NuviieInstagramMap.extractCityFromBio = (bio) => {
+  if (!bio) return null;
+  const text = String(bio);
+  const ufMatch = text.match(
+    /(?:,\s*|\-\s*|\/\s*)([A-ZÀ-Ú][a-zà-ú]+(?:\s+(?:de|do|da|dos|das)\s+)?[A-ZÀ-Úa-zà-ú]+(?:\s+[A-ZÀ-Úa-zà-ú]+)?)\s*[-\/]\s*(SP|MG|RJ|PR|RS|SC|BA|GO|PE|CE|DF|ES|AM|PA|MT|MS|RN|PB|AL|SE|PI|MA|TO|RO|AC|AP|RR)/i,
+  );
+  if (ufMatch) return ufMatch[1].trim();
+  return null;
+};
+
+NuviieInstagramMap.normalizeBioTimeRange = (raw) => {
+  if (!raw) return null;
+  const t = String(raw).trim();
+  if (/fechado|closed/i.test(t)) return 'Fechado';
+  if (/\b24\s*h|\b24\s*horas|atendimento\s*24/i.test(t)) return '00:00–23:59';
+
+  const ranges = [...t.matchAll(/(\d{1,2})(?:[:h](\d{2}))?\s*[-–àas]+\s*(\d{1,2})(?:[:h](\d{2}))?/gi)];
+  if (!ranges.length) return null;
+
+  const fmt = (h, m) => `${String(h).padStart(2, '0')}:${String(m || 0).padStart(2, '0')}`;
+  if (ranges.length >= 2) {
+    return ranges.map((r) => `${fmt(r[1], r[2])}–${fmt(r[3], r[4])}`).join(' / ');
+  }
+  const r = ranges[0];
+  return `${fmt(r[1], r[2])}–${fmt(r[3], r[4])}`;
+};
+
+NuviieInstagramMap.extractHoursFromBio = (bio) => {
+  if (!bio) return null;
+  const text = String(bio).replace(/\r/g, '');
+  const hours = {};
+
+  const dayKeyMap = [
+    { key: 'seg', re: /seg(?:unda)?(?:[\-\s]?feira)?/i },
+    { key: 'ter', re: /ter[cç]a(?:[\-\s]?feira)?/i },
+    { key: 'qua', re: /quarta(?:[\-\s]?feira)?/i },
+    { key: 'qui', re: /quinta(?:[\-\s]?feira)?/i },
+    { key: 'sex', re: /sexta(?:[\-\s]?feira)?/i },
+    { key: 'sab', re: /s[aá]bado/i },
+    { key: 'dom', re: /domingo/i },
+  ];
+
+  const resolveDayKey = (fragment) => {
+    for (const { key, re } of dayKeyMap) {
+      if (re.test(fragment)) return key;
+    }
+    return null;
+  };
+
+  const weekdayOrder = ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom'];
+
+  if (/\b(?:24\s*h|24\s*horas|aberto\s*24|atendimento\s*24)\b/i.test(text)) {
+    weekdayOrder.forEach((d) => { hours[d] = '00:00–23:59'; });
+    hours.status_atual = 'Aberto 24 horas';
+    return hours;
+  }
+
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 4) continue;
+
+    const perDay = trimmed.match(
+      /^((?:seg(?:unda)?|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)[^\n:]{0,20})[:\s\-–]+(.+)$/i,
+    );
+    if (perDay) {
+      const dayKey = resolveDayKey(perDay[1]);
+      const slot = NuviieInstagramMap.normalizeBioTimeRange(perDay[2]);
+      if (dayKey && slot) hours[dayKey] = slot;
+      continue;
+    }
+
+    const rangeLine = trimmed.match(
+      /(seg(?:unda)?(?:\s*[-–a]\s*(?:sex(?:ta)?|dom(?:ingo)?)|\s*[-–]\s*sex))[:\s\-–]*(.+)/i,
+    );
+    if (rangeLine) {
+      const slot = NuviieInstagramMap.normalizeBioTimeRange(rangeLine[2]);
+      if (slot) {
+        const endMatch = rangeLine[1].match(/dom/i) ? 'dom' : 'sex';
+        const endIdx = weekdayOrder.indexOf(endMatch);
+        weekdayOrder.slice(0, endIdx + 1).forEach((d) => { hours[d] = slot; });
+      }
+    }
+  }
+
+  const horarioBlock = text.match(
+    /(?:hor[aá]rio|funcionamento|atendimento|🕐|⏰)[:\s\-–]*([^\n]{6,120})/i,
+  );
+  if (horarioBlock && Object.keys(hours).length === 0) {
+    const block = horarioBlock[1];
+    const rangeAll = block.match(
+      /(seg(?:unda)?(?:\s*[-–a]\s*(?:sex(?:ta)?|s[aá]b(?:ado)?|dom(?:ingo)?)))[\s:,\-–]*(\d{1,2}(?:[:h]\d{2})?\s*[-–àas]+\s*\d{1,2}(?:[:h]\d{2})?|fechado|24\s*h[^\s]*)/i,
+    );
+    if (rangeAll) {
+      const slot = NuviieInstagramMap.normalizeBioTimeRange(rangeAll[2]);
+      const endMatch = rangeAll[1].match(/dom/i) ? 'dom'
+        : rangeAll[1].match(/s[aá]b/i) ? 'sab' : 'sex';
+      const endIdx = weekdayOrder.indexOf(endMatch);
+      if (slot && endIdx >= 0) {
+        weekdayOrder.slice(0, endIdx + 1).forEach((d) => { hours[d] = slot; });
+      }
+    } else {
+      const slot = NuviieInstagramMap.normalizeBioTimeRange(block);
+      if (slot) weekdayOrder.slice(0, 5).forEach((d) => { hours[d] = slot; });
+    }
+  }
+
+  const openNow = text.match(/\b(aberto|fechado)\b(?:\s*agora)?/i);
+  if (openNow) hours.status_atual = openNow[0].trim();
+
+  return Object.keys(hours).filter((k) => k !== 'status_atual').length ? hours : null;
 };
 
 NuviieInstagramMap.extractPhoneFromUrl = (url) => {
   if (!url) return null;
   const m = String(url).match(/(?:wa\.me|phone=|phone%3D|send\?phone=)[+/]?(\d{10,15})/i);
   return m ? m[1] : null;
+};
+
+NuviieInstagramMap.hasRealWebsite = (lead) => {
+  if (!lead) return false;
+  return !!(lead.website && lead.website_detected_type === 'website');
 };
 
 NuviieInstagramMap.hasBioLink = (lead) => {
@@ -264,9 +420,10 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
   }
 
   let phoneRaw = raw.business_phone_number || raw.public_phone_number || raw.contact_phone_number || null;
-  if (!phoneRaw) phoneRaw = NuviieInstagramMap.extractPhoneFromBio(raw.biography);
+  const bioText = raw.biography || '';
+  if (!phoneRaw) phoneRaw = NuviieInstagramMap.extractPhoneFromBio(bioText);
 
-  const bioLinks = NuviieInstagramMap.extractLinksFromBio(raw.biography);
+  const bioLinks = NuviieInstagramMap.extractLinksFromBio(bioText);
 
   let normalized = NuviieInstagramMap.normalizePhone(phoneRaw);
   if (ctx.normalized && !normalized) {
@@ -300,13 +457,22 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
   const profilePic = raw.profile_pic_url_hd || raw.profile_pic_url || null;
   let category = raw.business_category_name || raw.category_name || niche || '';
   if (String(category).toLowerCase() === 'none') category = niche || '';
-  let address = raw.business_address || NuviieInstagramMap.extractAddressFromBio(raw.biography) || null;
+  let address = raw.business_address || NuviieInstagramMap.extractAddressFromBio(bioText) || null;
+  let businessHours = null;
+  if (raw.business_hours && typeof raw.business_hours === 'object') {
+    businessHours = raw.business_hours;
+  } else if (raw.opening_hours && typeof raw.opening_hours === 'object') {
+    businessHours = raw.opening_hours;
+  } else {
+    businessHours = NuviieInstagramMap.extractHoursFromBio(bioText);
+  }
+  let leadCity = city || NuviieInstagramMap.extractCityFromBio(bioText) || '';
   const instagramUrl = `https://www.instagram.com/${handle}/`;
 
   return {
     name,
     category: String(category).trim(),
-    city: city || '',
+    city: leadCity,
     phone_number: phoneRaw,
     normalized_phone: normalized,
     website: ctx.website,
@@ -318,6 +484,7 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
     linkedin: ctx.linkedin,
     bio: NuviieInstagramMap.buildBio(raw),
     address,
+    business_hours: businessHours,
     maps_url: instagramUrl,
     profile_picture_url: profilePic,
     profile_picture_data: raw.profile_picture_data || null,

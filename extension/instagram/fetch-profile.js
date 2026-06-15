@@ -275,6 +275,15 @@
     if (!user.business_address) {
       user.business_address = parsed.business_address || NS.extractAddressFromHtml(html);
     }
+    if (!user.public_phone_number && parsed.public_phone_number) {
+      user.public_phone_number = parsed.public_phone_number;
+    }
+    if (!user.business_phone_number && parsed.business_phone_number) {
+      user.business_phone_number = parsed.business_phone_number;
+    }
+    if (!user.contact_phone_number && parsed.contact_phone_number) {
+      user.contact_phone_number = parsed.contact_phone_number;
+    }
     if (!user.biography && parsed.biography) user.biography = parsed.biography;
     if (!user.full_name && parsed.full_name) user.full_name = parsed.full_name;
     if (!user.external_url && parsed.external_url) user.external_url = parsed.external_url;
@@ -340,6 +349,14 @@
     }
 
     user.business_address = NS.parseAddress(user.business_address_json) || user.business_address;
+
+    if (user.public_phone_number && !user.business_phone_number) {
+      user.business_phone_number = user.business_phone_number || user.public_phone_number;
+    }
+    if (user.contact_phone_number && !user.business_phone_number) {
+      user.business_phone_number = user.business_phone_number || user.contact_phone_number;
+    }
+
     user.latest_post_at = NS.extractLatestPostTimestamp(user);
 
     if (Array.isArray(user.bio_links)) {
@@ -696,6 +713,15 @@
 
     var bio = html.match(/"biography"\s*:\s*"((?:\\.|[^"\\])*)"/);
     if (bio) result.biography = NS.unescapeJsonString(bio[1]);
+
+    var pubPhone = html.match(/"public_phone_number"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (pubPhone) result.public_phone_number = NS.unescapeJsonString(pubPhone[1]);
+
+    var bizPhone = html.match(/"business_phone_number"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (bizPhone) result.business_phone_number = NS.unescapeJsonString(bizPhone[1]);
+
+    var contactPhone = html.match(/"contact_phone_number"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (contactPhone) result.contact_phone_number = NS.unescapeJsonString(contactPhone[1]);
 
     var name = html.match(/"full_name"\s*:\s*"((?:\\.|[^"\\])*)"/);
     if (name) result.full_name = NS.unescapeJsonString(name[1]);

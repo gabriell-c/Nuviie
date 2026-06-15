@@ -10,6 +10,16 @@
     .prompt-list-item-active {
         box-shadow: inset 3px 0 0 0 var(--cat-color, #6366f1);
     }
+    .prompt-filters-sticky {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .search-highlight {
+        background: rgba(250, 204, 21, 0.35);
+        border-radius: 2px;
+        padding: 0 1px;
+    }
 </style>
 {% endblock %}
 
@@ -34,7 +44,7 @@
                 <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Biblioteca de Prompts</h1>
             </div>
             <p class="text-sm text-slate-500 dark:text-slate-400 ml-10">
-                <span x-text="filteredPrompts.length"></span> prompt(s)
+                <span x-text="totalCount"></span> prompt(s)
                 <span x-show="selectedCategoryName"> em <strong class="text-indigo-500" x-text="selectedCategoryName"></strong></span>
                 — clique para ler, copie com um botão
             </p>
@@ -44,6 +54,22 @@
             <i class="fa-solid fa-plus"></i>
             <span>Novo prompt</span>
         </button>
+    </div>
+
+    <!-- Mobile: chips de categoria -->
+    <div class="lg:hidden flex gap-2 overflow-x-auto pb-2 shrink-0 -mx-1 px-1">
+        <button @click="selectCategory(null)"
+                class="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition"
+                :class="selectedCategoryId === null ? 'bg-indigo-500 text-white border-indigo-500' : 'border-slate-200 dark:border-slate-700 text-slate-600'">
+            Todas
+        </button>
+        <template x-for="cat in categories" :key="'m-'+cat.id">
+            <button @click="selectCategory(cat.id)"
+                    class="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition"
+                    :class="selectedCategoryId === cat.id ? 'text-white border-transparent' : 'border-slate-200 dark:border-slate-700 text-slate-600'"
+                    :style="selectedCategoryId === cat.id ? 'background-color:' + cat.color : ''"
+                    x-text="cat.name"></button>
+        </template>
     </div>
 
     <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
@@ -95,15 +121,33 @@
 
         <!-- Lista de prompts -->
         <div class="lg:col-span-4 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden min-h-[320px] lg:min-h-0 border border-slate-200/60 dark:border-slate-800/80">
-            <div class="px-3 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 space-y-2 bg-slate-50/50 dark:bg-slate-900/30">
+            <div class="prompt-filters-sticky px-3 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 space-y-2 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm">
                 <div class="relative">
                     <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                    <input type="search" x-model.debounce.300ms="search" @input="loadPrompts()"
-                           placeholder="Buscar título ou conteúdo..."
+                    <input type="search" id="prompt-search-input" x-model.debounce.300ms="search" @input="onFilterChange()"
+                           placeholder="Buscar título ou conteúdo... (/)"
                            class="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 text-slate-900 dark:text-white placeholder:text-slate-400">
-                    <button x-show="search" @click="search = ''; loadPrompts()" type="button"
+                    <button x-show="search" @click="search = ''; onFilterChange()" type="button"
                             class="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center">
                         <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <select x-model="sortOrder" @change="onFilterChange()"
+                            class="text-xs px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+                        <option value="-updated_at">Mais recentes</option>
+                        <option value="title">A → Z</option>
+                        <option value="-title">Z → A</option>
+                    </select>
+                    <span x-show="selectedCategoryName"
+                          class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-indigo-500/15 text-indigo-600">
+                        <span x-text="selectedCategoryName"></span>
+                        <button type="button" @click="selectCategory(null)" class="hover:text-indigo-800"><i class="fa-solid fa-xmark"></i></button>
+                    </span>
+                    <button x-show="search || selectedCategoryId || sortOrder !== '-updated_at'"
+                            @click="clearFilters()" type="button"
+                            class="text-[10px] font-semibold text-slate-400 hover:text-indigo-500 ml-auto">
+                        Limpar filtros
                     </button>
                 </div>
             </div>
@@ -142,14 +186,21 @@
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide text-white shrink-0 max-w-[40%] truncate"
                                       :style="'background-color:' + (prompt.category_color || '#6366f1')"
                                       x-text="prompt.category_name"></span>
-                                <span class="text-[10px] text-slate-400 ml-auto shrink-0 tabular-nums" x-text="formatDate(prompt.updated_at)"></span>
+                                <span class="text-[10px] text-slate-400 ml-auto shrink-0 tabular-nums" x-text="relativeDate(prompt.updated_at)"></span>
                             </div>
-                            <h3 class="text-sm font-bold text-slate-900 dark:text-white leading-snug mb-1 line-clamp-2"
-                                x-text="prompt.title"></h3>
+                            <h3 class="text-base font-bold text-slate-900 dark:text-white leading-snug mb-1 line-clamp-2"
+                                x-html="highlightText(prompt.title)"></h3>
                             <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed"
-                               x-text="contentExcerpt(prompt.content)"></p>
+                               x-html="highlightText(contentExcerpt(prompt.content))"></p>
                         </button>
                     </template>
+                </div>
+            </div>
+            <div x-show="!loading && pagination.total > pagination.pageSize" class="px-3 py-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-400 shrink-0">
+                <span x-text="'Página ' + pagination.page + ' de ' + pagination.totalPages"></span>
+                <div class="space-x-2">
+                    <button @click="prevPage()" :disabled="pagination.page <= 1" class="px-2 py-1 rounded border disabled:opacity-40">Anterior</button>
+                    <button @click="nextPage()" :disabled="pagination.page >= pagination.totalPages" class="px-2 py-1 rounded border disabled:opacity-40">Próxima</button>
                 </div>
             </div>
         </div>
@@ -329,6 +380,9 @@ function promptLibrary() {
         selectedCategoryId: null,
         selectedPromptId: null,
         search: '',
+        sortOrder: '-updated_at',
+        totalCount: 0,
+        pagination: { page: 1, pageSize: 30, total: 0, totalPages: 1, next: null, previous: null },
         toast: { show: false, message: '', ok: true },
         colorPresets: ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#ef4444', '#64748b'],
         categoryModal: { open: false, id: null, name: '', color: '#6366f1', saving: false },
@@ -350,7 +404,88 @@ function promptLibrary() {
         },
 
         init() {
+            this.readUrlState();
             this.loadAll();
+            window.addEventListener('keydown', (e) => {
+                if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+                    e.preventDefault();
+                    document.getElementById('prompt-search-input')?.focus();
+                }
+            });
+        },
+
+        readUrlState() {
+            const p = new URLSearchParams(window.location.search);
+            const cat = p.get('category');
+            this.selectedCategoryId = cat ? parseInt(cat, 10) : null;
+            this.search = p.get('search') || '';
+            this.sortOrder = p.get('sort') || '-updated_at';
+            this.pagination.page = Math.max(1, parseInt(p.get('page') || '1', 10));
+        },
+
+        syncUrlState() {
+            const url = new URL(window.location);
+            if (this.selectedCategoryId) url.searchParams.set('category', this.selectedCategoryId);
+            else url.searchParams.delete('category');
+            if (this.search.trim()) url.searchParams.set('search', this.search.trim());
+            else url.searchParams.delete('search');
+            if (this.sortOrder !== '-updated_at') url.searchParams.set('sort', this.sortOrder);
+            else url.searchParams.delete('sort');
+            if (this.pagination.page > 1) url.searchParams.set('page', this.pagination.page);
+            else url.searchParams.delete('page');
+            window.history.replaceState({}, '', url);
+        },
+
+        onFilterChange() {
+            this.pagination.page = 1;
+            this.loadPrompts();
+        },
+
+        clearFilters() {
+            this.search = '';
+            this.sortOrder = '-updated_at';
+            this.selectedCategoryId = null;
+            this.pagination.page = 1;
+            this.loadPrompts();
+        },
+
+        escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        },
+
+        highlightText(text) {
+            const raw = this.escapeHtml(text || '');
+            const q = this.search.trim();
+            if (!q) return raw;
+            const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+            return raw.replace(re, '<mark class="search-highlight">$1</mark>');
+        },
+
+        relativeDate(iso) {
+            if (!iso) return '';
+            try {
+                const d = new Date(iso);
+                const diff = Date.now() - d.getTime();
+                const days = Math.floor(diff / 86400000);
+                if (days < 1) return 'hoje';
+                if (days === 1) return 'há 1 dia';
+                if (days < 30) return 'há ' + days + ' dias';
+                return this.formatDate(iso);
+            } catch { return ''; }
+        },
+
+        prevPage() {
+            if (this.pagination.page > 1) {
+                this.pagination.page--;
+                this.loadPrompts();
+            }
+        },
+
+        nextPage() {
+            if (this.pagination.page < this.pagination.totalPages) {
+                this.pagination.page++;
+                this.loadPrompts();
+            }
         },
 
         getCookie(name) {
@@ -405,10 +540,20 @@ function promptLibrary() {
             const params = new URLSearchParams();
             if (this.selectedCategoryId) params.set('category', this.selectedCategoryId);
             if (this.search.trim()) params.set('search', this.search.trim());
+            params.set('ordering', this.sortOrder);
+            params.set('page', this.pagination.page);
+            params.set('page_size', this.pagination.pageSize);
             const r = await fetch('/api/prompts/?' + params.toString(), { credentials: 'same-origin' });
             if (r.ok) {
-                this.prompts = await r.json();
+                const data = await r.json();
+                this.prompts = data.results || data;
                 this.filteredPrompts = this.prompts;
+                this.totalCount = data.count != null ? data.count : this.prompts.length;
+                this.pagination.total = this.totalCount;
+                this.pagination.totalPages = Math.max(1, Math.ceil(this.totalCount / this.pagination.pageSize));
+                this.pagination.next = data.next;
+                this.pagination.previous = data.previous;
+                this.syncUrlState();
                 if (this.selectedPromptId && !this.filteredPrompts.find(p => p.id === this.selectedPromptId)) {
                     this.selectedPromptId = this.filteredPrompts.length ? this.filteredPrompts[0].id : null;
                 } else if (!this.selectedPromptId && this.filteredPrompts.length) {
@@ -420,6 +565,7 @@ function promptLibrary() {
         selectCategory(id) {
             this.selectedCategoryId = id;
             this.selectedPromptId = null;
+            this.pagination.page = 1;
             this.loadPrompts();
         },
 

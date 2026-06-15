@@ -16,6 +16,7 @@ from authentication.whatsapp import clean_phone_number
 
 from .models import Lead, LeadNote
 from .serializers import LeadSerializer, LeadNoteSerializer
+from .status_hooks import on_lead_status_changed
 from audit.services import log_activity
 from .import_utils import save_leads_from_dicts, parse_leads_upload
 from .instagram_scraper import run_instagram_scraper
@@ -43,6 +44,7 @@ def dashboard_view(request):
     negociacao = leads_by_status.get('negociacao', 0)
     retornou = leads_by_status.get('retornou', 0)
     fechado = leads_by_status.get('fechado', 0)
+    finalizado = leads_by_status.get('finalizado', 0)
     perdido = leads_by_status.get('perdido', 0)
     
     avg_quality = user_leads.aggregate(avg=Avg('quality_score'))['avg'] or 0
@@ -70,6 +72,7 @@ def dashboard_view(request):
         'negociacao': negociacao,
         'retornou': retornou,
         'fechado': fechado,
+        'finalizado': finalizado,
         'perdido': perdido,
         'avg_quality': avg_quality,
         'google_maps_count': google_maps_count,
@@ -298,6 +301,7 @@ class LeadViewSet(viewsets.ModelViewSet):
                 note=f"Status alterado de '{old_lead.get_status_display()}' para '{lead.get_status_display()}'",
                 action_type='status_change'
             )
+            on_lead_status_changed(lead, old_status, lead.status, self.request.user)
         
         # Standard edit log
         if old_name != lead.name or old_phone != lead.phone_number:
@@ -318,6 +322,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Status inválido'}, status=status.HTTP_400_BAD_REQUEST)
             
         old_status_display = lead.get_status_display()
+        old_status = lead.status
         lead.status = new_status
         lead.save()
         
@@ -327,8 +332,15 @@ class LeadViewSet(viewsets.ModelViewSet):
             note=f"Status arrastado de '{old_status_display}' para '{lead.get_status_display()}' no Kanban.",
             action_type='status_change'
         )
+        on_lead_status_changed(lead, old_status, new_status, request.user)
         
-        return Response({'success': True, 'new_status': lead.status, 'status_display': lead.get_status_display()})
+        return Response({
+            'success': True,
+            'new_status': lead.status,
+            'status_display': lead.get_status_display(),
+            'deadline_urgency': lead.deadline_urgency(),
+            'days_until_deadline': lead.days_until_deadline(),
+        })
 
     @action(detail=True, methods=['post'], url_path='add-note')
     def add_note(self, request, pk=None):

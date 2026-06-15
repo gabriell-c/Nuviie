@@ -8,7 +8,8 @@ class Lead(models.Model):
         ('contatado', 'Contatado'),
         ('negociacao', 'Em Negociação'),
         ('retornou', 'Retornou'),
-        ('fechado', 'Fechado (Ganho)'),
+        ('fechado', 'Em Produção'),
+        ('finalizado', 'Projeto Entregue'),
         ('perdido', 'Perdido'),
     ]
 
@@ -108,6 +109,16 @@ class Lead(models.Model):
     score_breakdown = models.JSONField(null=True, blank=True, verbose_name='Detalhamento da pontuação')
     is_verified = models.BooleanField(default=False)
 
+    # Projeto / sites / contrato
+    preview_site_url = models.URLField(max_length=500, blank=True, null=True)
+    final_site_url = models.URLField(max_length=500, blank=True, null=True)
+    contract = models.ForeignKey(
+        'contracts.GeneratedContract', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='linked_leads',
+    )
+    project_deadline = models.DateField(null=True, blank=True)
+    contract_value = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -127,6 +138,24 @@ class Lead(models.Model):
     def get_maps_link(self):
         """Retorna o melhor link disponível: share_url > maps_url."""
         return self.maps_share_url or self.maps_url or None
+
+    def days_until_deadline(self):
+        if not self.project_deadline:
+            return None
+        from django.utils import timezone
+        delta = self.project_deadline - timezone.localdate()
+        return delta.days
+
+    def deadline_urgency(self):
+        """none | warning (<=4d) | danger (<=2d)"""
+        days = self.days_until_deadline()
+        if days is None or self.status not in ('fechado',):
+            return 'none'
+        if days <= 2:
+            return 'danger'
+        if days <= 4:
+            return 'warning'
+        return 'none'
 
     def recalculate_score(self):
         from lead_scoring.engine import calculate_score

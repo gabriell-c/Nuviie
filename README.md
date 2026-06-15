@@ -34,6 +34,8 @@ Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
 | 📥 **Importar Leads** | Upload JSON/CSV exportado pela extensão | `/leads/import/` |
 | 📸 **Scraper Instagram** | Busca perfis por nicho e cidade | `/scraper/instagram/` |
 | 📋 **CRM Kanban** | Pipeline de vendas com drag-and-drop e exclusão em massa | `/kanban/` |
+| 💰 **Controle Financeiro** | Entradas, despesas, gráficos, export XLSX, lançamentos automáticos de contratos | `/financeiro/` |
+| 🔔 **Notificações** | Alertas de prazo de projeto (4d/2d) in-app + navegador | sino no header |
 | 📑 **Contratos** | Templates PDF + preview ao vivo + export PDF/DOCX | `/contracts/templates/` |
 | 📊 **Analytics Servidor** | CPU, RAM, disco, rede (psutil) | `/monitoring/analytics/` |
 | 📜 **Histórico** | Auditoria de ações no sistema | `/audit/history/` |

@@ -7,19 +7,76 @@
 
 {% block content %}
 <div class="flex flex-col h-[calc(100vh-100px)]" x-data="nuviieContract()" x-init="init()">
-    <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+    <div class="mb-4 shrink-0 space-y-3">
         <div>
             <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Gerador de Contratos</h1>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Modelo Nuviie — preview idêntico ao documento oficial</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Modelo Nuviie — preview, lista global da equipe e associação ao CRM</p>
         </div>
-        <a href="{% url 'contracts_history' %}"
-           class="inline-flex items-center space-x-1.5 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition self-start">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-            <span>Histórico</span>
-        </a>
+        <div class="flex flex-wrap gap-1 p-1 bg-slate-100 dark:bg-slate-800/60 rounded-xl w-fit">
+            <button type="button" @click="setTab('gerar')"
+                    class="px-4 py-2 text-xs font-semibold rounded-lg transition"
+                    :class="activeTab === 'gerar' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
+                <i class="fa-solid fa-file-pen mr-1"></i> Gerar
+            </button>
+            <button type="button" @click="setTab('meus')"
+                    class="px-4 py-2 text-xs font-semibold rounded-lg transition"
+                    :class="activeTab === 'meus' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
+                <i class="fa-solid fa-folder-open mr-1"></i> Meus contratos
+            </button>
+            <button type="button" @click="setTab('historico')"
+                    class="px-4 py-2 text-xs font-semibold rounded-lg transition"
+                    :class="activeTab === 'historico' ? 'bg-white dark:bg-slate-900 text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
+                <i class="fa-solid fa-clock-rotate-left mr-1"></i> Histórico
+            </button>
+        </div>
     </div>
 
-    <div class="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-0">
+    <!-- Aba: Meus contratos / Histórico -->
+    <div x-show="activeTab !== 'gerar'" x-cloak class="flex-1 min-h-0 glass-panel rounded-2xl flex flex-col overflow-hidden">
+        <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-2 items-center shrink-0">
+            <input type="search" x-model.debounce.300ms="contractSearch" placeholder="Buscar cliente ou documento..."
+                   class="flex-1 min-w-[180px] px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/50">
+            <label x-show="activeTab === 'meus'" class="flex items-center gap-2 text-xs text-slate-500">
+                <input type="checkbox" x-model="onlyUnlinked" class="rounded">
+                Só sem lead
+            </label>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+            <table class="w-full text-xs text-left">
+                <thead class="sticky top-0 bg-slate-50 dark:bg-slate-900 text-slate-400 uppercase text-[10px]">
+                    <tr>
+                        <th class="px-4 py-2">Cliente</th>
+                        <th class="px-4 py-2">Documento</th>
+                        <th class="px-4 py-2">Lead CRM</th>
+                        <th class="px-4 py-2">Pagamento</th>
+                        <th class="px-4 py-2">Criado</th>
+                        <th class="px-4 py-2 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="c in filteredContracts()" :key="c.id">
+                        <tr class="border-t border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                            <td class="px-4 py-3 font-semibold" x-text="c.client_name || '—'"></td>
+                            <td class="px-4 py-3" x-text="c.name"></td>
+                            <td class="px-4 py-3">
+                                <span x-show="c.lead_name" class="text-emerald-600" x-text="c.lead_name"></span>
+                                <span x-show="!c.lead_name" class="text-slate-400">—</span>
+                            </td>
+                            <td class="px-4 py-3 capitalize" x-text="(c.payment_mode || '').replace(/_/g, ' ')"></td>
+                            <td class="px-4 py-3 text-slate-400" x-text="c.created_at"></td>
+                            <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">
+                                <a :href="'/contracts/download/' + c.id + '/'" class="text-indigo-500 hover:underline">PDF</a>
+                                <button @click="openLinkModal(c)" class="text-amber-600 hover:underline">Lead</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <p x-show="filteredContracts().length === 0" class="p-8 text-center text-sm text-slate-400">Nenhum contrato encontrado.</p>
+        </div>
+    </div>
+
+    <div x-show="activeTab === 'gerar'" class="flex-1 grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-0">
         <!-- Preview esquerda — página A4 igual ao PDF -->
         <div class="lg:col-span-3 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden order-2 lg:order-1 p-0">
             <div class="px-5 py-2.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/30">
@@ -136,6 +193,23 @@
             <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Gerando documento...</p>
         </div>
     </div>
+
+    <!-- Modal associar lead -->
+    <div x-show="linkModal.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md p-6 space-y-4" @click.outside="linkModal.open = false">
+            <h3 class="font-bold">Associar contrato ao lead</h3>
+            <p class="text-xs text-slate-500" x-text="linkModal.contract ? linkModal.contract.client_name + ' — ' + linkModal.contract.name : ''"></p>
+            <div>
+                <label class="text-xs text-slate-400">Lead (ID)</label>
+                <input type="number" x-model="linkModal.leadId" placeholder="ID do lead no Kanban"
+                       class="w-full mt-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm">
+            </div>
+            <div class="flex justify-end gap-2">
+                <button @click="linkModal.open = false" class="px-4 py-2 text-sm rounded-xl border">Cancelar</button>
+                <button @click="confirmLinkLead()" class="px-4 py-2 text-sm rounded-xl bg-indigo-600 text-white">Associar</button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -144,6 +218,11 @@
 function nuviieContract() {
     return {
         generating: false,
+        activeTab: 'gerar',
+        contractSearch: '',
+        onlyUnlinked: false,
+        contracts: {{ contracts_json|safe }},
+        linkModal: { open: false, contract: null, leadId: '' },
         schema: {{ field_schema_json|safe }},
         sections: {{ sections_json|safe }},
         placeholderLabels: {{ placeholder_labels_json|safe }},
@@ -152,7 +231,64 @@ function nuviieContract() {
         previewPages: [],
 
         init() {
+            const params = new URLSearchParams(window.location.search);
+            const tab = params.get('tab');
+            if (tab === 'meus' || tab === 'historico' || tab === 'gerar') this.activeTab = tab;
             this.updatePreview();
+        },
+
+        setTab(tab) {
+            this.activeTab = tab;
+            const url = new URL(window.location);
+            url.searchParams.set('tab', tab);
+            window.history.replaceState({}, '', url);
+        },
+
+        filteredContracts() {
+            let list = this.contracts.slice();
+            if (this.activeTab === 'meus' && this.onlyUnlinked) {
+                list = list.filter(c => !c.lead_id);
+            }
+            const q = this.contractSearch.trim().toLowerCase();
+            if (q) {
+                list = list.filter(c =>
+                    (c.client_name || '').toLowerCase().includes(q) ||
+                    (c.name || '').toLowerCase().includes(q) ||
+                    (c.lead_name || '').toLowerCase().includes(q),
+                );
+            }
+            return list;
+        },
+
+        openLinkModal(contract) {
+            this.linkModal = { open: true, contract, leadId: contract.lead_id || '' };
+        },
+
+        getCookie(name) {
+            const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            return m ? decodeURIComponent(m[2]) : '';
+        },
+
+        async confirmLinkLead() {
+            if (!this.linkModal.contract || !this.linkModal.leadId) return;
+            const r = await fetch(`/contracts/api/contracts/${this.linkModal.contract.id}/link-lead/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') },
+                body: JSON.stringify({ lead_id: parseInt(this.linkModal.leadId, 10) }),
+            });
+            if (r.ok) {
+                const data = await r.json();
+                const c = this.contracts.find(x => x.id === this.linkModal.contract.id);
+                if (c) {
+                    c.lead_id = data.lead_id;
+                    c.lead_name = data.contract?.lead_name || null;
+                }
+                this.linkModal.open = false;
+                await NuviieModal.alert('Contrato associado. Lançamentos financeiros gerados: ' + (data.finance_entries_created || 0), 'Sucesso');
+            } else {
+                const err = await r.json().catch(() => ({}));
+                await NuviieModal.alert(err.error || 'Erro ao associar', 'Erro');
+            }
         },
 
         sectionWeight(section) {

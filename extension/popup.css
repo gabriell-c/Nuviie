@@ -218,6 +218,51 @@ header h1 {
 
 .filter-hint.hidden { display: none !important; }
 
+.filter-section-title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.filter-row {
+  margin-bottom: 8px;
+}
+
+.filter-row label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.filter-row select,
+.filter-row input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.filter-row-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.filter-hint-static {
+  margin: -4px 0 8px;
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
 .hidden { display: none !important; }
 
 body.mode-instagram .maps-only { display: none; }
@@ -456,6 +501,15 @@ body.mode-maps .instagram-only { display: none !important; }
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 .btn.primary:hover { filter: brightness(1.05); }
+
+.btn.danger {
+  background: #dc2626;
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.btn.danger:hover { filter: brightness(1.08); }
 
 .btn.secondary {
   background: var(--error-bg);
