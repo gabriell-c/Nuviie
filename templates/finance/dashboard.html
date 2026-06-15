@@ -3,227 +3,199 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'css/nuviie-ui.css' %}">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {% endblock %}
 
 {% block content %}
-<div class="nui max-w-7xl mx-auto space-y-6 pb-8" x-data="financeDashboard()" x-init="init()">
+<div class="nui max-w-7xl mx-auto space-y-4 pb-8" x-data="financeDashboard()" x-init="init()">
 
     <!-- Header -->
-    <div class="nui-animate-in flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div class="flex items-start gap-4">
-            <div class="nui-stat-icon bg-gradient-to-br from-emerald-500/20 to-indigo-500/20 text-emerald-500 shrink-0">
-                <i class="fa-solid fa-wallet"></i>
-            </div>
-            <div>
-                <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Controle Financeiro</h1>
-                <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
-                    <span><i class="fa-solid fa-users text-[10px] text-indigo-400"></i> Workspace compartilhado</span>
-                    <span class="text-slate-300 dark:text-slate-700">·</span>
-                    <span><i class="fa-solid fa-chart-line text-[10px] text-emerald-400"></i> Fluxo em tempo real</span>
-                </p>
-            </div>
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Controle Financeiro</h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Workspace compartilhado</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             <button @click="openCategoryModal()"
-                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 hover:border-indigo-500/50">
-                <i class="fa-solid fa-tags text-indigo-500"></i> Categorias
+                    class="nui-btn-ghost">
+                <i class="fa-solid fa-tags"></i> Categorias
             </button>
-            <button @click="exportData('xlsx')"
-                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 hover:border-emerald-500/50">
-                <i class="fa-solid fa-file-excel text-emerald-500"></i> Export XLSX
+            <div class="relative">
+                <button type="button" @click="exportOpen = !exportOpen" @keydown.escape.window="exportOpen = false"
+                        class="nui-btn-ghost" :class="exportOpen && 'ring-1 ring-indigo-500/40'">
+                    <i class="fa-solid fa-download"></i> Exportar
+                    <i class="fa-solid fa-chevron-down text-[9px] opacity-50"></i>
+                </button>
+                <div x-show="exportOpen" @click.outside="exportOpen = false" x-cloak
+                     class="nui-dropdown !w-40 right-0 left-auto mt-1">
+                    <button type="button" @click="exportData('xlsx'); exportOpen = false" class="nui-dropdown-item">
+                        <i class="fa-solid fa-file-excel text-emerald-500"></i> Excel
+                    </button>
+                    <button type="button" @click="exportData('pdf'); exportOpen = false" class="nui-dropdown-item">
+                        <i class="fa-solid fa-file-pdf text-red-500"></i> PDF
+                    </button>
+                    <button type="button" @click="exportData('csv'); exportOpen = false" class="nui-dropdown-item">
+                        <i class="fa-solid fa-file-csv text-sky-500"></i> CSV
+                    </button>
+                </div>
+            </div>
+            <button @click="openModal()" class="nui-btn-primary">
+                <i class="fa-solid fa-plus"></i> Novo lançamento
             </button>
-            <button @click="exportData('csv')"
-                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60">
-                <i class="fa-solid fa-file-csv text-sky-500"></i> CSV
-            </button>
-            <button @click="exportData('pdf')"
-                    class="btn-interactive inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 hover:border-red-500/40">
-                <i class="fa-solid fa-file-pdf text-red-500"></i> Export PDF
-            </button>
-            <button @click="openModal()"
-                    class="btn-interactive inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-xl gradient-bg-primary text-white shadow-lg shadow-indigo-500/25">
-                <i class="fa-solid fa-circle-plus"></i> Novo lançamento
-            </button>
+        </div>
+    </div>
+
+    <!-- Filtro global de período -->
+    <div class="nui-period-bar">
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="relative">
+                <button type="button" @click="periodOpen = !periodOpen"
+                        class="nui-period-trigger" :class="periodOpen && 'open'">
+                    <i class="fa-regular fa-calendar text-slate-400"></i>
+                    <span x-text="periodLabel()"></span>
+                    <i class="fa-solid fa-chevron-down text-[9px] opacity-40"></i>
+                </button>
+                <div x-show="periodOpen" @click.outside="periodOpen = false" x-cloak
+                     class="nui-dropdown nui-period-menu">
+                    <p class="nui-dropdown-heading">Atalhos</p>
+                    <template x-for="p in periodPresets" :key="p.id">
+                        <button type="button" @click="setPeriod(p.id); periodOpen = false"
+                                class="nui-dropdown-item" :class="filters.period === p.id && 'active'">
+                            <span x-text="p.label"></span>
+                            <i x-show="filters.period === p.id" class="fa-solid fa-check text-[10px] text-indigo-500"></i>
+                        </button>
+                    </template>
+                    <div class="nui-dropdown-divider"></div>
+                    <p class="nui-dropdown-heading">Personalizado</p>
+                    <button type="button" @click="setPeriod('single'); periodOpen = false"
+                            class="nui-dropdown-item" :class="filters.period === 'single' && 'active'">
+                        Data específica
+                    </button>
+                    <button type="button" @click="setPeriod('range'); periodOpen = false"
+                            class="nui-dropdown-item" :class="filters.period === 'range' && 'active'">
+                        Intervalo de datas
+                    </button>
+                </div>
+            </div>
+            <template x-if="filters.period === 'single'">
+                <input type="text" x-model="filters.date_on" @change="applyPeriodDates()"
+                       placeholder="AAAA-MM-DD" class="nui-input nui-input-compact w-36">
+            </template>
+            <template x-if="filters.period === 'range'">
+                <div class="flex items-center gap-2">
+                    <input type="text" x-model="filters.date_from" @change="applyPeriodDates()"
+                           placeholder="De AAAA-MM-DD" class="nui-input nui-input-compact w-36">
+                    <span class="text-slate-400 text-xs">→</span>
+                    <input type="text" x-model="filters.date_to" @change="applyPeriodDates()"
+                           placeholder="Até AAAA-MM-DD" class="nui-input nui-input-compact w-36">
+                </div>
+            </template>
+            <span class="text-[11px] text-slate-400 ml-auto hidden sm:inline">Filtra cards, gráficos e lançamentos</span>
         </div>
     </div>
 
     <!-- Summary cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="nui-stat-card nui-animate-in nui-delay-1">
-            <div class="flex items-center justify-between mb-3">
-                <div class="nui-stat-icon bg-emerald-500/15 text-emerald-500"><i class="fa-solid fa-arrow-trend-up"></i></div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Entradas</span>
-            </div>
-            <p class="nui-stat-value text-emerald-500" x-text="fmtMoney(summary.income_confirmed)"></p>
-            <p class="text-[10px] text-slate-400 mt-1">Confirmadas no período</p>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="nui-stat-min">
+            <p class="nui-stat-min-label">Entradas</p>
+            <p class="nui-stat-min-value text-emerald-500" x-text="fmtMoney(summary.income_confirmed)"></p>
         </div>
-        <div class="nui-stat-card nui-animate-in nui-delay-2">
-            <div class="flex items-center justify-between mb-3">
-                <div class="nui-stat-icon bg-red-500/15 text-red-500"><i class="fa-solid fa-arrow-trend-down"></i></div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Despesas</span>
-            </div>
-            <p class="nui-stat-value text-red-500" x-text="fmtMoney(summary.expense_confirmed)"></p>
-            <p class="text-[10px] text-slate-400 mt-1">Saídas confirmadas</p>
+        <div class="nui-stat-min">
+            <p class="nui-stat-min-label">Despesas</p>
+            <p class="nui-stat-min-value text-red-500" x-text="fmtMoney(summary.expense_confirmed)"></p>
         </div>
-        <div class="nui-stat-card nui-animate-in nui-delay-3">
-            <div class="flex items-center justify-between mb-3">
-                <div class="nui-stat-icon bg-indigo-500/15 text-indigo-500"><i class="fa-solid fa-scale-balanced"></i></div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Saldo</span>
-            </div>
-            <p class="nui-stat-value text-slate-800 dark:text-white" x-text="fmtMoney(summary.balance)"></p>
-            <p class="text-[10px] text-slate-400 mt-1">Entradas − despesas</p>
+        <div class="nui-stat-min">
+            <p class="nui-stat-min-label">Saldo</p>
+            <p class="nui-stat-min-value text-slate-800 dark:text-white" x-text="fmtMoney(summary.balance)"></p>
         </div>
-        <div class="nui-stat-card nui-animate-in nui-delay-4">
-            <div class="flex items-center justify-between mb-3">
-                <div class="nui-stat-icon bg-amber-500/15 text-amber-500"><i class="fa-solid fa-clock"></i></div>
-                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">A receber</span>
-            </div>
-            <p class="nui-stat-value text-amber-500" x-text="fmtMoney(summary.pending_income)"></p>
-            <p class="text-[10px] text-slate-400 mt-1">Pendentes de confirmação</p>
+        <div class="nui-stat-min">
+            <p class="nui-stat-min-label">A receber</p>
+            <p class="nui-stat-min-value text-amber-500" x-text="fmtMoney(summary.pending_income)"></p>
         </div>
     </div>
 
     <!-- Charts -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div class="glass-panel p-5 rounded-2xl lg:col-span-2 nui-animate-in nui-delay-4">
-            <div class="flex items-center justify-between mb-2">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-chart-column text-indigo-500 text-sm"></i>
-                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400" x-text="chartFlowTitle()"></h3>
-                </div>
-                <span class="text-[10px] text-slate-500">Barras verdes = entradas · vermelhas = despesas</span>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div class="nui-panel lg:col-span-2">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="nui-panel-title" x-text="chartFlowTitle()"></h3>
+                <span class="text-[10px] text-slate-500">Entradas vs despesas</span>
             </div>
-            <p class="text-[10px] text-slate-400 mb-3">Comparativo de quanto entrou vs quanto saiu no período filtrado (pendentes + confirmados).</p>
-            <div class="h-[220px] relative">
-                <canvas id="chartMonthly"></canvas>
-                <div x-show="!chartHasData" class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                    <i class="fa-solid fa-chart-simple text-3xl text-slate-300 dark:text-slate-600 mb-2"></i>
+            <div class="nui-chart-wrap" id="wrapChartMonthly">
+                <canvas id="chartMonthly" role="img" aria-label="Gráfico fluxo mensal"></canvas>
+                <div x-show="chartsReady && !chartHasData" x-cloak
+                     class="nui-chart-empty">
                     <p class="text-xs text-slate-400">Sem movimentação no período</p>
                 </div>
             </div>
         </div>
-        <div class="glass-panel p-5 rounded-2xl nui-animate-in nui-delay-5">
-            <div class="flex items-center justify-between mb-2">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-chart-pie text-amber-500 text-sm"></i>
-                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Por categoria</h3>
-                </div>
-                <div class="nui-segment !p-0.5 !inline-flex">
-                    <button type="button" @click="chartDonutMode = 'expense'; renderCharts()"
-                            class="nui-segment-btn !py-1 !px-2 !text-[10px] !flex-none"
-                            :class="chartDonutMode === 'expense' && 'active-expense'">Despesas</button>
-                    <button type="button" @click="chartDonutMode = 'income'; renderCharts()"
-                            class="nui-segment-btn !py-1 !px-2 !text-[10px] !flex-none"
-                            :class="chartDonutMode === 'income' && 'active-income'">Entradas</button>
+        <div class="nui-panel">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="nui-panel-title">Por categoria</h3>
+                <div class="nui-segment-min">
+                    <button type="button" @click="setDonutMode('expense')"
+                            class="nui-segment-min-btn"
+                            :class="chartDonutMode === 'expense' && 'active-expense'">Desp.</button>
+                    <button type="button" @click="setDonutMode('income')"
+                            class="nui-segment-min-btn"
+                            :class="chartDonutMode === 'income' && 'active-income'">Entr.</button>
                 </div>
             </div>
-            <p class="text-[10px] text-slate-400 mb-3">Distribuição percentual por categoria no filtro atual.</p>
-            <div class="h-[220px] relative">
-                <canvas id="chartDonut"></canvas>
-                <div x-show="!chartDonutHasData" class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                    <i class="fa-solid fa-chart-pie text-3xl text-slate-300 dark:text-slate-600 mb-2"></i>
-                    <p class="text-xs text-slate-400">Nenhuma <span x-text="chartDonutMode === 'income' ? 'entrada' : 'despesa'"></span> no período</p>
+            <div class="nui-chart-wrap" id="wrapChartDonut">
+                <canvas id="chartDonut" role="img" aria-label="Gráfico por categoria"></canvas>
+                <div x-show="chartsReady && !chartDonutHasData" x-cloak
+                     class="nui-chart-empty">
+                    <p class="text-xs text-slate-400">Sem dados</p>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Table section -->
-    <div class="glass-panel rounded-2xl overflow-hidden nui-animate-in nui-delay-5"
-         :class="tableFullscreen && 'nui-table-fullscreen !rounded-none !border-0'"
+    <div class="nui-panel overflow-hidden"
+         :class="tableFullscreen && 'nui-table-fullscreen'"
          @keydown.escape.window="tableFullscreen && (tableFullscreen = false)">
-        <!-- Filters -->
-        <div class="px-4 py-4 border-b border-slate-100 dark:border-slate-800 space-y-3">
+        <!-- Table filters -->
+        <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-800/80 space-y-3">
             <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-filter text-slate-400 text-xs"></i>
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Lançamentos</span>
-                </div>
+                <span class="nui-panel-title">Lançamentos</span>
                 <button type="button" @click="tableFullscreen = !tableFullscreen"
-                        class="btn-interactive inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-500">
+                        class="nui-btn-ghost !py-1 !px-2 !text-[10px]">
                     <i class="fa-solid" :class="tableFullscreen ? 'fa-compress' : 'fa-expand'"></i>
-                    <span x-text="tableFullscreen ? 'Sair tela cheia' : 'Tela cheia'"></span>
                 </button>
             </div>
-            <!-- Período -->
-            <div class="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                <div class="flex items-center gap-2">
-                    <i class="fa-regular fa-calendar text-slate-400 text-xs"></i>
-                    <span class="text-[10px] font-bold text-slate-400 uppercase">Período</span>
-                    <span class="text-[10px] text-indigo-400 font-medium" x-text="periodLabel()"></span>
-                </div>
-                <div class="flex flex-wrap gap-1.5">
-                    <template x-for="p in periodOptions" :key="p.id">
-                        <button type="button" @click="setPeriod(p.id)"
-                                class="nui-pill text-[11px]" :class="filters.period === p.id && 'active'"
-                                x-text="p.label"></button>
-                    </template>
-                </div>
-                <div x-show="filters.period === 'single'" class="flex flex-wrap gap-2 items-center">
-                    <label class="text-[10px] text-slate-400 font-semibold">Data específica</label>
-                    <input type="text" x-model="filters.date_on" @change="applyPeriodDates()"
-                           placeholder="AAAA-MM-DD" class="nui-input !py-1.5 !text-sm w-40">
-                </div>
-                <div x-show="filters.period === 'range'" class="flex flex-wrap gap-2 items-center">
-                    <label class="text-[10px] text-slate-400 font-semibold">De</label>
-                    <input type="text" x-model="filters.date_from" @change="applyPeriodDates()"
-                           placeholder="AAAA-MM-DD" class="nui-input !py-1.5 !text-sm w-36">
-                    <label class="text-[10px] text-slate-400 font-semibold">Até</label>
-                    <input type="text" x-model="filters.date_to" @change="applyPeriodDates()"
-                           placeholder="AAAA-MM-DD" class="nui-input !py-1.5 !text-sm w-36">
-                </div>
-            </div>
-            <div class="flex flex-col lg:flex-row gap-3">
+            <div class="flex flex-col lg:flex-row gap-2">
                 <div class="nui-input-wrap flex-1 min-w-[200px]">
                     <i class="fa-solid fa-magnifying-glass nui-input-icon"></i>
-                    <input type="search" x-model.debounce.350ms="filters.search" @input="refreshAll()"
-                           placeholder="Buscar título, cliente ou notas..."
-                           class="nui-input">
+                    <input type="search" x-model="filters.search" @input.debounce.200ms="refreshAll()"
+                           placeholder="Buscar..."
+                           class="nui-input nui-input-compact">
                 </div>
-                <div class="flex flex-wrap gap-2 items-center">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase mr-1">Tipo</span>
+                <div class="flex flex-wrap gap-1.5 items-center">
                     <button type="button" @click="setFilter('entry_type', '')"
-                            class="nui-pill" :class="!filters.entry_type && 'active'">
-                        <i class="fa-solid fa-layer-group text-[10px]"></i> Todos
-                    </button>
+                            class="nui-pill-sm" :class="!filters.entry_type && 'active'">Todos</button>
                     <button type="button" @click="setFilter('entry_type', 'income')"
-                            class="nui-pill" :class="filters.entry_type === 'income' && 'active'">
-                        <i class="fa-solid fa-arrow-up text-[10px] text-emerald-500"></i> Entradas
-                    </button>
+                            class="nui-pill-sm" :class="filters.entry_type === 'income' && 'active'">Entradas</button>
                     <button type="button" @click="setFilter('entry_type', 'expense')"
-                            class="nui-pill" :class="filters.entry_type === 'expense' && 'active'">
-                        <i class="fa-solid fa-arrow-down text-[10px] text-red-500"></i> Despesas
-                    </button>
-                </div>
-                <div class="flex flex-wrap gap-2 items-center">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase mr-1">Status</span>
+                            class="nui-pill-sm" :class="filters.entry_type === 'expense' && 'active'">Despesas</button>
+                    <span class="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></span>
                     <button type="button" @click="setFilter('status', '')"
-                            class="nui-pill" :class="!filters.status && 'active'">Todos</button>
+                            class="nui-pill-sm" :class="!filters.status && 'active'">Todos</button>
                     <button type="button" @click="setFilter('status', 'pending')"
-                            class="nui-pill" :class="filters.status === 'pending' && 'active'">
-                        <i class="fa-solid fa-hourglass-half text-[10px] text-amber-500"></i> Pendente
-                    </button>
+                            class="nui-pill-sm" :class="filters.status === 'pending' && 'active'">Pendente</button>
                     <button type="button" @click="setFilter('status', 'confirmed')"
-                            class="nui-pill" :class="filters.status === 'confirmed' && 'active'">
-                        <i class="fa-solid fa-circle-check text-[10px] text-emerald-500"></i> Confirmado
-                    </button>
+                            class="nui-pill-sm" :class="filters.status === 'confirmed' && 'active'">Confirmado</button>
                 </div>
                 <!-- Custom sort dropdown -->
                 <div class="relative" x-data="{ open: false }" @keydown.escape.window="open = false">
                     <button type="button" @click="open = !open"
-                            class="nui-select-trigger !w-auto min-w-[140px]" :class="open && 'open'">
-                        <span class="flex items-center gap-2 truncate">
-                            <i class="fa-solid fa-arrow-down-wide-short text-slate-400 text-xs"></i>
-                            <span x-text="orderingLabel()"></span>
-                        </span>
+                            class="nui-select-trigger nui-input-compact !w-auto min-w-[120px]" :class="open && 'open'">
+                        <span class="truncate text-xs" x-text="orderingLabel()"></span>
                         <i class="fa-solid fa-chevron-down chevron"></i>
                     </button>
                     <div x-show="open" @click.outside="open = false" x-cloak class="nui-dropdown !w-44 right-0 left-auto">
                         <template x-for="opt in orderingOptions" :key="opt.value">
                             <button type="button" @click="filters.ordering = opt.value; open = false; refreshAll()"
                                     class="nui-dropdown-item" :class="filters.ordering === opt.value && 'active'">
-                                <i class="fa-solid text-[10px]" :class="opt.icon"></i>
                                 <span x-text="opt.label"></span>
                             </button>
                         </template>
@@ -542,7 +514,7 @@
                                 <div class="p-2 border-b border-slate-100 dark:border-slate-800">
                                     <div class="nui-input-wrap">
                                         <i class="fa-solid fa-magnifying-glass nui-input-icon"></i>
-                                        <input type="search" x-model.debounce.350ms="leadSearchQuery" @input="searchLeads()"
+                                        <input type="search" x-model="leadSearchQuery" @input.debounce.200ms="searchLeads()"
                                                placeholder="Buscar lead por nome, cidade ou nicho..."
                                                class="nui-input !py-2 !text-sm">
                                     </div>
@@ -778,15 +750,19 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 function financeDashboard() {
     return {
         loading: false,
         tableFullscreen: false,
-        chartDonutMode: 'expense',
+        periodOpen: false,
+        exportOpen: false,
+        chartDonutMode: 'income',
         chartHasData: false,
         chartDonutHasData: false,
         chartGranularity: 'month',
+        chartsReady: false,
         entries: [],
         categories: [],
         summary: { income_confirmed: 0, expense_confirmed: 0, balance: 0, pending_income: 0 },
@@ -794,6 +770,15 @@ function financeDashboard() {
             search: '', entry_type: '', status: '', ordering: '-date',
             period: 'all', date_on: '', date_from: '', date_to: '',
         },
+        periodPresets: [
+            { id: 'all', label: 'Tudo' },
+            { id: 'today', label: 'Hoje' },
+            { id: '3d', label: 'Últimos 3 dias' },
+            { id: '7d', label: 'Últimos 7 dias' },
+            { id: '30d', label: 'Últimos 30 dias' },
+            { id: '90d', label: 'Últimos 90 dias' },
+            { id: '365d', label: 'Último ano' },
+        ],
         periodOptions: [
             { id: 'all', label: 'Tudo' },
             { id: 'today', label: 'Hoje' },
@@ -802,7 +787,7 @@ function financeDashboard() {
             { id: '30d', label: '30 dias' },
             { id: '90d', label: '90 dias' },
             { id: '365d', label: '1 ano' },
-            { id: 'single', label: 'Data' },
+            { id: 'single', label: 'Data específica' },
             { id: 'range', label: 'Intervalo' },
         ],
         pagination: { page: 1, next: null, previous: null },
@@ -837,7 +822,55 @@ function financeDashboard() {
         async init() {
             await this.loadCategories();
             await this.refreshAll();
-            window.addEventListener('resize', () => this.renderCharts());
+            this._resizeCharts = () => this.safeResizeCharts();
+            window.addEventListener('resize', this._resizeCharts);
+        },
+
+        safeResizeCharts() {
+            try {
+                if (this.charts.monthly) this.charts.monthly.resize();
+                if (this.charts.donut) this.charts.donut.resize();
+            } catch (e) { /* ignore resize race */ }
+        },
+
+        freshCanvas(wrapId, canvasId) {
+            const wrap = document.getElementById(wrapId);
+            if (!wrap) return null;
+            const old = document.getElementById(canvasId);
+            if (old && typeof Chart !== 'undefined') {
+                const inst = Chart.getChart(old);
+                if (inst) {
+                    try { inst.destroy(); } catch (e) { /* ignore */ }
+                }
+                old.remove();
+            }
+            const canvas = document.createElement('canvas');
+            canvas.id = canvasId;
+            const overlay = wrap.querySelector('.nui-chart-empty');
+            if (overlay) wrap.insertBefore(canvas, overlay);
+            else wrap.appendChild(canvas);
+            return canvas;
+        },
+
+        setDonutMode(mode) {
+            this.chartDonutMode = mode;
+            this.renderDonutChart();
+        },
+
+        renderDonutChart() {
+            if (typeof Chart === 'undefined' || !this.chartCache) return;
+            try {
+                if (this.charts.donut) {
+                    try { this.charts.donut.destroy(); } catch (e) { /* ignore */ }
+                    this.charts.donut = null;
+                }
+                const elD = this.freshCanvas('wrapChartDonut', 'chartDonut');
+                if (!elD || !elD.isConnected) return;
+                this.charts.donut = this.buildDonutChart(elD);
+                this.safeResizeCharts();
+            } catch (e) {
+                console.error('Erro donut chart', e);
+            }
         },
 
         async refreshAll() {
@@ -850,14 +883,18 @@ function financeDashboard() {
         },
 
         periodLabel() {
-            const p = this.periodOptions.find(x => x.id === this.filters.period);
-            if (this.filters.period === 'single' && this.filters.date_on) {
-                return this.formatDate(this.filters.date_on);
+            const all = [...this.periodPresets, ...this.periodOptions.filter(p => p.id === 'single' || p.id === 'range')];
+            const p = all.find(x => x.id === this.filters.period);
+            if (this.filters.period === 'single') {
+                return this.filters.date_on ? this.formatDate(this.filters.date_on) : 'Data específica';
             }
-            if (this.filters.period === 'range' && this.filters.date_from && this.filters.date_to) {
-                return this.formatDate(this.filters.date_from) + ' → ' + this.formatDate(this.filters.date_to);
+            if (this.filters.period === 'range') {
+                if (this.filters.date_from && this.filters.date_to) {
+                    return this.formatDate(this.filters.date_from) + ' → ' + this.formatDate(this.filters.date_to);
+                }
+                return 'Intervalo de datas';
             }
-            return p ? p.label : '';
+            return p ? p.label : 'Período';
         },
 
         setPeriod(id) {
@@ -976,67 +1013,84 @@ function financeDashboard() {
 
         async loadCharts() {
             if (typeof Chart === 'undefined') return;
-            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            this.chartsReady = false;
+            await new Promise(r => setTimeout(r, 50));
             try {
                 const r = await fetch('/api/finance/entries/chart-data/?' + this.chartQueryParams());
-                if (!r.ok) return;
+                if (!r.ok) { this.chartsReady = true; return; }
                 this.chartCache = await r.json();
                 this.chartGranularity = this.chartCache.granularity || 'month';
                 this.chartHasData = !!this.chartCache.has_data;
+                const expTotal = Object.values(this.chartCache.expense_by_category || {})
+                    .reduce((s, v) => s + Number(v), 0);
+                const incTotal = Object.values(this.chartCache.income_by_category || {})
+                    .reduce((s, v) => s + Number(v), 0);
+                if (incTotal > 0 && expTotal === 0) this.chartDonutMode = 'income';
+                else if (expTotal > 0 && incTotal === 0) this.chartDonutMode = 'expense';
                 this.renderCharts();
             } catch (e) {
                 console.error('Erro ao carregar gráficos', e);
+            } finally {
+                this.chartsReady = true;
             }
         },
 
-        renderCharts() {
-            if (typeof Chart === 'undefined' || !this.chartCache) return;
-            const d = this.chartCache;
-            const elM = document.getElementById('chartMonthly');
-            const elD = document.getElementById('chartDonut');
-            if (!elM || !elD) return;
-
-            if (this.charts.monthly) { this.charts.monthly.destroy(); this.charts.monthly = null; }
-            if (this.charts.donut) { this.charts.donut.destroy(); this.charts.donut = null; }
-
+        chartColors() {
             const isDark = document.documentElement.classList.contains('dark');
-            const gridColor = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(148,163,184,0.2)';
-            const tickColor = isDark ? '#94a3b8' : '#64748b';
+            return {
+                grid: isDark ? 'rgba(148,163,184,0.08)' : 'rgba(148,163,184,0.15)',
+                tick: isDark ? '#94a3b8' : '#64748b',
+            };
+        },
 
+        buildBarChart(canvas) {
+            const d = this.chartCache;
+            const { grid, tick } = this.chartColors();
             const rawLabels = d.monthly_labels || [];
             const labels = rawLabels.map(l =>
                 d.granularity === 'day' ? this.formatDate(l) : this.formatMonthLabel(l),
             );
             const incomeData = (d.monthly_income || []).map(Number);
             const expenseData = (d.monthly_expense || []).map(Number);
-
-            this.charts.monthly = new Chart(elM, {
+            return new Chart(canvas, {
                 type: 'bar',
                 data: {
                     labels: labels.length ? labels : ['—'],
                     datasets: [
                         {
-                            label: 'Entradas', data: incomeData.length ? incomeData : [0],
-                            backgroundColor: 'rgba(16, 185, 129, 0.85)', borderRadius: 6, borderSkipped: false,
+                            label: 'Entradas',
+                            data: incomeData.length ? incomeData : [0],
+                            backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                            borderRadius: 4,
+                            borderSkipped: false,
                         },
                         {
-                            label: 'Despesas', data: expenseData.length ? expenseData : [0],
-                            backgroundColor: 'rgba(239, 68, 68, 0.85)', borderRadius: 6, borderSkipped: false,
+                            label: 'Despesas',
+                            data: expenseData.length ? expenseData : [0],
+                            backgroundColor: 'rgba(239, 68, 68, 0.75)',
+                            borderRadius: 4,
+                            borderSkipped: false,
                         },
                     ],
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: { duration: 600 },
-                    plugins: { legend: { labels: { usePointStyle: true, padding: 12, color: tickColor } } },
+                    animation: false,
+                    plugins: {
+                        legend: { labels: { usePointStyle: true, padding: 10, color: tick, boxWidth: 8 } },
+                    },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: tickColor } },
-                        x: { grid: { display: false }, ticks: { color: tickColor, maxRotation: 45 } },
+                        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, font: { size: 10 } } },
+                        x: { grid: { display: false }, ticks: { color: tick, maxRotation: 45, font: { size: 10 } } },
                     },
                 },
             });
+        },
 
+        buildDonutChart(canvas) {
+            const d = this.chartCache;
+            const { tick } = this.chartColors();
             const donutSource = this.chartDonutMode === 'income'
                 ? (d.income_by_category || {})
                 : (d.expense_by_category || {});
@@ -1044,8 +1098,7 @@ function financeDashboard() {
             const catVals = Object.values(donutSource).map(Number);
             this.chartDonutHasData = catVals.some(v => v > 0);
             const colors = catLabels.map(name => (d.category_colors && d.category_colors[name]) || '#6366f1');
-
-            this.charts.donut = new Chart(elD, {
+            return new Chart(canvas, {
                 type: 'doughnut',
                 data: {
                     labels: catLabels.length ? catLabels : ['Sem dados'],
@@ -1058,16 +1111,38 @@ function financeDashboard() {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    animation: { duration: 600 },
+                    animation: false,
                     plugins: {
                         legend: {
                             position: 'bottom',
-                            labels: { usePointStyle: true, padding: 8, font: { size: 10 }, color: tickColor },
+                            labels: { usePointStyle: true, padding: 6, font: { size: 9 }, color: tick, boxWidth: 8 },
                         },
                     },
-                    cutout: '62%',
+                    cutout: '65%',
                 },
             });
+        },
+
+        renderCharts() {
+            if (typeof Chart === 'undefined' || !this.chartCache) return;
+            try {
+                if (this.charts.monthly) {
+                    try { this.charts.monthly.destroy(); } catch (e) { /* ignore */ }
+                    this.charts.monthly = null;
+                }
+                if (this.charts.donut) {
+                    try { this.charts.donut.destroy(); } catch (e) { /* ignore */ }
+                    this.charts.donut = null;
+                }
+                const elM = this.freshCanvas('wrapChartMonthly', 'chartMonthly');
+                const elD = this.freshCanvas('wrapChartDonut', 'chartDonut');
+                if (!elM || !elD || !elM.isConnected || !elD.isConnected) return;
+                this.charts.monthly = this.buildBarChart(elM);
+                this.charts.donut = this.buildDonutChart(elD);
+                requestAnimationFrame(() => this.safeResizeCharts());
+            } catch (e) {
+                console.error('Erro renderCharts', e);
+            }
         },
 
         prevPage() { if (this.pagination.page > 1) { this.pagination.page--; this.loadEntries(); } },

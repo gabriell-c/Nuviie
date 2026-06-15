@@ -1,277 +1,301 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block extra_head %}
-<style>
-    .prompt-preview-body {
-        font-size: 0.9375rem;
-        line-height: 1.75;
-        letter-spacing: 0.01em;
-    }
-    .prompt-list-item-active {
-        box-shadow: inset 3px 0 0 0 var(--cat-color, #6366f1);
-    }
-    .prompt-filters-sticky {
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-    .search-highlight {
-        background: rgba(250, 204, 21, 0.35);
-        border-radius: 2px;
-        padding: 0 1px;
-    }
-</style>
+<link rel="stylesheet" href="{% static 'css/nuviie-ui.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col h-[calc(100vh-100px)]" x-data="promptLibrary()" x-init="init()">
+<div class="nui pl-root flex flex-col h-[calc(100vh-100px)] max-w-[1600px] mx-auto" x-data="promptLibrary()" x-init="init()">
 
     <!-- Toast -->
     <div x-show="toast.show" x-cloak x-transition
-         class="fixed bottom-6 right-6 z-[9998] px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white flex items-center gap-2"
+         class="fixed bottom-6 right-6 z-[9998] px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium text-white flex items-center gap-2"
          :class="toast.ok ? 'bg-emerald-600' : 'bg-red-600'">
         <i class="fa-solid" :class="toast.ok ? 'fa-check' : 'fa-circle-exclamation'"></i>
         <span x-text="toast.message"></span>
     </div>
 
     <!-- Header -->
-    <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
+    <div class="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
         <div>
-            <div class="flex items-center gap-2 mb-1">
-                <span class="w-8 h-8 rounded-lg bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 flex items-center justify-center">
+            <div class="flex items-center gap-2.5">
+                <span class="w-9 h-9 rounded-lg bg-indigo-500/12 text-indigo-500 flex items-center justify-center">
                     <i class="fa-solid fa-book-bookmark text-sm"></i>
                 </span>
-                <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Biblioteca de Prompts</h1>
+                <div>
+                    <h1 class="text-lg font-semibold text-slate-900 dark:text-white">Biblioteca de Prompts</h1>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 flex-wrap mt-0.5">
+                        <span class="inline-flex items-center gap-1">
+                            <i class="fa-solid fa-layer-group text-[10px]"></i>
+                            <span x-text="totalCount"></span> prompts
+                        </span>
+                        <template x-if="selectedCategoryName">
+                            <span class="inline-flex items-center gap-1 text-indigo-500">
+                                <i class="fa-solid fa-filter text-[10px]"></i>
+                                <span x-text="selectedCategoryName"></span>
+                            </span>
+                        </template>
+                    </p>
+                </div>
             </div>
-            <p class="text-sm text-slate-500 dark:text-slate-400 ml-10">
-                <span x-text="totalCount"></span> prompt(s)
-                <span x-show="selectedCategoryName"> em <strong class="text-indigo-500" x-text="selectedCategoryName"></strong></span>
-                — clique para ler, copie com um botão
-            </p>
         </div>
-        <button @click="openPromptModal()"
-                class="inline-flex items-center gap-2 px-4 py-2.5 gradient-bg-primary text-white rounded-xl text-sm font-semibold hover:opacity-95 transition shadow-lg shadow-indigo-500/20 self-start">
-            <i class="fa-solid fa-plus"></i>
-            <span>Novo prompt</span>
-        </button>
+        <div class="flex items-center gap-2 self-start">
+            <span class="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-slate-400 px-2 py-1 rounded-md bg-slate-100/80 dark:bg-slate-800/50">
+                <i class="fa-solid fa-keyboard text-[10px]"></i>
+                <span class="pl-search-hint">/</span> buscar
+            </span>
+            <button @click="openPromptModal()" class="nui-btn-primary">
+                <i class="fa-solid fa-plus"></i> Novo prompt
+            </button>
+        </div>
     </div>
 
-    <!-- Mobile: chips de categoria -->
-    <div class="lg:hidden flex gap-2 overflow-x-auto pb-2 shrink-0 -mx-1 px-1">
-        <button @click="selectCategory(null)"
-                class="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition"
-                :class="selectedCategoryId === null ? 'bg-indigo-500 text-white border-indigo-500' : 'border-slate-200 dark:border-slate-700 text-slate-600'">
-            Todas
+    <!-- Mobile categories -->
+    <div class="lg:hidden flex gap-1.5 overflow-x-auto pb-2 shrink-0 scrollbar-none">
+        <button @click="selectCategory(null)" class="nui-pill-sm shrink-0" :class="selectedCategoryId === null && 'active'">
+            <i class="fa-solid fa-table-cells text-[10px]"></i> Todas
         </button>
         <template x-for="cat in categories" :key="'m-'+cat.id">
-            <button @click="selectCategory(cat.id)"
-                    class="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition"
-                    :class="selectedCategoryId === cat.id ? 'text-white border-transparent' : 'border-slate-200 dark:border-slate-700 text-slate-600'"
-                    :style="selectedCategoryId === cat.id ? 'background-color:' + cat.color : ''"
-                    x-text="cat.name"></button>
+            <button @click="selectCategory(cat.id)" class="nui-pill-sm shrink-0 flex items-center gap-1.5"
+                    :class="selectedCategoryId === cat.id && 'active'">
+                <i class="fa-solid text-[10px]" :class="categoryIcon(cat.name)"></i>
+                <span x-text="cat.name"></span>
+            </button>
         </template>
     </div>
 
-    <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
+    <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-3 min-h-0">
 
-        <!-- Sidebar categorias -->
-        <div class="lg:col-span-2 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden min-h-[200px] lg:min-h-0 border border-slate-200/60 dark:border-slate-800/80">
-            <div class="px-3 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/30">
-                <h2 class="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">Categorias</h2>
+        <!-- Sidebar -->
+        <div class="hidden lg:flex lg:col-span-2 pl-panel">
+            <div class="pl-panel-head">
+                <span class="pl-panel-title"><i class="fa-solid fa-folder-tree"></i> Categorias</span>
                 <button @click="openCategoryModal()" title="Nova categoria"
-                        class="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 transition flex items-center justify-center">
-                    <i class="fa-solid fa-plus text-[10px]"></i>
+                        class="w-7 h-7 rounded-md text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition flex items-center justify-center">
+                    <i class="fa-solid fa-plus text-xs"></i>
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto p-2 space-y-0.5">
-                <button @click="selectCategory(null)"
-                        class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-sm font-medium transition border border-transparent"
-                        :class="selectedCategoryId === null ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-indigo-500/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
-                    <span class="flex items-center gap-2.5 min-w-0">
-                        <span class="w-3 h-3 rounded-md bg-gradient-to-br from-indigo-500 to-purple-500 shrink-0"></span>
+                <button @click="selectCategory(null)" class="pl-cat-btn group" :class="selectedCategoryId === null && 'active'">
+                    <span class="flex items-center gap-2 min-w-0">
+                        <span class="pl-cat-icon bg-gradient-to-br from-indigo-500/20 to-purple-500/20 text-indigo-500">
+                            <i class="fa-solid fa-layer-group"></i>
+                        </span>
                         <span class="truncate">Todas</span>
                     </span>
-                    <span class="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                          x-text="totalPromptCount"></span>
+                    <span class="pl-cat-count" x-text="totalPromptCount"></span>
                 </button>
                 <template x-for="cat in categories" :key="cat.id">
                     <div class="group flex items-center gap-0.5">
-                        <button @click="selectCategory(cat.id)"
-                                class="flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-sm font-medium transition min-w-0 border border-transparent"
-                                :class="selectedCategoryId === cat.id ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-indigo-500/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'">
-                            <span class="flex items-center gap-2.5 min-w-0">
-                                <span class="w-3 h-3 rounded-md shrink-0 ring-1 ring-black/10 dark:ring-white/10" :style="'background-color:' + cat.color"></span>
+                        <button @click="selectCategory(cat.id)" class="pl-cat-btn flex-1 min-w-0" :class="selectedCategoryId === cat.id && 'active'">
+                            <span class="flex items-center gap-2 min-w-0">
+                                <span class="pl-cat-icon text-white" :style="'background-color:' + cat.color">
+                                    <i class="fa-solid" :class="categoryIcon(cat.name)"></i>
+                                </span>
                                 <span class="truncate" x-text="cat.name"></span>
                             </span>
-                            <span class="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0 ml-1"
-                                  x-text="cat.prompt_count"></span>
+                            <span class="pl-cat-count" x-text="cat.prompt_count"></span>
                         </button>
-                        <button @click.stop="openCategoryModal(cat)" title="Editar"
-                                class="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center justify-center shrink-0">
+                        <button @click.stop="openCategoryModal(cat)" title="Editar categoria"
+                                class="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-md text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition flex items-center justify-center shrink-0">
                             <i class="fa-solid fa-pen text-[10px]"></i>
                         </button>
                     </div>
                 </template>
-                <div x-show="!loading && categories.length === 0" class="text-center py-6 text-slate-400 text-xs px-2">
-                    <i class="fa-solid fa-folder-open text-xl mb-2 block opacity-40"></i>
-                    Nenhuma categoria ainda
+                <div x-show="!loading && categories.length === 0" class="text-center py-8 text-slate-400 text-xs">
+                    <i class="fa-regular fa-folder-open text-2xl mb-2 block opacity-40"></i>
+                    Nenhuma categoria
                 </div>
             </div>
         </div>
 
-        <!-- Lista de prompts -->
-        <div class="lg:col-span-4 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden min-h-[320px] lg:min-h-0 border border-slate-200/60 dark:border-slate-800/80">
-            <div class="prompt-filters-sticky px-3 py-3 border-b border-slate-100 dark:border-slate-800 shrink-0 space-y-2 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm">
-                <div class="relative">
-                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                    <input type="search" id="prompt-search-input" x-model.debounce.300ms="search" @input="onFilterChange()"
-                           placeholder="Buscar título ou conteúdo... (/)"
-                           class="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 text-slate-900 dark:text-white placeholder:text-slate-400">
+        <!-- Lista -->
+        <div class="lg:col-span-4 pl-panel min-h-[280px]">
+            <div class="pl-panel-head flex-col !items-stretch gap-2 sticky top-0 z-10 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
+                <div class="nui-input-wrap">
+                    <i class="fa-solid fa-magnifying-glass nui-input-icon"></i>
+                    <input type="search" id="prompt-search-input" x-model="search" @input.debounce.200ms="onFilterChange()"
+                           placeholder="Buscar prompts..."
+                           class="nui-input nui-input-compact">
                     <button x-show="search" @click="search = ''; onFilterChange()" type="button"
-                            class="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center">
+                            class="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded text-slate-400 hover:text-slate-600 flex items-center justify-center">
                         <i class="fa-solid fa-xmark text-xs"></i>
                     </button>
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
-                    <select x-model="sortOrder" @change="onFilterChange()"
-                            class="text-xs px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-                        <option value="-updated_at">Mais recentes</option>
-                        <option value="title">A → Z</option>
-                        <option value="-title">Z → A</option>
-                    </select>
-                    <span x-show="selectedCategoryName"
-                          class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-indigo-500/15 text-indigo-600">
-                        <span x-text="selectedCategoryName"></span>
-                        <button type="button" @click="selectCategory(null)" class="hover:text-indigo-800"><i class="fa-solid fa-xmark"></i></button>
-                    </span>
+                <div class="flex items-center gap-2">
+                    <div class="relative flex-1">
+                        <button type="button" @click="sortOpen = !sortOpen"
+                                class="nui-select-trigger nui-input-compact w-full !text-xs" :class="sortOpen && 'open'">
+                            <span class="flex items-center gap-1.5 truncate">
+                                <i class="fa-solid fa-arrow-down-wide-short text-slate-400 text-[10px]"></i>
+                                <span x-text="sortLabel()"></span>
+                            </span>
+                            <i class="fa-solid fa-chevron-down chevron"></i>
+                        </button>
+                        <div x-show="sortOpen" @click.outside="sortOpen = false" x-cloak class="nui-dropdown !w-full mt-1">
+                            <button type="button" @click="setSort('-updated_at')" class="nui-dropdown-item" :class="sortOrder === '-updated_at' && 'active'">
+                                <i class="fa-regular fa-clock text-[10px]"></i> Mais recentes
+                            </button>
+                            <button type="button" @click="setSort('title')" class="nui-dropdown-item" :class="sortOrder === 'title' && 'active'">
+                                <i class="fa-solid fa-arrow-down-a-z text-[10px]"></i> A → Z
+                            </button>
+                            <button type="button" @click="setSort('-title')" class="nui-dropdown-item" :class="sortOrder === '-title' && 'active'">
+                                <i class="fa-solid fa-arrow-down-z-a text-[10px]"></i> Z → A
+                            </button>
+                        </div>
+                    </div>
                     <button x-show="search || selectedCategoryId || sortOrder !== '-updated_at'"
                             @click="clearFilters()" type="button"
-                            class="text-[10px] font-semibold text-slate-400 hover:text-indigo-500 ml-auto">
-                        Limpar filtros
+                            class="nui-btn-ghost !py-1.5 !px-2 !text-[11px] shrink-0" title="Limpar filtros">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
                     </button>
                 </div>
             </div>
 
-            <div class="flex-1 overflow-y-auto">
-                <!-- Loading -->
-                <div x-show="loading" class="p-2 space-y-2">
-                    <template x-for="i in 5" :key="'sk-'+i">
-                        <div class="rounded-xl border border-slate-100 dark:border-slate-800 p-3 animate-pulse">
-                            <div class="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/4 mb-2"></div>
-                            <div class="h-4 bg-slate-200 dark:bg-slate-800 rounded w-3/4 mb-2"></div>
-                            <div class="h-3 bg-slate-200 dark:bg-slate-800 rounded w-full"></div>
+            <div class="flex-1 overflow-y-auto p-2 relative">
+                <div x-show="listLoading" class="absolute inset-0 z-10 bg-white/60 dark:bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+                    <i class="fa-solid fa-circle-notch fa-spin text-indigo-500"></i>
+                </div>
+                <div x-show="loading && !listLoading" class="space-y-2">
+                    <template x-for="i in 4" :key="'sk-'+i">
+                        <div class="rounded-lg p-3 animate-pulse space-y-2">
+                            <div class="h-2.5 bg-slate-200 dark:bg-slate-800 rounded w-1/4"></div>
+                            <div class="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-3/4"></div>
+                            <div class="h-2.5 bg-slate-200 dark:bg-slate-800 rounded w-full"></div>
                         </div>
                     </template>
                 </div>
 
-                <!-- Empty -->
-                <div x-show="!loading && filteredPrompts.length === 0" class="flex flex-col items-center justify-center py-12 px-4 text-center h-full">
-                    <div class="w-14 h-14 rounded-2xl bg-indigo-500/10 flex items-center justify-center mb-3">
-                        <i class="fa-solid fa-wand-magic-sparkles text-xl text-indigo-500"></i>
+                <div x-show="!loading && !listLoading && filteredPrompts.length === 0" class="flex flex-col items-center justify-center py-14 px-4 text-center">
+                    <div class="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center mb-3">
+                        <i class="fa-solid fa-wand-magic-sparkles text-lg text-indigo-500"></i>
                     </div>
-                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Nenhum prompt encontrado</p>
-                    <p class="text-xs text-slate-500 mt-1">Ajuste a busca ou crie um novo prompt.</p>
+                    <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Nenhum prompt encontrado</p>
+                    <p class="text-xs text-slate-400 mt-1">Ajuste os filtros ou crie um novo.</p>
+                    <button @click="openPromptModal()" class="nui-btn-primary mt-4 !text-xs">
+                        <i class="fa-solid fa-plus"></i> Criar prompt
+                    </button>
                 </div>
 
-                <!-- List -->
-                <div x-show="!loading && filteredPrompts.length > 0" class="p-2 space-y-1">
+                <div x-show="!loading && !listLoading && filteredPrompts.length > 0" class="space-y-1">
                     <template x-for="prompt in filteredPrompts" :key="prompt.id">
                         <button type="button" @click="selectPrompt(prompt)"
-                                class="w-full text-left rounded-xl p-3 transition border prompt-list-item-active"
-                                :class="selectedPromptId === prompt.id
-                                    ? 'bg-indigo-500/10 dark:bg-indigo-950/50 border-indigo-500/30 dark:border-indigo-500/40'
-                                    : 'bg-white/60 dark:bg-slate-900/40 border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'"
+                                class="pl-prompt-item"
+                                :class="selectedPromptId === prompt.id && 'active'"
                                 :style="selectedPromptId === prompt.id ? '--cat-color:' + (prompt.category_color || '#6366f1') : ''">
-                            <div class="flex items-center gap-2 mb-1.5">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide text-white shrink-0 max-w-[40%] truncate"
-                                      :style="'background-color:' + (prompt.category_color || '#6366f1')"
-                                      x-text="prompt.category_name"></span>
-                                <span class="text-[10px] text-slate-400 ml-auto shrink-0 tabular-nums" x-text="relativeDate(prompt.updated_at)"></span>
+                            <div class="flex items-start gap-2">
+                                <span class="pl-cat-icon text-white mt-0.5 shrink-0 !w-7 !h-7"
+                                      :style="'background-color:' + (prompt.category_color || '#6366f1')">
+                                    <i class="fa-solid text-[10px]" :class="categoryIcon(prompt.category_name)"></i>
+                                </span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-[10px] text-slate-400 flex items-center gap-1 ml-auto shrink-0">
+                                            <i class="fa-regular fa-clock text-[9px]"></i>
+                                            <span x-text="relativeDate(prompt.updated_at)"></span>
+                                        </span>
+                                    </div>
+                                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white leading-snug mb-1 line-clamp-2 pr-6"
+                                        x-html="highlightText(prompt.title)"></h3>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed"
+                                       x-html="highlightText(contentExcerpt(prompt.content))"></p>
+                                </div>
+                                <button type="button" @click.stop="copyPrompt(prompt)" title="Copiar"
+                                        class="pl-quick-copy absolute right-2 top-2 w-7 h-7 rounded-md bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 flex items-center justify-center">
+                                    <i class="fa-solid fa-copy text-[10px]"></i>
+                                </button>
                             </div>
-                            <h3 class="text-base font-bold text-slate-900 dark:text-white leading-snug mb-1 line-clamp-2"
-                                x-html="highlightText(prompt.title)"></h3>
-                            <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed"
-                               x-html="highlightText(contentExcerpt(prompt.content))"></p>
                         </button>
                     </template>
                 </div>
             </div>
-            <div x-show="!loading && pagination.total > pagination.pageSize" class="px-3 py-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-400 shrink-0">
-                <span x-text="'Página ' + pagination.page + ' de ' + pagination.totalPages"></span>
-                <div class="space-x-2">
-                    <button @click="prevPage()" :disabled="pagination.page <= 1" class="px-2 py-1 rounded border disabled:opacity-40">Anterior</button>
-                    <button @click="nextPage()" :disabled="pagination.page >= pagination.totalPages" class="px-2 py-1 rounded border disabled:opacity-40">Próxima</button>
+
+            <div x-show="!loading && pagination.total > pagination.pageSize"
+                 class="px-3 py-2 border-t border-slate-100 dark:border-slate-800/80 flex justify-between items-center shrink-0">
+                <span class="text-[11px] text-slate-400 flex items-center gap-1">
+                    <i class="fa-solid fa-file-lines text-[10px]"></i>
+                    <span x-text="'Pág. ' + pagination.page + '/' + pagination.totalPages"></span>
+                </span>
+                <div class="flex gap-1">
+                    <button @click="prevPage()" :disabled="pagination.page <= 1"
+                            class="nui-btn-ghost !py-1 !px-2 !text-[11px] disabled:opacity-40">
+                        <i class="fa-solid fa-chevron-left text-[10px]"></i>
+                    </button>
+                    <button @click="nextPage()" :disabled="pagination.page >= pagination.totalPages"
+                            class="nui-btn-ghost !py-1 !px-2 !text-[11px] disabled:opacity-40">
+                        <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- Painel de preview -->
-        <div class="lg:col-span-6 glass-panel rounded-2xl shadow-md flex flex-col overflow-hidden min-h-[400px] lg:min-h-0 border border-slate-200/60 dark:border-slate-800/80">
-            <!-- Placeholder -->
+        <!-- Preview -->
+        <div class="lg:col-span-6 pl-panel min-h-[360px]">
             <div x-show="!selectedPrompt" class="flex-1 flex flex-col items-center justify-center text-center p-8">
-                <div class="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                    <i class="fa-solid fa-file-lines text-2xl text-slate-400"></i>
+                <div class="w-14 h-14 rounded-xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-hand-pointer text-xl text-slate-400"></i>
                 </div>
-                <p class="text-base font-semibold text-slate-700 dark:text-slate-300">Selecione um prompt</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xs">Escolha na lista ao lado para ler o texto completo e copiar.</p>
+                <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Selecione um prompt</p>
+                <p class="text-xs text-slate-400 mt-1 max-w-xs leading-relaxed">
+                    Clique na lista para ler o texto completo ou use o ícone <i class="fa-solid fa-copy text-emerald-500"></i> para copiar rápido.
+                </p>
             </div>
 
-            <!-- Preview -->
             <template x-if="selectedPrompt">
                 <div class="flex-1 flex flex-col overflow-hidden min-h-0">
-                    <!-- Preview header -->
-                    <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0 bg-slate-50/80 dark:bg-slate-900/50">
-                        <div class="flex flex-wrap items-start gap-3 justify-between">
-                            <div class="min-w-0 flex-1">
-                                <div class="flex items-center gap-2 flex-wrap mb-2">
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide text-white"
-                                          :style="'background-color:' + (selectedPrompt.category_color || '#6366f1')"
-                                          x-text="selectedPrompt.category_name"></span>
-                                    <span class="text-xs text-slate-400 tabular-nums">
-                                        <i class="fa-regular fa-clock mr-1"></i>
-                                        <span x-text="formatDate(selectedPrompt.updated_at)"></span>
-                                    </span>
-                                    <span class="text-xs text-slate-400">
-                                        · <span x-text="contentStats(selectedPrompt.content)"></span>
-                                    </span>
-                                </div>
-                                <h2 class="text-lg sm:text-xl font-bold text-slate-900 dark:text-white leading-tight"
-                                    x-text="selectedPrompt.title"></h2>
-                            </div>
-                            <div class="flex items-center gap-1.5 shrink-0">
-                                <button @click="copyPrompt(selectedPrompt)"
-                                        class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm shadow-emerald-600/20 transition">
-                                    <i class="fa-solid fa-copy"></i>
-                                    Copiar
-                                </button>
-                                <button @click="openPromptModal(selectedPrompt)" title="Editar"
-                                        class="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-indigo-500 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition flex items-center justify-center">
-                                    <i class="fa-solid fa-pen text-sm"></i>
-                                </button>
-                                <button @click="deletePrompt(selectedPrompt)" title="Excluir"
-                                        class="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-red-500 hover:border-red-300 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/30 transition flex items-center justify-center">
-                                    <i class="fa-solid fa-trash text-sm"></i>
-                                </button>
-                            </div>
+                    <div class="pl-panel-head !py-3 flex-wrap gap-3">
+                        <div class="flex items-center gap-2 flex-wrap min-w-0 flex-1">
+                            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-semibold uppercase text-white"
+                                  :style="'background-color:' + (selectedPrompt.category_color || '#6366f1')">
+                                <i class="fa-solid text-[9px]" :class="categoryIcon(selectedPrompt.category_name)"></i>
+                                <span x-text="selectedPrompt.category_name"></span>
+                            </span>
+                            <span class="pl-meta-chip">
+                                <i class="fa-regular fa-calendar"></i>
+                                <span x-text="formatDate(selectedPrompt.updated_at)"></span>
+                            </span>
+                            <span class="pl-meta-chip">
+                                <i class="fa-solid fa-text-width"></i>
+                                <span x-text="contentStats(selectedPrompt.content)"></span>
+                            </span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button @click="copyPrompt(selectedPrompt)"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition">
+                                <i class="fa-solid fa-copy"></i> Copiar
+                            </button>
+                            <button @click="openPromptModal(selectedPrompt)" title="Editar"
+                                    class="w-8 h-8 rounded-md nui-btn-ghost !p-0 flex items-center justify-center">
+                                <i class="fa-solid fa-pen text-xs"></i>
+                            </button>
+                            <button @click="deletePrompt(selectedPrompt)" title="Excluir"
+                                    class="w-8 h-8 rounded-md text-slate-400 hover:text-red-500 hover:bg-red-500/10 flex items-center justify-center transition">
+                                <i class="fa-solid fa-trash text-xs"></i>
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Preview body -->
-                    <div class="flex-1 overflow-y-auto p-5">
-                        <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/80 overflow-hidden">
-                            <div class="px-4 py-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex items-center gap-2">
-                                <i class="fa-solid fa-align-left text-slate-400 text-xs"></i>
-                                <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Conteúdo do prompt</span>
+                    <div class="px-4 pt-3 pb-2 shrink-0">
+                        <h2 class="text-base sm:text-lg font-semibold text-slate-900 dark:text-white leading-snug flex items-start gap-2">
+                            <i class="fa-solid fa-quote-left text-indigo-400/60 text-sm mt-1 shrink-0"></i>
+                            <span x-text="selectedPrompt.title"></span>
+                        </h2>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto px-4 pb-4">
+                        <div class="rounded-lg border border-slate-200/60 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-950/40 p-4 sm:p-5">
+                            <div class="flex items-center gap-1.5 mb-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                <i class="fa-solid fa-align-left"></i> Conteúdo
                             </div>
-                            <pre class="prompt-preview-body p-4 sm:p-5 text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words font-sans m-0 overflow-x-auto"
+                            <pre class="pl-preview-body text-slate-800 dark:text-slate-200 font-sans m-0"
                                  x-text="selectedPrompt.content"></pre>
                         </div>
                     </div>
 
-                    <!-- Sticky copy bar mobile -->
-                    <div class="lg:hidden px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
+                    <div class="lg:hidden px-4 py-3 border-t border-slate-100 dark:border-slate-800 shrink-0">
                         <button @click="copyPrompt(selectedPrompt)"
-                                class="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold">
+                                class="w-full nui-btn-primary !justify-center bg-emerald-600 hover:bg-emerald-700">
                             <i class="fa-solid fa-copy"></i> Copiar prompt
                         </button>
                     </div>
@@ -284,35 +308,38 @@
     <div x-show="categoryModal.open" x-cloak
          class="fixed inset-0 z-[9990] flex items-center justify-center p-4"
          @keydown.escape.window="categoryModal.open = false">
-        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="categoryModal.open = false"></div>
-        <div class="relative w-full max-w-md glass-panel rounded-2xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700" @click.stop>
-            <h3 class="text-base font-bold text-slate-900 dark:text-white mb-4" x-text="categoryModal.id ? 'Editar categoria' : 'Nova categoria'"></h3>
+        <div class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" @click="categoryModal.open = false"></div>
+        <div class="relative w-full max-w-md nui-panel shadow-2xl p-5" @click.stop>
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-folder-plus text-indigo-500"></i>
+                <span x-text="categoryModal.id ? 'Editar categoria' : 'Nova categoria'"></span>
+            </h3>
             <form @submit.prevent="saveCategory()" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Nome *</label>
-                    <input type="text" x-model="categoryModal.name" required maxlength="100"
-                           class="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-900 dark:text-white">
+                <div class="nui-field">
+                    <label class="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-1.5">
+                        <i class="fa-solid fa-tag text-[10px]"></i> Nome
+                    </label>
+                    <input type="text" x-model="categoryModal.name" required maxlength="100" class="nui-input nui-input-compact">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-2">Cor da categoria</label>
+                    <label class="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-2">
+                        <i class="fa-solid fa-palette text-[10px]"></i> Cor
+                    </label>
                     <div class="flex flex-wrap gap-2 mb-2">
                         <template x-for="c in colorPresets" :key="c">
                             <button type="button" @click="categoryModal.color = c"
-                                    class="w-9 h-9 rounded-lg border-2 transition"
+                                    class="w-8 h-8 rounded-md border-2 transition"
                                     :style="'background-color:' + c"
-                                    :class="categoryModal.color === c ? 'border-slate-900 dark:border-white ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-slate-900' : 'border-transparent'"></button>
+                                    :class="categoryModal.color === c ? 'border-slate-900 dark:border-white ring-2 ring-indigo-500/50' : 'border-transparent'"></button>
                         </template>
                     </div>
                     <input type="text" x-model="categoryModal.color" maxlength="7" pattern="#[0-9A-Fa-f]{6}"
-                           class="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-900 dark:text-white">
+                           class="nui-input nui-input-compact font-mono">
                 </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" @click="categoryModal.open = false"
-                            class="px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-                        Cancelar
-                    </button>
-                    <button type="submit" :disabled="categoryModal.saving"
-                            class="px-4 py-2.5 text-sm font-semibold rounded-xl gradient-bg-primary text-white hover:opacity-95 transition disabled:opacity-50">
+                <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" @click="categoryModal.open = false" class="nui-btn-ghost">Cancelar</button>
+                    <button type="submit" :disabled="categoryModal.saving" class="nui-btn-primary">
+                        <i class="fa-solid fa-check"></i>
                         <span x-text="categoryModal.saving ? 'Salvando...' : 'Salvar'"></span>
                     </button>
                 </div>
@@ -324,42 +351,75 @@
     <div x-show="promptModal.open" x-cloak
          class="fixed inset-0 z-[9990] flex items-center justify-center p-4"
          @keydown.escape.window="promptModal.open = false">
-        <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" @click="promptModal.open = false"></div>
-        <div class="relative w-full max-w-2xl glass-panel rounded-2xl p-6 shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto" @click.stop>
-            <h3 class="text-base font-bold text-slate-900 dark:text-white mb-1" x-text="promptModal.id ? 'Editar prompt' : 'Novo prompt'"></h3>
-            <p class="text-xs text-slate-500 mb-4">Título curto para achar rápido; conteúdo é o texto que você vai copiar.</p>
+        <div class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" @click="promptModal.open = false"></div>
+        <div class="relative w-full max-w-2xl nui-panel shadow-2xl p-5 max-h-[90vh] overflow-y-auto" @click.stop>
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-circle-plus text-indigo-500"></i>
+                <span x-text="promptModal.id ? 'Editar prompt' : 'Novo prompt'"></span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-1 mb-4">Título para buscar · conteúdo é o que você copia.</p>
             <form @submit.prevent="savePrompt()" class="space-y-4">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Título *</label>
+                    <label class="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-1.5">
+                        <i class="fa-solid fa-heading text-[10px]"></i> Título
+                    </label>
                     <input type="text" x-model="promptModal.title" required maxlength="200"
-                           placeholder="Ex: Abordagem fria WhatsApp"
-                           class="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-900 dark:text-white">
+                           placeholder="Ex: Story de enquete que gera conversa"
+                           class="nui-input nui-input-compact">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Categoria *</label>
-                    <select x-model="promptModal.category" required
-                            class="w-full px-3 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-900 dark:text-white">
-                        <option value="">Selecione...</option>
-                        <template x-for="cat in categories" :key="'opt-'+cat.id">
-                            <option :value="cat.id" x-text="cat.name"></option>
-                        </template>
-                    </select>
-                    <p x-show="categories.length === 0" class="text-xs text-amber-500 mt-1.5">Crie uma categoria antes de salvar.</p>
+                    <label class="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-1.5">
+                        <i class="fa-solid fa-folder text-[10px]"></i> Categoria
+                    </label>
+                    <div class="relative">
+                        <button type="button" @click="promptModalUi.categoryOpen = !promptModalUi.categoryOpen"
+                                class="nui-select-trigger nui-input-compact w-full" :class="promptModalUi.categoryOpen && 'open'">
+                            <span class="flex items-center gap-2 truncate">
+                                <template x-if="promptModalCategory()">
+                                    <span class="w-5 h-5 rounded flex items-center justify-center text-white text-[9px] shrink-0"
+                                          :style="'background-color:' + promptModalCategory().color">
+                                        <i class="fa-solid" :class="categoryIcon(promptModalCategory().name)"></i>
+                                    </span>
+                                </template>
+                                <span x-text="promptModalCategoryLabel()"></span>
+                            </span>
+                            <i class="fa-solid fa-chevron-down chevron"></i>
+                        </button>
+                        <div x-show="promptModalUi.categoryOpen" @click.outside="promptModalUi.categoryOpen = false" x-cloak
+                             class="nui-dropdown w-full mt-1 max-h-48 overflow-y-auto">
+                            <template x-for="cat in categories" :key="'pm-'+cat.id">
+                                <button type="button" @click="setPromptCategory(cat.id)"
+                                        class="nui-dropdown-item" :class="String(promptModal.category) === String(cat.id) && 'active'">
+                                    <span class="w-5 h-5 rounded flex items-center justify-center text-white text-[9px] shrink-0"
+                                          :style="'background-color:' + cat.color">
+                                        <i class="fa-solid" :class="categoryIcon(cat.name)"></i>
+                                    </span>
+                                    <span x-text="cat.name"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                    <input type="hidden" :value="promptModal.category" required>
+                    <p x-show="categories.length === 0" class="text-xs text-amber-500 mt-1.5 flex items-center gap-1">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Crie uma categoria primeiro.
+                    </p>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1.5">Conteúdo do prompt *</label>
-                    <textarea x-model="promptModal.content" required rows="14"
-                              class="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-900 dark:text-white leading-relaxed resize-y min-h-[240px]"
-                              placeholder="Digite o prompt completo aqui..."></textarea>
-                    <p class="text-[11px] text-slate-400 mt-1" x-text="contentStats(promptModal.content)"></p>
+                    <label class="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-1.5">
+                        <i class="fa-solid fa-align-left text-[10px]"></i> Conteúdo
+                    </label>
+                    <textarea x-model="promptModal.content" required rows="12"
+                              class="nui-input !min-h-[220px] resize-y leading-relaxed"
+                              placeholder="Digite o prompt completo..."></textarea>
+                    <p class="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                        <i class="fa-solid fa-text-width text-[10px]"></i>
+                        <span x-text="contentStats(promptModal.content)"></span>
+                    </p>
                 </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" @click="promptModal.open = false"
-                            class="px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition">
-                        Cancelar
-                    </button>
-                    <button type="submit" :disabled="promptModal.saving || categories.length === 0"
-                            class="px-4 py-2.5 text-sm font-semibold rounded-xl gradient-bg-primary text-white hover:opacity-95 transition disabled:opacity-50">
+                <div class="flex justify-end gap-2 pt-1">
+                    <button type="button" @click="promptModal.open = false" class="nui-btn-ghost">Cancelar</button>
+                    <button type="submit" :disabled="promptModal.saving || categories.length === 0" class="nui-btn-primary">
+                        <i class="fa-solid fa-floppy-disk"></i>
                         <span x-text="promptModal.saving ? 'Salvando...' : 'Salvar'"></span>
                     </button>
                 </div>
@@ -374,6 +434,9 @@
 function promptLibrary() {
     return {
         loading: true,
+        listLoading: false,
+        sortOpen: false,
+        _promptAbort: null,
         categories: [],
         prompts: [],
         filteredPrompts: [],
@@ -387,6 +450,7 @@ function promptLibrary() {
         colorPresets: ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#ef4444', '#64748b'],
         categoryModal: { open: false, id: null, name: '', color: '#6366f1', saving: false },
         promptModal: { open: false, id: null, title: '', content: '', category: '', saving: false },
+        promptModalUi: { categoryOpen: false },
 
         get selectedCategoryName() {
             if (this.selectedCategoryId === null) return '';
@@ -401,6 +465,46 @@ function promptLibrary() {
 
         get totalPromptCount() {
             return this.categories.reduce((sum, c) => sum + (c.prompt_count || 0), 0);
+        },
+
+        categoryIcon(name) {
+            const n = (name || '').toLowerCase();
+            if (n.includes('copy')) return 'fa-pen-nib';
+            if (n.includes('conte')) return 'fa-file-lines';
+            if (n.includes('market')) return 'fa-bullhorn';
+            if (n.includes('site') || n.includes('web')) return 'fa-globe';
+            if (n.includes('social') || n.includes('rede')) return 'fa-hashtag';
+            if (n.includes('email') || n.includes('e-mail')) return 'fa-envelope';
+            if (n.includes('vend')) return 'fa-handshake';
+            if (n.includes('seo')) return 'fa-magnifying-glass-chart';
+            return 'fa-wand-magic-sparkles';
+        },
+
+        sortLabel() {
+            if (this.sortOrder === 'title') return 'A → Z';
+            if (this.sortOrder === '-title') return 'Z → A';
+            return 'Mais recentes';
+        },
+
+        setSort(value) {
+            this.sortOrder = value;
+            this.sortOpen = false;
+            this.onFilterChange();
+        },
+
+        promptModalCategory() {
+            if (!this.promptModal.category) return null;
+            return this.categories.find(c => String(c.id) === String(this.promptModal.category)) || null;
+        },
+
+        promptModalCategoryLabel() {
+            const c = this.promptModalCategory();
+            return c ? c.name : 'Selecione uma categoria...';
+        },
+
+        setPromptCategory(id) {
+            this.promptModal.category = String(id);
+            this.promptModalUi.categoryOpen = false;
         },
 
         init() {
@@ -537,14 +641,22 @@ function promptLibrary() {
         },
 
         async loadPrompts() {
+            if (this._promptAbort) this._promptAbort.abort();
+            this._promptAbort = new AbortController();
+            const signal = this._promptAbort.signal;
+            this.listLoading = true;
             const params = new URLSearchParams();
             if (this.selectedCategoryId) params.set('category', this.selectedCategoryId);
             if (this.search.trim()) params.set('search', this.search.trim());
             params.set('ordering', this.sortOrder);
             params.set('page', this.pagination.page);
             params.set('page_size', this.pagination.pageSize);
-            const r = await fetch('/api/prompts/?' + params.toString(), { credentials: 'same-origin' });
-            if (r.ok) {
+            try {
+                const r = await fetch('/api/prompts/?' + params.toString(), {
+                    credentials: 'same-origin',
+                    signal,
+                });
+                if (!r.ok) return;
                 const data = await r.json();
                 this.prompts = data.results || data;
                 this.filteredPrompts = this.prompts;
@@ -559,6 +671,11 @@ function promptLibrary() {
                 } else if (!this.selectedPromptId && this.filteredPrompts.length) {
                     this.selectedPromptId = this.filteredPrompts[0].id;
                 }
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                console.error('Erro ao carregar prompts', e);
+            } finally {
+                this.listLoading = false;
             }
         },
 
@@ -632,6 +749,7 @@ function promptLibrary() {
         },
 
         openPromptModal(prompt = null) {
+            this.promptModalUi.categoryOpen = false;
             if (prompt) {
                 this.promptModal = {
                     open: true,
@@ -655,6 +773,10 @@ function promptLibrary() {
         },
 
         async savePrompt() {
+            if (!this.promptModal.category) {
+                await NuviieModal.alert('Selecione uma categoria.', 'Campo obrigatório');
+                return;
+            }
             this.promptModal.saving = true;
             const payload = {
                 title: this.promptModal.title.trim(),
@@ -716,7 +838,7 @@ function promptLibrary() {
         async copyPrompt(prompt) {
             try {
                 await navigator.clipboard.writeText(prompt.content);
-                this.showToast('Copiado! Cole onde precisar.');
+                this.showToast('Copiado para a área de transferência');
             } catch {
                 await NuviieModal.alert('Não foi possível copiar. Selecione o texto manualmente.', 'Aviso');
             }

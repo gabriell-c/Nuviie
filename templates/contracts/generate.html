@@ -2,11 +2,12 @@
 {% load static %}
 
 {% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/nuviie-ui.css' %}">
 <link rel="stylesheet" href="{% static 'css/contract-preview.css' %}">
 {% endblock %}
 
 {% block content %}
-<div class="flex flex-col h-[calc(100vh-100px)]" x-data="nuviieContract()" x-init="init()">
+<div class="flex flex-col h-[calc(100vh-100px)] nui" x-data="nuviieContract()" x-init="init()">
     <div class="mb-4 shrink-0 space-y-3">
         <div>
             <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Gerador de Contratos</h1>
@@ -34,7 +35,7 @@
     <!-- Aba: Meus contratos / Histórico -->
     <div x-show="activeTab !== 'gerar'" x-cloak class="flex-1 min-h-0 glass-panel rounded-2xl flex flex-col overflow-hidden">
         <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-2 items-center shrink-0">
-            <input type="search" x-model.debounce.300ms="contractSearch" placeholder="Buscar cliente ou documento..."
+            <input type="search" x-model="contractSearch" placeholder="Buscar cliente ou documento..."
                    class="flex-1 min-w-[180px] px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-900/50">
             <label x-show="activeTab === 'meus'" class="flex items-center gap-2 text-xs text-slate-500">
                 <input type="checkbox" x-model="onlyUnlinked" class="rounded">
@@ -145,14 +146,24 @@
                                     <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase" x-text="field.label"></label>
 
                                     <template x-if="field.type === 'select'">
-                                        <select :name="'field_' + field.key"
-                                                x-model="values[field.key]"
-                                                @change="updatePreview()"
-                                                class="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
-                                            <template x-for="opt in field.options" :key="opt">
-                                                <option :value="opt" x-text="opt"></option>
-                                            </template>
-                                        </select>
+                                        <div class="relative">
+                                            <input type="hidden" :name="'field_' + field.key" :value="values[field.key]">
+                                            <button type="button"
+                                                    @click="selectFieldOpen = selectFieldOpen === field.key ? null : field.key"
+                                                    class="nui-select-trigger w-full" :class="selectFieldOpen === field.key && 'open'">
+                                                <span class="truncate" x-text="values[field.key] || 'Selecione...'"></span>
+                                                <i class="fa-solid fa-chevron-down chevron"></i>
+                                            </button>
+                                            <div x-show="selectFieldOpen === field.key" @click.outside="selectFieldOpen = null" x-cloak
+                                                 class="nui-dropdown w-full mt-1 max-h-48 overflow-y-auto">
+                                                <template x-for="opt in field.options" :key="opt">
+                                                    <button type="button"
+                                                            @click="values[field.key] = opt; selectFieldOpen = null; updatePreview()"
+                                                            class="nui-dropdown-item" :class="values[field.key] === opt && 'active'"
+                                                            x-text="opt"></button>
+                                                </template>
+                                            </div>
+                                        </div>
                                     </template>
 
                                     <template x-if="field.type !== 'select'">
@@ -220,6 +231,7 @@ function nuviieContract() {
         generating: false,
         activeTab: 'gerar',
         contractSearch: '',
+        selectFieldOpen: null,
         onlyUnlinked: false,
         contracts: {{ contracts_json|safe }},
         linkModal: { open: false, contract: null, leadId: '' },

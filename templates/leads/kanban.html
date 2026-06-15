@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block extra_head %}
-<!-- SortableJS CDN for drag and drop -->
+<link rel="stylesheet" href="{% static 'css/nuviie-ui.css' %}">
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 {% endblock %}
 
 {% block content %}
-<div x-data="kanbanBoard()" x-init="init()" class="space-y-6 flex flex-col h-full overflow-hidden">
+<div x-data="kanbanBoard()" x-init="init()" class="nui space-y-6 flex flex-col h-full overflow-hidden">
     <!-- Top Filter Bar -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div>
@@ -26,28 +27,70 @@
             </div>
 
             <!-- Source Filter -->
-            <select x-model="filters.source" @change="fetchLeads()"
-                    class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition">
-                <option value="">Todas as origens</option>
-                <option value="google_maps">Google Maps</option>
-                <option value="instagram">Instagram</option>
-            </select>
+            <div class="relative">
+                <button type="button" @click="filterUi.sourceOpen = !filterUi.sourceOpen"
+                        class="nui-select-trigger nui-input-compact !w-auto min-w-[130px]" :class="filterUi.sourceOpen && 'open'">
+                    <span class="flex items-center gap-1.5 truncate text-xs">
+                        <i class="fa-solid fa-map-location-dot text-slate-400 text-[10px]"></i>
+                        <span x-text="sourceFilterLabel()"></span>
+                    </span>
+                    <i class="fa-solid fa-chevron-down chevron"></i>
+                </button>
+                <div x-show="filterUi.sourceOpen" @click.outside="filterUi.sourceOpen = false" x-cloak
+                     class="nui-dropdown !w-44 right-0 left-auto mt-1">
+                    <button type="button" @click="setFilter('source', '')" class="nui-dropdown-item" :class="!filters.source && 'active'">Todas as origens</button>
+                    <button type="button" @click="setFilter('source', 'google_maps')" class="nui-dropdown-item" :class="filters.source === 'google_maps' && 'active'">
+                        <i class="fa-brands fa-google text-[10px]"></i> Google Maps
+                    </button>
+                    <button type="button" @click="setFilter('source', 'instagram')" class="nui-dropdown-item" :class="filters.source === 'instagram' && 'active'">
+                        <i class="fa-brands fa-instagram text-[10px]"></i> Instagram
+                    </button>
+                </div>
+            </div>
 
             <!-- Website Filter -->
-            <select x-model="filters.has_site" @change="fetchLeads()"
-                    class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition">
-                <option value="">Todos os websites</option>
-                <option value="true">Com website</option>
-                <option value="false">Sem website</option>
-            </select>
+            <div class="relative">
+                <button type="button" @click="filterUi.siteOpen = !filterUi.siteOpen"
+                        class="nui-select-trigger nui-input-compact !w-auto min-w-[130px]" :class="filterUi.siteOpen && 'open'">
+                    <span class="flex items-center gap-1.5 truncate text-xs">
+                        <i class="fa-solid fa-globe text-slate-400 text-[10px]"></i>
+                        <span x-text="siteFilterLabel()"></span>
+                    </span>
+                    <i class="fa-solid fa-chevron-down chevron"></i>
+                </button>
+                <div x-show="filterUi.siteOpen" @click.outside="filterUi.siteOpen = false" x-cloak
+                     class="nui-dropdown !w-44 right-0 left-auto mt-1">
+                    <button type="button" @click="setFilter('has_site', '')" class="nui-dropdown-item" :class="!filters.has_site && 'active'">Todos os websites</button>
+                    <button type="button" @click="setFilter('has_site', 'true')" class="nui-dropdown-item" :class="filters.has_site === 'true' && 'active'">
+                        <i class="fa-solid fa-check text-emerald-500 text-[10px]"></i> Com website
+                    </button>
+                    <button type="button" @click="setFilter('has_site', 'false')" class="nui-dropdown-item" :class="filters.has_site === 'false' && 'active'">
+                        <i class="fa-solid fa-xmark text-red-400 text-[10px]"></i> Sem website
+                    </button>
+                </div>
+            </div>
 
             <!-- Score Sort -->
-            <select x-model="filters.ordering" @change="fetchLeads()"
-                    class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition">
-                <option value="-created_at">Mais recentes</option>
-                <option value="-quality_score">Mais quente</option>
-                <option value="quality_score">Mais frio</option>
-            </select>
+            <div class="relative">
+                <button type="button" @click="filterUi.sortOpen = !filterUi.sortOpen"
+                        class="nui-select-trigger nui-input-compact !w-auto min-w-[120px]" :class="filterUi.sortOpen && 'open'">
+                    <span class="flex items-center gap-1.5 truncate text-xs">
+                        <i class="fa-solid fa-arrow-down-wide-short text-slate-400 text-[10px]"></i>
+                        <span x-text="orderingFilterLabel()"></span>
+                    </span>
+                    <i class="fa-solid fa-chevron-down chevron"></i>
+                </button>
+                <div x-show="filterUi.sortOpen" @click.outside="filterUi.sortOpen = false" x-cloak
+                     class="nui-dropdown !w-44 right-0 left-auto mt-1">
+                    <button type="button" @click="setFilter('ordering', '-created_at')" class="nui-dropdown-item" :class="filters.ordering === '-created_at' && 'active'">Mais recentes</button>
+                    <button type="button" @click="setFilter('ordering', '-quality_score')" class="nui-dropdown-item" :class="filters.ordering === '-quality_score' && 'active'">
+                        <i class="fa-solid fa-fire text-orange-500 text-[10px]"></i> Mais quente
+                    </button>
+                    <button type="button" @click="setFilter('ordering', 'quality_score')" class="nui-dropdown-item" :class="filters.ordering === 'quality_score' && 'active'">
+                        <i class="fa-regular fa-snowflake text-sky-400 text-[10px]"></i> Mais frio
+                    </button>
+                </div>
+            </div>
 
             <!-- Export Buttons -->
             <div class="flex items-center space-x-2 border-l border-slate-200 dark:border-slate-800 pl-3">
@@ -444,12 +487,24 @@
                             <p class="text-xs text-slate-400">Nenhum contrato associado.</p>
                         </template>
                         <div class="flex flex-wrap gap-2 pt-1">
-                            <select x-model="linkContractId" class="text-xs px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex-1 min-w-[140px]">
-                                <option value="">Associar contrato...</option>
-                                <template x-for="c in availableContracts" :key="c.id">
-                                    <option :value="c.id" x-text="(c.client_name || c.name) + ' — ' + c.created_at"></option>
-                                </template>
-                            </select>
+                            <div class="relative flex-1 min-w-[140px]">
+                                <button type="button" @click="linkContractOpen = !linkContractOpen"
+                                        class="nui-select-trigger nui-input-compact w-full !text-xs" :class="linkContractOpen && 'open'">
+                                    <span class="truncate" x-text="linkContractLabel()"></span>
+                                    <i class="fa-solid fa-chevron-down chevron"></i>
+                                </button>
+                                <div x-show="linkContractOpen" @click.outside="linkContractOpen = false" x-cloak
+                                     class="nui-dropdown w-full mt-1 max-h-40 overflow-y-auto">
+                                    <button type="button" @click="linkContractId = ''; linkContractOpen = false"
+                                            class="nui-dropdown-item">Associar contrato...</button>
+                                    <template x-for="c in availableContracts" :key="c.id">
+                                        <button type="button" @click="linkContractId = String(c.id); linkContractOpen = false"
+                                                class="nui-dropdown-item" :class="String(linkContractId) === String(c.id) && 'active'">
+                                            <span x-text="(c.client_name || c.name) + ' — ' + c.created_at"></span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
                             <button @click="linkContractToLead()" :disabled="!linkContractId"
                                     class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white disabled:opacity-40">
                                 Associar
@@ -1020,6 +1075,8 @@
             newNoteText: '',
             availableContracts: [],
             linkContractId: '',
+            linkContractOpen: false,
+            filterUi: { sourceOpen: false, siteOpen: false, sortOpen: false },
             
             filters: {
                 search: '',
@@ -1051,6 +1108,38 @@
                         if (openId) this.openDetails(openId);
                     });
                 });
+            },
+
+            setFilter(key, val) {
+                this.filters[key] = val;
+                this.filterUi.sourceOpen = false;
+                this.filterUi.siteOpen = false;
+                this.filterUi.sortOpen = false;
+                this.fetchLeads();
+            },
+
+            sourceFilterLabel() {
+                if (this.filters.source === 'google_maps') return 'Google Maps';
+                if (this.filters.source === 'instagram') return 'Instagram';
+                return 'Todas as origens';
+            },
+
+            siteFilterLabel() {
+                if (this.filters.has_site === 'true') return 'Com website';
+                if (this.filters.has_site === 'false') return 'Sem website';
+                return 'Todos os websites';
+            },
+
+            orderingFilterLabel() {
+                if (this.filters.ordering === '-quality_score') return 'Mais quente';
+                if (this.filters.ordering === 'quality_score') return 'Mais frio';
+                return 'Mais recentes';
+            },
+
+            linkContractLabel() {
+                if (!this.linkContractId) return 'Associar contrato...';
+                const c = this.availableContracts.find(x => String(x.id) === String(this.linkContractId));
+                return c ? ((c.client_name || c.name) + ' — ' + c.created_at) : 'Associar contrato...';
             },
             
             getLeadsByStatus(status) {

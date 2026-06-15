@@ -1,37 +1,59 @@
 {% extends 'base.html' %}
+{% load static %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/nuviie-ui.css' %}">
+{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto">
-    <div class="mb-8">
-        <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Importar Leads</h1>
+<div class="nui max-w-2xl mx-auto" x-data="{ fileName: '', fileDrag: false }">
+    <div class="mb-6">
+        <h1 class="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+            <i class="fa-solid fa-file-import text-indigo-500"></i>
+            Importar Leads
+        </h1>
         <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Envie um arquivo JSON ou CSV exportado pela extensão Chrome <strong>Nuviie Maps Extractor</strong>.
+            JSON ou CSV exportado pela extensão <strong>Nuviie Maps Extractor</strong>.
         </p>
     </div>
 
-    <div class="glass-panel rounded-2xl p-8 shadow-md relative overflow-hidden">
-        <div class="absolute top-0 left-0 right-0 h-1.5 gradient-bg-primary"></div>
-
-        <div class="mb-6 p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 text-sm text-slate-600 dark:text-slate-300">
-            <p class="font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Como usar a extensão</p>
-            <ol class="list-decimal list-inside space-y-1 text-xs">
-                <li>Chrome → Extensões → Modo desenvolvedor → Carregar sem compactação → pasta <code class="text-indigo-600">Nuviie/extension</code></li>
-                <li>Abra o Google Maps, busque (ex: advogado Ribeirão Preto), role a lista</li>
-                <li>Clique na extensão → <strong>Extrair completo</strong></li>
-                <li>Exporte JSON/CSV ou envie direto ao Nuviie com o token do <code>.env</code></li>
+    <div class="nui-panel p-6">
+        <div class="mb-5 p-4 rounded-lg bg-indigo-500/8 border border-indigo-500/15 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+            <p class="font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                <i class="fa-brands fa-chrome"></i> Como usar a extensão
+            </p>
+            <ol class="list-decimal list-inside space-y-0.5 text-slate-500">
+                <li>Carregue a extensão em <code class="text-indigo-500">Nuviie/extension</code></li>
+                <li>Extraia leads no Google Maps</li>
+                <li>Exporte JSON/CSV ou envie direto ao Nuviie</li>
             </ol>
         </div>
 
-        <form method="POST" enctype="multipart/form-data" class="space-y-6">
+        <form method="POST" enctype="multipart/form-data" class="space-y-4">
             {% csrf_token %}
             <div>
-                <label for="file" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">Arquivo JSON ou CSV</label>
-                <input type="file" name="file" id="file" accept=".json,.csv" required
-                       class="block w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                <label class="text-xs font-medium text-slate-500 flex items-center gap-1.5 mb-2">
+                    <i class="fa-solid fa-paperclip text-[10px]"></i> Arquivo
+                </label>
+                <div class="nui-file-zone"
+                     :class="fileDrag && 'drag'"
+                     @dragover.prevent="fileDrag = true"
+                     @dragleave.prevent="fileDrag = false"
+                     @drop.prevent="fileDrag = false; $refs.fileInput.files = $event.dataTransfer.files; fileName = $refs.fileInput.files[0]?.name || ''">
+                    <input type="file" name="file" id="file" x-ref="fileInput" accept=".json,.csv" required
+                           class="hidden" @change="fileName = $refs.fileInput.files[0]?.name || ''">
+                    <i class="fa-solid fa-cloud-arrow-up text-2xl text-indigo-400 mb-2"></i>
+                    <p class="text-sm font-medium text-slate-700 dark:text-slate-200" x-show="!fileName">Arraste ou clique para selecionar</p>
+                    <p class="text-sm font-medium text-indigo-500" x-show="fileName" x-text="fileName"></p>
+                    <p class="text-[11px] text-slate-400 mt-1">JSON ou CSV · máx. conforme servidor</p>
+                    <button type="button" @click="$refs.fileInput.click()"
+                            class="nui-btn-ghost mt-3 !text-xs">
+                        <i class="fa-solid fa-folder-open"></i> Escolher arquivo
+                    </button>
+                </div>
             </div>
-            <button type="submit"
-                    class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold shadow-md shadow-indigo-500/10 transition">
-                Importar leads
+            <button type="submit" class="nui-btn-primary w-full !justify-center">
+                <i class="fa-solid fa-upload"></i> Importar leads
             </button>
         </form>
     </div>
