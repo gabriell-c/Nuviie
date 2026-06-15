@@ -1,0 +1,16 @@
+# Cloudflare Tunnel — exemplo de configuração
+# 1. cloudflared tunnel login
+# 2. cloudflared tunnel create nuviie
+# 3. Copie este arquivo para %USERPROFILE%\.cloudflared\config.yml
+# 4. Substitua TUNNEL_ID e crm.seudominio.com pelos seus valores
+# 5. cloudflared tunnel route dns nuviie crm.seudominio.com
+# 6. cloudflared service install
+# 7. cloudflared service start
+
+tunnel: TUNNEL_ID
+credentials-file: C:\Users\SEU_USUARIO\.cloudflared\TUNNEL_ID.json
+
+ingress:
+  - hostname: crm.seudominio.com
+    service: http://127.0.0.1:8000
+  - service: http_status:404

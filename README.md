@@ -404,6 +404,8 @@ Copie `.env.example` para `.env`:
 | `SECRET_KEY` | Produção | Chave secreta Django | dev fallback |
 | `DEBUG` | Não | `true` / `false` | `true` |
 | `ALLOWED_HOSTS` | Produção | Hosts separados por vírgula | `127.0.0.1,localhost` |
+| `CSRF_TRUSTED_ORIGINS` | Produção (HTTPS) | Origens CSRF, ex: `https://crm.seudominio.com` | vazio |
+| `NUVIIE_PUBLIC_BASE_URL` | Produção / extensão | URL pública do CRM | `http://127.0.0.1:8000` |
 | `NUVIIE_EXTENSION_TOKEN` | Extensão | Token para `X-Nuviie-Token` | vazio |
 | `NUVIIE_EXTENSION_USER` | Extensão | Username Django que recebe os leads | `admin` |
 | `CORS_ALLOWED_ORIGINS` | Não | Origens CORS permitidas | vazio (DEBUG = aberto) |
@@ -468,30 +470,160 @@ Nuviie/
 ├── prompt_library/    → biblioteca global de prompts e categorias (CRUD + API)
 ├── lead_scoring/      → motor e CRUD de regras de pontuação de leads
 ├── templates/         → HTML (auth, leads, contracts, chat, prompt_library, lead_scoring)
-├── static/css/        → estilos customizados
+├── deploy/            → scripts Windows (Waitress, backup, Cloudflare Tunnel)
 ├── .env.example       → template de configuração
 └── manage.py
 ```
 
 ---
 
-## 🖥️ Deploy local (Windows)
+## Deploy em PC local + Cloudflare Tunnel
 
-Para uso entre 2 pessoas na mesma rede local:
+Use esta opção para rodar o Nuviie **grátis** num PC Windows fixo em casa e permitir acesso remoto (você + parceiro em outra cidade) via **HTTPS**, sem abrir porta no roteador.
 
-```bash
+```mermaid
+flowchart LR
+    remote[Usuario_remoto] -->|HTTPS| cloudflare[Cloudflare]
+    cloudflare --> tunnel[cloudflared_no_PC]
+    tunnel -->|127.0.0.1:8000| waitress[Waitress_Django]
+    waitress --> db[(SQLite)]
+    waitress --> ollama[Ollama_opcional]
+```
+
+### Requisitos
+
+- PC Windows **ligado 24/7** (desative suspensão/hibernação)
+- Python 3.12+ e projeto instalado (veja [Início Rápido](#-início-rápido))
+- Conta gratuita [Cloudflare](https://cloudflare.com) + domínio (ou subdomínio no Cloudflare)
+- [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) instalado no PC
+- Ollama opcional (chat IA local)
+
+### 1. Configurar `.env` para produção
+
+Copie `.env.example` → `.env` e ajuste:
+
+```env
+DEBUG=false
+SECRET_KEY=sua-chave-gerada-aqui
+ALLOWED_HOSTS=127.0.0.1,localhost,crm.seudominio.com
+CSRF_TRUSTED_ORIGINS=https://crm.seudominio.com
+NUVIIE_PUBLIC_BASE_URL=https://crm.seudominio.com
+NUVIIE_EXTENSION_TOKEN=token-forte-aleatorio
+NUVIIE_EXTENSION_USER=admin
+CORS_ALLOWED_ORIGINS=https://crm.seudominio.com
+OLLAMA_URL=http://127.0.0.1:11434/api/chat
+```
+
+Gere `SECRET_KEY`:
+
+```powershell
+python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+```
+
+### 2. Preparar o banco (primeira vez)
+
+```powershell
+cd Nuviie
+.venv\Scripts\activate
+python manage.py migrate
+python manage.py createsuperuser
+```
+
+Crie um **segundo usuário** no admin Django para seu parceiro remoto.
+
+### 3. Subir o servidor (Waitress)
+
+O Django escuta **apenas em localhost** — o tunnel expõe HTTPS publicamente.
+
+```powershell
+.\deploy\windows\run-production.ps1
+```
+
+Teste local: `http://127.0.0.1:8000/health/` → `{"status": "ok"}`
+
+### 4. Cloudflare Tunnel
+
+1. Instale **cloudflared** no Windows.
+2. Login e crie o tunnel:
+
+```powershell
+cloudflared tunnel login
+cloudflared tunnel create nuviie
+```
+
+3. Copie [`deploy/windows/cloudflared-config.example.yml`](deploy/windows/cloudflared-config.example.yml) para `%USERPROFILE%\.cloudflared\config.yml`.
+4. Substitua `TUNNEL_ID` e `crm.seudominio.com` pelos seus valores.
+5. Aponte DNS:
+
+```powershell
+cloudflared tunnel route dns nuviie crm.seudominio.com
+```
+
+6. Instale e inicie como serviço Windows:
+
+```powershell
+cloudflared service install
+cloudflared service start
+```
+
+Agora `https://crm.seudominio.com` aponta para o Nuviie no seu PC.
+
+### 5. Iniciar com o Windows (opcional)
+
+Execute **como Administrador**:
+
+```powershell
+.\deploy\windows\install-task-scheduler.ps1
+```
+
+Registra:
+- **Nuviie-Production** — Waitress ao ligar o PC
+- **Nuviie-Backup** — backup diário às 03:00
+
+O **cloudflared** continua sendo serviço separado (passo 4).
+
+### 6. Extensão Chrome (Maps / Instagram)
+
+No popup da extensão → **Nuviie local (opcional)**:
+
+- **URL:** `https://crm.seudominio.com`
+- **Token:** mesmo valor de `NUVIIE_EXTENSION_TOKEN` no `.env`
+
+### 7. Backup
+
+Manual:
+
+```powershell
+.\deploy\windows\backup.ps1
+```
+
+Salva `db.sqlite3` e `media/` em `deploy/backups/`. Copie essa pasta para nuvem (Google Drive, etc.).
+
+### Checklist antes de usar remotamente
+
+- [ ] `DEBUG=false` no `.env`
+- [ ] `SECRET_KEY` única (não a de dev)
+- [ ] `CSRF_TRUSTED_ORIGINS` com `https://` do seu domínio
+- [ ] Waitress rodando (`run-production.ps1`)
+- [ ] Cloudflare Tunnel ativo
+- [ ] Login remoto funciona sem erro CSRF
+- [ ] Extensão envia lead com URL + token corretos
+
+### Limitações
+
+- **PC ou internet off** → ninguém acessa o CRM.
+- **SQLite** é suficiente para 2 usuários; para equipe maior, migre para PostgreSQL depois.
+- **Login facial (InsightFace)** consome RAM — teste no PC servidor; desabilite se ficar pesado.
+
+### Rede local (sem Cloudflare)
+
+Para teste na mesma Wi‑Fi apenas:
+
+```powershell
 python manage.py runserver 0.0.0.0:8000
 ```
 
-No `.env`, adicione o IP da máquina em `ALLOWED_HOSTS`. Cada pessoa instala a extensão e aponta a URL do Nuviie para `http://IP:8000`.
-
-Para produção com Waitress:
-
-```bash
-pip install waitress
-python manage.py collectstatic --noinput
-waitress-serve --listen=0.0.0.0:8000 core.wsgi:application
-```
+Adicione o IP da máquina em `ALLOWED_HOSTS`. Não use isso como produção exposta na internet.
 
 ---
 

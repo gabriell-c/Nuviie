@@ -64,8 +64,15 @@ DEBUG = _env_bool('DEBUG', default=True)
 
 ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
 
+CSRF_TRUSTED_ORIGINS = _env_list('CSRF_TRUSTED_ORIGINS', default=[])
 
-# Application definition
+# Produção atrás de Cloudflare Tunnel (HTTPS termina no Cloudflare)
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = False
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
