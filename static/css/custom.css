@@ -47,6 +47,60 @@ body {
 }
 
 /* Kanban custom styles */
+.kanban-view-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.625rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #64748b;
+    transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.kanban-view-toggle:hover {
+    color: #334155;
+}
+
+.dark .kanban-view-toggle {
+    color: #94a3b8;
+}
+
+.dark .kanban-view-toggle:hover {
+    color: #e2e8f0;
+}
+
+.kanban-view-toggle.active {
+    background: #fff;
+    color: #4f46e5;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.dark .kanban-view-toggle.active {
+    background: #1e293b;
+    color: #818cf8;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.kanban-list-table th,
+.kanban-list-table td {
+    vertical-align: middle;
+}
+
+.kanban-list-row-urgent {
+    border-left: 3px solid #f59e0b;
+}
+
+.kanban-list-status-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.35rem center;
+    background-size: 1rem;
+    cursor: pointer;
+}
+
 .kanban-column {
     min-height: 550px;
     max-height: calc(100vh - 290px);

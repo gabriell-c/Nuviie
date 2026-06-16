@@ -10,9 +10,28 @@
 <div x-data="kanbanBoard()" x-init="init()" class="nui space-y-6 flex flex-col h-full overflow-hidden">
     <!-- Top Filter Bar -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">CRM Kanban Pipeline</h1>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Gerencie o progresso comercial de seus leads em tempo real.</p>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">CRM Kanban Pipeline</h1>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Gerencie o progresso comercial de seus leads em tempo real.</p>
+            </div>
+            <!-- View toggle: Pipeline / Lista -->
+            <div class="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 shrink-0 self-start sm:self-auto">
+                <button type="button" @click="setViewMode('pipeline')"
+                        class="kanban-view-toggle"
+                        :class="viewMode === 'pipeline' && 'active'"
+                        title="Visualização em colunas (pipeline)">
+                    <i class="fa-solid fa-table-columns text-[10px]"></i>
+                    <span>Pipeline</span>
+                </button>
+                <button type="button" @click="setViewMode('list')"
+                        class="kanban-view-toggle"
+                        :class="viewMode === 'list' && 'active'"
+                        title="Visualização em lista">
+                    <i class="fa-solid fa-list text-[10px]"></i>
+                    <span>Lista</span>
+                </button>
+            </div>
         </div>
 
         <!-- Filters Grid -->
@@ -130,7 +149,7 @@
     </div>
 
     <!-- Kanban Grid Columns Container -->
-    <div class="flex-1 overflow-x-auto overflow-y-hidden -mx-6 md:-mx-8 px-6 md:px-8 pb-4">
+    <div x-show="viewMode === 'pipeline'" x-cloak class="flex-1 overflow-x-auto overflow-y-hidden -mx-6 md:-mx-8 px-6 md:px-8 pb-4">
         <div class="flex space-x-4 min-w-[1200px] h-full items-start">
             <!-- Loop through stages -->
             {% for code, display in status_choices %}
@@ -227,6 +246,118 @@
             </div>
             {% endfor %}
         </div>
+    </div>
+
+    <!-- List View -->
+    <div x-show="viewMode === 'list'" x-cloak
+         class="flex-1 overflow-hidden -mx-6 md:-mx-8 px-6 md:px-8 pb-4 flex flex-col min-h-0">
+        <div class="flex-1 overflow-auto rounded-2xl border border-slate-200/60 dark:border-slate-800/60 bg-white/50 dark:bg-slate-900/30">
+            <table class="kanban-list-table w-full text-left border-collapse">
+                <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                    <tr>
+                        <th class="w-10 px-3 py-3">
+                            <input type="checkbox"
+                                   :checked="getSortedLeads().length > 0 && selectedIds.length === getSortedLeads().length"
+                                   @change="toggleSelectAllVisible()"
+                                   class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+                        </th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Lead</th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 w-36">Status</th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 hidden md:table-cell">Nicho</th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 w-20">Score</th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 hidden lg:table-cell">Cidade</th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 hidden sm:table-cell">Origem</th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 w-28">Contato</th>
+                        <th class="px-3 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 w-24 hidden sm:table-cell">Data</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-if="loading">
+                        <tr>
+                            <td colspan="9" class="px-4 py-8">
+                                <div class="space-y-2">
+                                    <div class="skeleton-box rounded-lg h-10 w-full"></div>
+                                    <div class="skeleton-box rounded-lg h-10 w-full"></div>
+                                    <div class="skeleton-box rounded-lg h-10 w-full"></div>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="!loading && getSortedLeads().length === 0">
+                        <tr>
+                            <td colspan="9" class="px-4 py-16 text-center text-slate-400">
+                                <i class="fa-solid fa-folder-open text-2xl mb-2 block"></i>
+                                <span class="text-xs">Nenhum lead encontrado com os filtros atuais.</span>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-for="lead in getSortedLeads()" :key="'list-' + lead.id">
+                        <tr @click="openDetails(lead.id)"
+                            class="kanban-list-row cursor-pointer border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
+                            :class="[
+                                selectedIds.includes(lead.id) ? 'bg-indigo-50/80 dark:bg-indigo-950/20' : '',
+                                deadlineCardClass(lead) ? 'kanban-list-row-urgent' : ''
+                            ]">
+                            <td class="px-3 py-3" @click.stop>
+                                <input type="checkbox"
+                                       :checked="selectedIds.includes(lead.id)"
+                                       @change="toggleSelect(lead.id)"
+                                       class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+                            </td>
+                            <td class="px-3 py-3">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="text-xs font-bold text-slate-800 dark:text-slate-200 truncate max-w-[180px] lg:max-w-xs" x-text="lead.name"></span>
+                                    <i class="fa-solid fa-circle-check text-blue-500 text-[9px] shrink-0" x-show="lead.is_verified"></i>
+                                </div>
+                                <p class="text-[10px] text-slate-400 line-clamp-1 mt-0.5 md:hidden" x-text="lead.category || '—'"></p>
+                            </td>
+                            <td class="px-3 py-3" @click.stop>
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full shrink-0" :class="statusDotClass(lead.status)"></span>
+                                    <select :value="lead.status"
+                                            @change="updateLeadStatus(lead, $event.target.value)"
+                                            class="kanban-list-status-select text-[10px] font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 py-1.5 pl-2 pr-7 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 max-w-full">
+                                        <template x-for="st in statusChoices" :key="st.code">
+                                            <option :value="st.code" x-text="st.label"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                            </td>
+                            <td class="px-3 py-3 hidden md:table-cell">
+                                <span class="text-[10px] text-slate-500 dark:text-slate-400 truncate block max-w-[120px]" x-text="lead.category || '—'"></span>
+                            </td>
+                            <td class="px-3 py-3">
+                                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded inline-block"
+                                      :class="scoreBadgeClass(lead.quality_score)"
+                                      x-text="(lead.quality_score > 0 ? '+' : '') + lead.quality_score"></span>
+                            </td>
+                            <td class="px-3 py-3 hidden lg:table-cell">
+                                <span class="text-[10px] text-slate-500" x-text="lead.city || '—'"></span>
+                            </td>
+                            <td class="px-3 py-3 hidden sm:table-cell">
+                                <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500" x-text="lead.source_display || lead.source"></span>
+                            </td>
+                            <td class="px-3 py-3">
+                                <div class="flex items-center gap-1.5 text-slate-400">
+                                    <i class="fa-brands fa-whatsapp text-emerald-500" x-show="lead.normalized_phone" title="WhatsApp"></i>
+                                    <i class="fa-solid fa-globe text-indigo-400" x-show="lead.website" title="Website"></i>
+                                    <i class="fa-brands fa-instagram text-pink-400" x-show="lead.instagram" title="Instagram"></i>
+                                    <i class="fa-brands fa-facebook text-blue-500" x-show="lead.facebook" title="Facebook"></i>
+                                    <i class="fa-brands fa-linkedin text-sky-500" x-show="lead.linkedin" title="LinkedIn"></i>
+                                    <i class="fa-brands fa-youtube text-red-500" x-show="lead.youtube" title="YouTube"></i>
+                                </div>
+                            </td>
+                            <td class="px-3 py-3 hidden sm:table-cell">
+                                <span class="text-[10px] text-slate-400" x-text="formatDate(lead.created_at)"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p x-show="!loading && getSortedLeads().length > 0" class="text-[10px] text-slate-400 mt-2 shrink-0">
+            <span x-text="getSortedLeads().length"></span> lead(s) · clique na linha para abrir detalhes · altere o status pelo menu
+        </p>
     </div>
 
     <!-- MODAL 90% SCREEN: Lead Details -->
@@ -1064,6 +1195,20 @@
         return {
             leads: [],
             loading: true,
+            viewMode: (() => {
+                try {
+                    const saved = localStorage.getItem('nuviie_kanban_view');
+                    return (saved === 'list' || saved === 'pipeline') ? saved : 'pipeline';
+                } catch {
+                    return 'pipeline';
+                }
+            })(),
+            sortableInstances: [],
+            statusChoices: [
+                {% for code, display in status_choices %}
+                { code: '{{ code }}', label: '{{ display|escapejs }}' },
+                {% endfor %}
+            ],
             detailsModalOpen: false,
             createModalOpen: false,
             selectedIds: [],
@@ -1096,9 +1241,9 @@
             },
             
             init() {
-                this.fetchLeads().then(() => {
-                    this.initSortable();
-                });
+                const saved = localStorage.getItem('nuviie_kanban_view');
+                if (saved === 'list' || saved === 'pipeline') this.viewMode = saved;
+                this.fetchLeads();
                 this.fetchContracts();
                 window.addEventListener('nuviie-leads-updated', () => {
                     const openId = this.detailsModalOpen && this.currentLead?.id
@@ -1108,6 +1253,24 @@
                         if (openId) this.openDetails(openId);
                     });
                 });
+            },
+
+            setViewMode(mode) {
+                if (this.viewMode === mode) return;
+                this.viewMode = mode;
+                try { localStorage.setItem('nuviie_kanban_view', mode); } catch { /* ignore */ }
+                if (mode === 'pipeline') {
+                    this.$nextTick(() => this.initSortable());
+                } else {
+                    this.destroySortable();
+                }
+            },
+
+            destroySortable() {
+                (this.sortableInstances || []).forEach((s) => {
+                    try { s.destroy(); } catch { /* ignore */ }
+                });
+                this.sortableInstances = [];
             },
 
             setFilter(key, val) {
@@ -1144,17 +1307,68 @@
             
             getLeadsByStatus(status) {
                 let items = this.leads.filter(l => l.status === status);
+                return this.sortLeadItems(items);
+            },
+
+            getSortedLeads() {
+                return this.sortLeadItems([...this.leads]);
+            },
+
+            sortLeadItems(items) {
                 const ordering = this.filters.ordering || '-created_at';
                 if (ordering === '-quality_score') {
-                    items = [...items].sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0));
-                } else if (ordering === 'quality_score') {
-                    items = [...items].sort((a, b) => (a.quality_score || 0) - (b.quality_score || 0));
-                } else if (ordering === '-created_at') {
-                    items = [...items].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-                } else if (ordering === 'created_at') {
-                    items = [...items].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+                    return [...items].sort((a, b) => (b.quality_score || 0) - (a.quality_score || 0));
+                }
+                if (ordering === 'quality_score') {
+                    return [...items].sort((a, b) => (a.quality_score || 0) - (b.quality_score || 0));
+                }
+                if (ordering === '-created_at') {
+                    return [...items].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                }
+                if (ordering === 'created_at') {
+                    return [...items].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                 }
                 return items;
+            },
+
+            statusDotClass(code) {
+                const map = {
+                    novo: 'bg-indigo-500',
+                    contatado: 'bg-blue-500',
+                    negociacao: 'bg-amber-500',
+                    retornou: 'bg-purple-500',
+                    fechado: 'bg-emerald-500',
+                    finalizado: 'bg-teal-500',
+                    perdido: 'bg-slate-400',
+                };
+                return map[code] || 'bg-slate-400';
+            },
+
+            async updateLeadStatus(lead, newStatus) {
+                if (!lead || lead.status === newStatus) return;
+                const oldStatus = lead.status;
+                lead.status = newStatus;
+                try {
+                    const response = await fetch(`/api/leads/${lead.id}/update-status/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({ status: newStatus }),
+                    });
+                    if (!response.ok) {
+                        lead.status = oldStatus;
+                        await this.fetchLeads();
+                        return;
+                    }
+                    const data = await response.json().catch(() => ({}));
+                    if (data.status_display) lead.status_display = data.status_display;
+                } catch (e) {
+                    console.error('Erro ao atualizar status:', e);
+                    lead.status = oldStatus;
+                    await this.fetchLeads();
+                }
             },
 
             scoreBadgeClass(score) {
@@ -1236,15 +1450,20 @@
                     console.error("Erro ao buscar leads:", e);
                 } finally {
                     this.loading = false;
+                    if (this.viewMode === 'pipeline') {
+                        this.$nextTick(() => this.initSortable());
+                    }
                 }
             },
             
             initSortable() {
+                if (this.viewMode !== 'pipeline') return;
+                this.destroySortable();
                 const columns = document.querySelectorAll('.kanban-column');
                 const self = this;
                 
                 columns.forEach(col => {
-                    new Sortable(col, {
+                    const instance = new Sortable(col, {
                         group: 'kanban',
                         animation: 150,
                         ghostClass: 'sortable-ghost',
@@ -1286,6 +1505,7 @@
                             }
                         }
                     });
+                    self.sortableInstances.push(instance);
                 });
             },
             
@@ -1390,6 +1610,14 @@
 
             selectAllVisible() {
                 this.selectedIds = this.leads.map(l => l.id);
+            },
+
+            toggleSelectAllVisible() {
+                if (this.getSortedLeads().length > 0 && this.selectedIds.length === this.getSortedLeads().length) {
+                    this.selectedIds = [];
+                } else {
+                    this.selectAllVisible();
+                }
             },
 
             async confirmDeleteSelected() {
