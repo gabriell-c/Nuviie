@@ -12,12 +12,13 @@ NuviieMaps.SCROLL_CONTAINER_SELECTORS = [
 ];
 
 NuviieMaps.getDetailScrollContainer = () => {
+  const panel = NuviieMaps.getDetailPanelRoot();
   for (const sel of NuviieMaps.SCROLL_CONTAINER_SELECTORS) {
-    const el = document.querySelector(sel);
+    const el = panel.closest('.bJzME')?.querySelector(sel) || document.querySelector(sel);
     if (el && el.scrollHeight > el.clientHeight + 20) return el;
   }
   for (const sel of NuviieMaps.SCROLL_CONTAINER_SELECTORS) {
-    const el = document.querySelector(sel);
+    const el = panel.closest('.bJzME')?.querySelector(sel) || document.querySelector(sel);
     if (el) return el;
   }
   return null;
@@ -46,8 +47,9 @@ NuviieMaps.waitForCondition = async (fn, maxMs = 5000, intervalMs = 100) => {
 };
 
 NuviieMaps.getDetailH1Text = () => {
-  const h1 = document.querySelector('[role="main"] h1.DUwDvf')
-    || document.querySelector('[role="main"] h1')
+  const root = NuviieMaps.getDetailPanelRoot();
+  const h1 = root.querySelector('h1.DUwDvf')
+    || root.querySelector('h1')
     || document.querySelector('h1.DUwDvf')
     || document.querySelector('h1');
   return h1 ? h1.textContent.trim() : '';
@@ -73,6 +75,8 @@ NuviieMaps.placeNamesMatch = (a, b, minTokens = 2) => {
 NuviieMaps.waitForPlaceReady = async (linkInfo, maxMs = 8000) => {
   const expectedFromUrl = NuviieMaps.nameFromUrl(linkInfo.href || linkInfo.base || '');
   const expectedBase = linkInfo.base || NuviieMaps.basePlaceUrl(linkInfo.href || '');
+  const urlAlreadyMatches = expectedBase && NuviieMaps.basePlaceUrl(window.location.href) === expectedBase;
+  const timeout = urlAlreadyMatches ? Math.min(maxMs, 5000) : maxMs;
 
   const result = await NuviieMaps.waitForCondition(() => {
     const currentBase = NuviieMaps.basePlaceUrl(window.location.href);
@@ -87,7 +91,7 @@ NuviieMaps.waitForPlaceReady = async (linkInfo, maxMs = 8000) => {
       return { name: h1, fromUrl: expectedFromUrl || h1, urlMatched: true, warnings: [] };
     }
     return null;
-  }, maxMs, 100);
+  }, timeout, 80);
 
   if (result) return result;
 
@@ -110,80 +114,79 @@ NuviieMaps.waitForPlaceReady = async (linkInfo, maxMs = 8000) => {
   return { name: '', fromUrl: '', urlMatched: false, warnings: ['panel_not_ready'] };
 };
 
-NuviieMaps.hasWebResultsContent = () => {
-  const detailRoot = document.querySelector('[role="main"]') || document.body;
-  const headings = ['Resultados da Web', 'Web results', 'Resultados web'];
-  for (const el of detailRoot.querySelectorAll('h2, div.fontHeadlineSmall')) {
-    const t = (el.textContent || '').trim();
-    if (headings.some((h) => t === h || t.startsWith(h))) {
-      const section = el.closest('div')?.parentElement || el.parentElement;
-      if (section?.querySelector('a[href*="instagram.com"], a[href*="facebook.com"], a[href*="linkedin.com"], .CIdPsb, .RMrS6d')) {
-        return true;
-      }
-    }
+NuviieMaps.isWebResultsFullyLoaded = () => {
+  const section = NuviieMaps.getWebResultsSection();
+  if (!section) return false;
+
+  if (section.querySelector(
+    'a[href*="facebook.com"], a[href*="linkedin.com"], a[href*="instagram.com"], a[href*="youtube.com"]'
+  )) {
+    return true;
   }
-  return detailRoot.querySelector(
-    'a[href*="instagram.com"], a[href*="facebook.com"], a[href*="linkedin.com"]'
-  ) !== null;
+
+  const cards = section.querySelectorAll('.lXJj5c, .OBAKjf, .RMrS6d, .V2ynS, .CIdPsb, .ATb88b');
+  for (const card of cards) {
+    const text = (card.textContent || '').trim();
+    if (text.length > 15 && !card.querySelector('.CiOaN')) return true;
+  }
+  return false;
 };
 
-NuviieMaps.scrollUntilSection = async (labels, maxMs = 8000) => {
-  const labelList = Array.isArray(labels) ? labels : [labels];
+NuviieMaps.scrollUntilWebResultsComplete = async (maxMs = 5500) => {
   const deadline = Date.now() + maxMs;
-  let step = 0;
 
   while (Date.now() < deadline) {
-    const container = NuviieMaps.getDetailScrollContainer();
-    if (NuviieMaps.hasWebResultsContent()) return true;
+    if (NuviieMaps.isWebResultsFullyLoaded()) return true;
 
+    const container = NuviieMaps.getDetailScrollContainer();
     if (container) {
       const maxScroll = container.scrollHeight - container.clientHeight;
-      if (maxScroll <= 0 || container.scrollTop >= maxScroll - 50) {
-        await NuviieMaps.sleep(300);
-        if (NuviieMaps.hasWebResultsContent()) return true;
+      if (container.scrollTop >= maxScroll - 40) {
+        await NuviieMaps.sleep(200);
+        if (NuviieMaps.isWebResultsFullyLoaded()) return true;
         break;
       }
-      const increment = Math.max(280, Math.floor(container.clientHeight * 0.75));
-      container.scrollTop = Math.min(container.scrollTop + increment, maxScroll);
+      container.scrollTop = Math.min(
+        container.scrollTop + Math.max(320, Math.floor(container.clientHeight * 0.9)),
+        maxScroll,
+      );
     } else {
-      NuviieMaps.setScrollTop(400 + step * 600);
+      NuviieMaps.setScrollTop(999999);
     }
-
-    step += 1;
-    await NuviieMaps.sleep(180);
+    await NuviieMaps.sleep(100);
   }
 
-  for (const el of (document.querySelector('[role="main"]') || document.body).querySelectorAll('h2')) {
-    const t = (el.textContent || '').trim();
-    if (labelList.some((lbl) => t === lbl || t.startsWith(lbl))) {
-      el.scrollIntoView({ block: 'end', behavior: 'instant' });
-      await NuviieMaps.sleep(350);
-      return NuviieMaps.hasWebResultsContent();
-    }
+  const section = NuviieMaps.getWebResultsSection();
+  if (section) {
+    section.scrollIntoView({ block: 'end', behavior: 'instant' });
+    await NuviieMaps.sleep(250);
   }
-
   NuviieMaps.setScrollTop(999999);
-  await NuviieMaps.sleep(400);
-  return NuviieMaps.hasWebResultsContent();
+  await NuviieMaps.sleep(200);
+  return NuviieMaps.isWebResultsFullyLoaded();
+};
+
+NuviieMaps.scrollUntilSection = async (labels, maxMs = 5500) => {
+  return NuviieMaps.scrollUntilWebResultsComplete(maxMs);
 };
 
 NuviieMaps.scrollPanel = async ({ light = false } = {}) => {
   if (light) {
     for (const stepPx of [300, 900, 99999]) {
       NuviieMaps.setScrollTop(stepPx);
-      await NuviieMaps.sleep(250);
+      await NuviieMaps.sleep(180);
     }
     NuviieMaps.setScrollTop(0);
-    await NuviieMaps.sleep(200);
+    await NuviieMaps.sleep(150);
     return;
   }
-  await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 6000);
+  await NuviieMaps.scrollUntilWebResultsComplete(5000);
   NuviieMaps.setScrollTop(0);
-  await NuviieMaps.sleep(300);
+  await NuviieMaps.sleep(200);
 };
 
 NuviieMaps.expandHours = async () => {
-  const detailRoot = document.querySelector('[role="main"]') || document;
+  const detailRoot = NuviieMaps.getDetailPanelRoot();
   const selectors = [
     'div.OMl5r[jsaction*="openhours"][aria-expanded="false"]',
     'div.OMl5r[aria-expanded="false"]',
@@ -193,22 +196,22 @@ NuviieMaps.expandHours = async () => {
     const el = detailRoot.querySelector(sel);
     if (el) {
       el.click();
-      await NuviieMaps.sleep(350);
+      await NuviieMaps.sleep(250);
       return;
     }
   }
 };
 
 NuviieMaps.clickTab = async (labels) => {
-  const detailRoot = document.querySelector('[role="main"]')?.closest('.bJzME')
+  const detailRoot = NuviieMaps.getDetailPanelRoot().closest('.bJzME')
     || document.querySelector('.bJzME')
-    || document;
+    || NuviieMaps.getDetailPanelRoot();
   for (const label of labels) {
     for (const tab of detailRoot.querySelectorAll('[role="tab"], button.hh2c6')) {
       const t = (tab.textContent || tab.getAttribute('aria-label') || '').trim();
       if (t === label || t.toLowerCase() === label.toLowerCase() || (tab.getAttribute('aria-label') || '').includes(label)) {
         tab.click();
-        await NuviieMaps.sleep(500);
+        await NuviieMaps.sleep(400);
         return true;
       }
     }
@@ -226,7 +229,7 @@ NuviieMaps.visitAboutTab = async () => {
   await NuviieMaps.scrollPanel({ light: true });
   const amenities = NuviieMaps.extractAboutAmenities();
   await NuviieMaps.goToOverview();
-  await NuviieMaps.sleep(400);
+  await NuviieMaps.sleep(300);
   return amenities;
 };
 
@@ -237,30 +240,30 @@ NuviieMaps.visitReviewsTab = async ({ fast = false } = {}) => {
   }
   await NuviieMaps.scrollPanel({ light: true });
   if (!fast) {
-    document.querySelectorAll(
+    NuviieMaps.getDetailPanelRoot().querySelectorAll(
       'button[aria-label*="Ver mais"], button.w8nwRe, button[jsaction*="reviewfulltext"]'
     ).forEach((btn) => {
       try { btn.click(); } catch { /* ignore */ }
     });
-    await NuviieMaps.sleep(300);
+    await NuviieMaps.sleep(250);
   }
   const reviews = NuviieMaps.extractReviews();
   await NuviieMaps.goToOverview();
-  await NuviieMaps.sleep(400);
+  await NuviieMaps.sleep(300);
   return reviews;
 };
 
 NuviieMaps.scrollToWebResults = async () => {
-  await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 5000);
+  await NuviieMaps.scrollUntilWebResultsComplete(4500);
 };
 
 NuviieMaps.scrollToTopContact = async () => {
   NuviieMaps.setScrollTop(0);
-  await NuviieMaps.sleep(300);
+  await NuviieMaps.sleep(200);
 };
 
 NuviieMaps.revealContactButtons = async () => {
-  const detailRoot = document.querySelector('[role="main"]') || document;
+  const detailRoot = NuviieMaps.getDetailPanelRoot();
   const selectors = [
     'button[data-item-id*="phone"]',
     'button[aria-label*="Copiar número"]',
@@ -275,7 +278,7 @@ NuviieMaps.revealContactButtons = async () => {
     if (btn && btn.offsetParent !== null) {
       try {
         btn.click();
-        await NuviieMaps.sleep(200);
+        await NuviieMaps.sleep(150);
       } catch { /* ignore */ }
     }
   }
@@ -285,7 +288,7 @@ NuviieMaps.waitForStableH1 = async (maxAttempts = 25) => {
   for (let i = 0; i < maxAttempts; i++) {
     const text = NuviieMaps.getDetailH1Text();
     if (NuviieMaps.isValidPlaceName(text) && text.toLowerCase() !== 'resultados') return text;
-    await NuviieMaps.sleep(200);
+    await NuviieMaps.sleep(150);
   }
   return NuviieMaps.nameFromUrl(window.location.href) || '';
 };
@@ -294,7 +297,7 @@ NuviieMaps.clickPlaceLink = async (linkInfo) => {
   if (linkInfo.element && document.contains(linkInfo.element)) {
     linkInfo.element.scrollIntoView({ block: 'center', behavior: 'instant' });
     linkInfo.element.click();
-    await NuviieMaps.sleep(600);
+    await NuviieMaps.sleep(450);
     return true;
   }
   const anchor = [...document.querySelectorAll('a[href*="/maps/place/"]')].find(
@@ -303,7 +306,7 @@ NuviieMaps.clickPlaceLink = async (linkInfo) => {
   if (anchor) {
     anchor.scrollIntoView({ block: 'center', behavior: 'instant' });
     anchor.click();
-    await NuviieMaps.sleep(600);
+    await NuviieMaps.sleep(450);
     return true;
   }
   return false;

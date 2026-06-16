@@ -95,9 +95,45 @@ function setToggleButton(running) {
   } else {
     btn.classList.remove('danger');
     btn.classList.add('primary');
-    label.textContent = NM.mode === 'instagram' ? 'Extrair Instagram' : 'Extrair completo';
+    label.textContent = NM.mode === 'instagram' ? 'Extrair Instagram' : 'Extrair';
     icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>';
   }
+}
+
+function formatLeadFieldSummary(lead) {
+  if (!lead) return '';
+  const shortName = (lead.name || 'Lead').split(/\s+/).slice(0, 2).join(' ');
+  const labels = {
+    phone: 'tel',
+    website: 'web',
+    instagram: 'ig',
+    facebook: 'fb',
+    youtube: 'yt',
+    twitter: 'tw',
+    linkedin: 'li',
+  };
+  const found = new Set(lead._fields_found || []);
+  if (lead.normalized_phone || lead.phone_number) found.add('phone');
+  if (lead.website) found.add('website');
+  if (lead.instagram) found.add('instagram');
+  if (lead.facebook) found.add('facebook');
+  if (lead.youtube) found.add('youtube');
+  if (lead.twitter) found.add('twitter');
+  if (lead.linkedin) found.add('linkedin');
+
+  const parts = ['phone', 'instagram', 'facebook', 'website'].map((key) => {
+    const ok = found.has(key);
+    return `${labels[key]} ${ok ? '✓' : '✗'}`;
+  });
+  return `${shortName} — ${parts.join(' ')}`;
+}
+
+function summarizeExtractionFields(leads) {
+  if (!leads?.length) return '';
+  const last = leads[leads.length - 1];
+  const summary = formatLeadFieldSummary(last);
+  if (leads.length === 1) return summary;
+  return `${summary} (+${leads.length - 1} outros)`;
 }
 
 function parseOptionalInt(value) {
@@ -175,7 +211,7 @@ function applyModeUI(mode) {
   } else {
     nicheLabel.textContent = 'Nicho / segmento';
     limitLabel.textContent = 'Limite (0 = todos visíveis)';
-    if (btnToggleLabel && !NM.extracting) btnToggleLabel.textContent = 'Extrair completo';
+    if (btnToggleLabel && !NM.extracting) btnToggleLabel.textContent = 'Extrair';
     nicheInput.placeholder = 'Ex: advogado';
     limitInput.placeholder = '0';
     limitInput.min = '0';
@@ -200,6 +236,7 @@ async function loadSettings() {
     minPosts: '',
     maxPosts: '',
     lastPostWithin: 'any',
+    includeExtras: false,
     mode: 'maps',
   });
   const local = await chrome.storage.local.get({
@@ -220,6 +257,8 @@ async function loadSettings() {
   document.getElementById('minPosts').value = data.minPosts ?? '';
   document.getElementById('maxPosts').value = data.maxPosts ?? '';
   document.getElementById('lastPostWithin').value = data.lastPostWithin || 'any';
+  const includeExtrasEl = document.getElementById('includeExtras');
+  if (includeExtrasEl) includeExtrasEl.checked = !!data.includeExtras;
 
   const mode = local.nuviieMode || data.mode || 'maps';
   applyModeUI(mode);
@@ -252,6 +291,7 @@ async function saveSettings() {
     minPosts: document.getElementById('minPosts').value,
     maxPosts: document.getElementById('maxPosts').value,
     lastPostWithin: igFilters.lastPostWithin,
+    includeExtras: document.getElementById('includeExtras')?.checked || false,
     mode,
   };
   const limitVal = parseInt(document.getElementById('limit').value, 10);
@@ -419,9 +459,9 @@ document.getElementById('btnToggle').addEventListener('click', async () => {
           city: settings.city,
           niche: settings.niche,
           limit: settings.limit,
-          delayMin: 500,
-          delayMax: 1000,
-          fullExtract: true,
+          delayMin: 300,
+          delayMax: 600,
+          includeExtras: settings.includeExtras,
         },
       });
       setToggleButton(true);
@@ -512,9 +552,11 @@ chrome.runtime.onMessage.addListener((msg) => {
     NM.progress = msg.progress;
     setToggleButton(false);
     applyProgressUpdate(NM.progress, NM.leads.length);
-    if (msg.skippedPlaces > 0 && NM.progress?.message) {
-      setStatus(NM.progress.message, NM.progress.status);
-    }
+    const fieldSummary = summarizeExtractionFields(NM.leads);
+    let statusMsg = NM.progress?.message || 'Concluído.';
+    if (fieldSummary) statusMsg = `${statusMsg} · ${fieldSummary}`;
+    setStatus(statusMsg, NM.progress?.status || 'done');
+    if (fieldSummary) showToast(fieldSummary, 'success', 7000);
     stopProgressPoll();
   }
 });

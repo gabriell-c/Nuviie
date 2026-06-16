@@ -118,6 +118,17 @@ NuviieMaps.mapToLead = (raw, {
   const mapsCanonical = mapsUrl || js.maps_url || window.location.href.split('?')[0];
   const warnings = [...(extractWarnings || []), ...(js._extract_warnings || [])];
 
+  const fieldsFound = [];
+  if (normalized || phoneRaw) fieldsFound.push('phone');
+  if (website) fieldsFound.push('website');
+  if (instagram) fieldsFound.push('instagram');
+  if (facebook) fieldsFound.push('facebook');
+  if (youtube) fieldsFound.push('youtube');
+  if (twitter) fieldsFound.push('twitter');
+  if (linkedin) fieldsFound.push('linkedin');
+  if (js.address) fieldsFound.push('address');
+  if (js.rating) fieldsFound.push('rating');
+
   return {
     name,
     category: (js.category || niche || '').trim(),
@@ -153,5 +164,6 @@ NuviieMaps.mapToLead = (raw, {
     _kgmid: js.kgmid || null,
     _place_key: placeKey || NuviieMaps.basePlaceUrl(mapsCanonical),
     _extract_warnings: warnings.length ? warnings : null,
+    _fields_found: fieldsFound.length ? fieldsFound : null,
   };
 };

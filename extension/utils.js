@@ -62,6 +62,51 @@ NuviieMaps.detectCityFromPage = () => {
   return '';
 };
 
+NuviieMaps.PHONE_BR_RE = /\(?\d{2}\)?\s?(?:9\s?\d{4}|\d{4})[-\s]?\d{4}/;
+
+NuviieMaps.getDetailPanelRoot = () => {
+  const nameBad = new Set(['resultados', 'results', 'resultado']);
+  const isValidMain = (el) => {
+    if (!el) return false;
+    const h1 = el.querySelector('h1.DUwDvf, h1');
+    const text = h1 ? h1.textContent.trim().toLowerCase() : '';
+    return text && !nameBad.has(text);
+  };
+
+  const panel = document.querySelector('.bJzME');
+  if (panel) {
+    for (const main of panel.querySelectorAll('[role="main"]')) {
+      if (main.querySelector('h1.DUwDvf') && isValidMain(main)) return main;
+    }
+  }
+
+  for (const main of document.querySelectorAll('[role="main"][aria-label]')) {
+    if (isValidMain(main)) return main;
+  }
+
+  for (const main of document.querySelectorAll('[role="main"]')) {
+    if (isValidMain(main)) return main;
+  }
+
+  return document.querySelector('[role="main"]') || document.body;
+};
+
+NuviieMaps.WEB_RESULTS_HEADINGS = ['Resultados da Web', 'Web results', 'Resultados web'];
+
+NuviieMaps.getWebResultsSection = () => {
+  const root = NuviieMaps.getDetailPanelRoot();
+  for (const h2 of root.querySelectorAll('h2, div.fontHeadlineSmall')) {
+    const t = (h2.textContent || '').trim();
+    if (NuviieMaps.WEB_RESULTS_HEADINGS.some((h) => t === h || t.startsWith(h))) {
+      return h2.closest('.m6QErb')
+        || h2.closest('div[jsaction]')
+        || h2.parentElement?.parentElement
+        || h2.parentElement;
+    }
+  }
+  return null;
+};
+
 NuviieMaps.collectPlaceLinks = () => {
   const seen = new Set();
   const links = [];

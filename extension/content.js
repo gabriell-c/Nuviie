@@ -24,45 +24,55 @@ NuviieMaps.extractSinglePlace = async (linkInfo, options) => {
   const clicked = await NuviieMaps.clickPlaceLink(linkInfo);
   if (!clicked) return null;
 
-  const ready = await NuviieMaps.waitForPlaceReady(linkInfo);
+  const urlMatches = linkInfo.base && NuviieMaps.basePlaceUrl(window.location.href) === linkInfo.base;
+  const ready = await NuviieMaps.waitForPlaceReady(linkInfo, urlMatches ? 5000 : 8000);
   if (!ready.name) return null;
 
+  // Fase A — contato no topo (telefone, site, wa.me)
+  NuviieMaps.setScrollTop(0);
+  await NuviieMaps.sleep(150);
   await NuviieMaps.expandHours();
   await NuviieMaps.revealContactButtons();
 
-  await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 8000);
-  await NuviieMaps.waitForWebResultsIframe(ready.name, 4000);
+  const detailRoot = NuviieMaps.getDetailPanelRoot();
+  let contactSnapshot = NuviieMaps.mergeExtractData(
+    NuviieMaps.extractContactFields(),
+    NuviieMaps.extractPhoneFromPanel(detailRoot),
+  );
 
-  let contactSnapshot = NuviieMaps.extractContactFields();
+  // Fase B — scroll até Resultados da Web + extração completa
+  await NuviieMaps.scrollUntilWebResultsComplete(5500);
+  await NuviieMaps.waitForWebResultsIframe(ready.name, 2500);
+
   let jsData = NuviieMaps.extractAll();
   jsData = NuviieMaps.mergeExtractData(jsData, contactSnapshot);
+  NuviieMaps.extractDeepSocialLinks(NuviieMaps.getDetailPanelRoot(), jsData);
   jsData.name = ready.name;
   jsData._extract_warnings = ready.warnings;
 
-  if (!jsData.facebook && !jsData.instagram && !jsData.linkedin && !jsData.website) {
-    await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 4000);
-    await NuviieMaps.waitForWebResultsIframe(ready.name, 3000);
-    const retry = NuviieMaps.extractAll();
-    jsData = NuviieMaps.mergeExtractData(jsData, NuviieMaps.mergeExtractData(retry, contactSnapshot));
-    jsData.name = ready.name;
-  }
-
-  if (!jsData.phone || !jsData.address) {
-    await NuviieMaps.revealContactButtons();
-    const retry = NuviieMaps.extractAll();
-    jsData = NuviieMaps.mergeExtractData(jsData, NuviieMaps.mergeExtractData(retry, contactSnapshot));
+  if (!jsData.phone || !jsData.facebook) {
+    NuviieMaps.setScrollTop(0);
+    await NuviieMaps.sleep(150);
+    const topRetry = NuviieMaps.mergeExtractData(
+      NuviieMaps.extractContactFields(),
+      NuviieMaps.extractPhoneFromPanel(NuviieMaps.getDetailPanelRoot()),
+    );
+    await NuviieMaps.scrollUntilWebResultsComplete(3500);
+    const bottomRetry = NuviieMaps.extractAll();
+    NuviieMaps.extractDeepSocialLinks(NuviieMaps.getDetailPanelRoot(), bottomRetry);
+    jsData = NuviieMaps.mergeExtractData(jsData, NuviieMaps.mergeExtractData(bottomRetry, topRetry));
     jsData.name = ready.name;
   }
 
   let aboutAmenities = [];
   let reviews = [];
-  if (options.fullExtract !== false) {
+  if (options.includeExtras) {
     aboutAmenities = await NuviieMaps.visitAboutTab();
     reviews = await NuviieMaps.visitReviewsTab({ fast: true });
-    await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 4000);
-    await NuviieMaps.waitForWebResultsIframe(ready.name, 2500);
-    const retryAfterTabs = NuviieMaps.extractAll();
-    jsData = NuviieMaps.mergeExtractData(jsData, retryAfterTabs);
+    NuviieMaps.setScrollTop(0);
+    const extra = NuviieMaps.extractAll();
+    NuviieMaps.extractDeepSocialLinks(NuviieMaps.getDetailPanelRoot(), extra);
+    jsData = NuviieMaps.mergeExtractData(jsData, extra);
     jsData.name = ready.name;
   }
 
@@ -140,7 +150,7 @@ NuviieMaps.runExtraction = async (options) => {
 
     NuviieMaps.state.progress.current = i + 1;
     NuviieMaps.sendProgress();
-    await NuviieMaps.randomDelay(options.delayMin || 500, options.delayMax || 1000);
+    await NuviieMaps.randomDelay(options.delayMin || 300, options.delayMax || 600);
   }
 
   NuviieMaps.state.running = false;

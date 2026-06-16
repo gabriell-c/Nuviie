@@ -35,13 +35,122 @@ NuviieMaps.normalizeDomainText = (text) => {
 NuviieMaps.mergeExtractData = (primary, secondary) => {
     const out = { ...(primary || {}) };
     for (const [k, v] of Object.entries(secondary || {})) {
-        if (v != null && v !== '' && !out[k]) out[k] = v;
+        if (v == null || v === '') continue;
+        if (!out[k]) {
+            out[k] = v;
+            continue;
+        }
+        if (k === 'phone' || k === 'phone_number') {
+            const a = String(out[k]).replace(/\D/g, '');
+            const b = String(v).replace(/\D/g, '');
+            if (b.length > a.length) out[k] = v;
+        }
+        if (k === 'whatsapp_link') {
+            const a = String(out.whatsapp_link || '').replace(/\D/g, '');
+            const b = String(v).replace(/\D/g, '');
+            if (!out.whatsapp_link || b.length > a.length) out.whatsapp_link = v;
+        }
     }
     return out;
 };
 
+NuviieMaps.extractPhoneFromPanel = (detailRoot) => {
+    const root = detailRoot || NuviieMaps.getDetailPanelRoot();
+    const out = { phone: null, whatsapp_link: null };
+
+    for (const el of root.querySelectorAll('[aria-label]')) {
+        const lbl = el.getAttribute('aria-label') || '';
+        const telM = lbl.match(/(?:telefone|phone|tel)[:\s]+(.+)/i);
+        if (telM) {
+            const pm = telM[1].match(NuviieMaps.PHONE_BR_RE);
+            if (pm) { out.phone = pm[0].trim(); break; }
+        }
+    }
+
+    if (!out.phone) {
+        for (const el of root.querySelectorAll('[data-item-id*="phone"]')) {
+            const did = el.getAttribute('data-item-id') || '';
+            const telM = did.match(/tel:([^;]+)/i);
+            if (telM) {
+                out.phone = decodeURIComponent(telM[1]);
+                break;
+            }
+        }
+    }
+
+    if (!out.phone) {
+        for (const el of root.querySelectorAll('div.Io6YTe, button.CsEnBe')) {
+            const t = (el.textContent || '').trim();
+            if (/plus\s*code|^R[a-z0-9]/i.test(t)) continue;
+            const pm = t.match(NuviieMaps.PHONE_BR_RE);
+            if (pm) { out.phone = pm[0]; break; }
+        }
+    }
+
+    if (!out.phone) {
+        const telLink = root.querySelector('a[href^="tel:"]');
+        if (telLink) {
+            out.phone = decodeURIComponent(telLink.getAttribute('href').replace(/^tel:/i, '').trim());
+        }
+    }
+
+    for (const a of root.querySelectorAll(
+        'a[href*="wa.me"], a[href*="whatsapp.com"], a[href*="api.whatsapp.com"], a[href*="chat.whatsapp.com"]'
+    )) {
+        let href = a.getAttribute('href') || '';
+        try { href = decodeURIComponent(href); } catch { /* ignore */ }
+        const waM = href.match(/(?:wa\.me\/|phone=|phone%3D)(\d{10,15})/i);
+        if (waM) {
+            out.whatsapp_link = waM[1];
+            if (!out.phone) out.phone = waM[1];
+            break;
+        }
+    }
+
+    return out;
+};
+
+NuviieMaps.extractDeepSocialLinks = (detailRoot, R) => {
+    if (!R) return;
+    const root = detailRoot || NuviieMaps.getDetailPanelRoot();
+    const section = NuviieMaps.getWebResultsSection() || root;
+    const bad = new Set(['explore','reel','reels','p','stories','tv','accounts',
+        'tags','share','sharer','intent','home','watch','results',
+        'search','jobs','feed','ads','about','legal','privacy',
+        'support','notifications','explore','highlights']);
+
+    const scanHtml = `${section.innerHTML || ''} ${root.innerHTML || ''}`;
+    const urlPatterns = [
+        /https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9._]{2,50}/gi,
+        /https?:\/\/(?:www\.)?(?:facebook\.com|fb\.com|fb\.me)\/[^\s"'<>]+/gi,
+        /https?:\/\/(?:www\.)?linkedin\.com\/(?:in|company)\/[A-Za-z0-9._\-]+/gi,
+        /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s"'<>]+/gi,
+        /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/[A-Za-z0-9._]+/gi,
+        /https?:\/\/(?:www\.)?tiktok\.com\/@[A-Za-z0-9._]+/gi,
+    ];
+    for (const pat of urlPatterns) {
+        for (const m of scanHtml.matchAll(pat)) {
+            NuviieMaps.applySocialUrl(R, m[0], bad);
+        }
+    }
+
+    const cardSelectors = '.lXJj5c, .OBAKjf, .RMrS6d, .V2ynS, [data-hveid], .CIdPsb, .ATb88b';
+    for (const card of section.querySelectorAll(cardSelectors)) {
+        if (card.matches('a[href]')) {
+            NuviieMaps.applySocialUrl(R, card.href, bad);
+        } else {
+            NuviieMaps.parseSearchResultCard(R, card, bad);
+            card.querySelectorAll('a[href]').forEach((a) => {
+                NuviieMaps.applySocialUrl(R, a.href, bad);
+            });
+        }
+    }
+
+    NuviieMaps.applySocialFromText(R, section.innerText || '', bad);
+};
+
 NuviieMaps.getWebResultsContext = (placeName) => {
-    const detailRoot = document.querySelector('[role="main"]') || document.body;
+    const detailRoot = NuviieMaps.getDetailPanelRoot();
     const nameNorm = NuviieMaps.normalizeSearchToken(placeName);
     const nameTokens = nameNorm.split(' ').filter((w) => w.length >= 3);
 
@@ -227,13 +336,21 @@ NuviieMaps.breadcrumbToUrl = (text) => {
 NuviieMaps.applySocialUrl = (R, href, bad) => {
     let url = NuviieMaps.resolveGoogleRedirect(href);
     if (!url || url.startsWith('javascript:')) return;
+    try { url = decodeURIComponent(url); } catch { /* ignore */ }
 
     if (!R.instagram) {
         const m = url.match(/instagram\.com\/([A-Za-z0-9._]{2,50})/);
         if (m && !bad.has(m[1].toLowerCase())) R.instagram = '@' + m[1].replace(/\/$/, '');
     }
+    if (!R.phone && !R.whatsapp_link) {
+        const waM = url.match(/(?:wa\.me\/|phone=|phone%3D)(\d{10,15})/i);
+        if (waM) {
+            R.whatsapp_link = waM[1];
+            R.phone = waM[1];
+        }
+    }
     if (!R.facebook) {
-        const m = url.match(/facebook\.com\/(?:p\/)?([A-Za-z0-9._\-]{2,120})/);
+        const m = url.match(/facebook\.com\/(?:p\/|pages\/|people\/[^/]+\/|profile\.php\?id=)?([A-Za-z0-9._\-]{2,120})/i);
         if (m && !bad.has(m[1].toLowerCase())) R.facebook = url.replace(/[?#].*/, '');
     }
     if (!R.youtube) {
@@ -339,7 +456,7 @@ NuviieMaps.applySocialFromText = (R, bodyText, bad) => {
 };
 
 NuviieMaps.extractWebResultsFromMainPanel = (R, bad) => {
-    const detailRoot = document.querySelector('[role="main"]') || document.body;
+    const detailRoot = NuviieMaps.getDetailPanelRoot();
     const headings = ['Resultados da Web', 'Web results', 'Resultados web'];
     let section = null;
 
@@ -353,7 +470,8 @@ NuviieMaps.extractWebResultsFromMainPanel = (R, bad) => {
 
     const searchRoot = section || detailRoot;
     for (const card of searchRoot.querySelectorAll(
-        '#gsr .V2ynS, .RMrS6d, div.V2ynS, [data-hveid], a[href*="instagram.com"], a[href*="facebook.com"]'
+        '#gsr .V2ynS, .RMrS6d, div.V2ynS, [data-hveid], .lXJj5c, .OBAKjf, .CIdPsb, ' +
+        'a[href*="instagram.com"], a[href*="facebook.com"], a[href*="linkedin.com"]'
     )) {
         if (card.matches('a[href]')) {
             NuviieMaps.applySocialUrl(R, card.href, bad);
@@ -372,7 +490,7 @@ NuviieMaps.extractContactFields = () => {
                          'tags','share','sharer','intent','home','watch','results',
                          'search','jobs','feed','ads','about','legal','privacy',
                          'support','notifications','explore','highlights']);
-    const detailRoot = document.querySelector('[role="main"]') || document.body;
+    const detailRoot = NuviieMaps.getDetailPanelRoot();
 
     for (const sel of [
         'a[data-item-id="authority"]',
@@ -409,12 +527,13 @@ NuviieMaps.extractContactFields = () => {
 
     detailRoot.querySelectorAll(
         'a[href*="instagram.com"], a[href*="facebook.com"], a[href*="wa.me"], ' +
+        'a[href*="whatsapp.com"], a[href*="api.whatsapp.com"], a[href*="chat.whatsapp.com"], ' +
         'a[href*="linkedin.com"], a[href*="youtube.com"], a[href*="twitter.com"], a[href*="x.com"]'
     ).forEach((a) => {
         NuviieMaps.applySocialUrl(R, a.href, bad);
     });
 
-    return R;
+    return NuviieMaps.mergeExtractData(R, NuviieMaps.extractPhoneFromPanel(detailRoot));
 };
 
 NuviieMaps.extractAll = () => {
@@ -576,15 +695,15 @@ NuviieMaps.extractAll = () => {
                          'search','jobs','feed','ads','about','legal','privacy',
                          'support','notifications','explore','highlights']);
 
+    const detailRoot = NuviieMaps.getDetailPanelRoot();
+    const phoneData = NuviieMaps.extractPhoneFromPanel(detailRoot);
+    if (phoneData.phone) R.phone = phoneData.phone;
+    if (phoneData.whatsapp_link) R.whatsapp_link = phoneData.whatsapp_link;
+
     // ── Nome ──────────────────────────────────────────────────────────────────
-    // ATENÇÃO: document.querySelector('h1') pega o PRIMEIRO h1 da página, que
-    // pode ser o cabeçalho "Resultados" da lista de busca (lateral esquerda),
-    // e não o nome do estabelecimento (que fica no painel de detalhes).
-    // Por isso priorizamos h1 dentro do painel de detalhes (role="main") e,
-    // se ainda assim vier "Resultados"/"Results", tratamos como inválido.
     const nameBad = new Set(['resultados', 'results', 'resultado']);
-    let h1 = document.querySelector('[role="main"] h1.DUwDvf')
-          || document.querySelector('[role="main"] h1')
+    let h1 = detailRoot.querySelector('h1.DUwDvf')
+          || detailRoot.querySelector('h1')
           || document.querySelector('h1.DUwDvf')
           || document.querySelector('h1');
     if (h1) {
@@ -775,7 +894,6 @@ NuviieMaps.extractAll = () => {
     // que ficam no DOM mesmo enquanto navegamos entre lugares. Isso fazia o
     // mesmo Instagram (de um anúncio fixo) "vazar" para todos os leads.
     // Por isso restringimos a busca ao painel de detalhes do lugar.
-    const detailRoot = document.querySelector('[role="main"]') || document.body;
 
     NuviieMaps.extractWebResultsFromMainPanel(R, bad);
 
@@ -867,17 +985,25 @@ NuviieMaps.extractAll = () => {
         }
     }
 
-    // ── WhatsApp direto (botão wa.me na ficha) ────────────────────────────────
-    const waLink = document.querySelector('a[href*="wa.me/"], a[href*="api.whatsapp.com/send"]');
-    if (waLink) {
-        const waHref = waLink.getAttribute('href') || '';
-        const waM = waHref.match(/(?:wa\.me\/|phone=)(\d{10,15})/);
-        if (waM) R.whatsapp_link = waM[1];
+    // ── WhatsApp direto (botão wa.me / api.whatsapp.com na ficha) ─────────────
+    if (!R.whatsapp_link || !R.phone) {
+        for (const waLink of detailRoot.querySelectorAll(
+            'a[href*="wa.me"], a[href*="api.whatsapp.com"], a[href*="chat.whatsapp.com"]'
+        )) {
+            let waHref = waLink.getAttribute('href') || '';
+            try { waHref = decodeURIComponent(waHref); } catch { /* ignore */ }
+            const waM = waHref.match(/(?:wa\.me\/|phone=|phone%3D)(\d{10,15})/i);
+            if (waM) {
+                R.whatsapp_link = waM[1];
+                if (!R.phone) R.phone = waM[1];
+                break;
+            }
+        }
     }
 
     // ── TikTok ────────────────────────────────────────────────────────────────
     if (!R.tiktok) {
-        for (const a of document.querySelectorAll('a[href*="tiktok.com"]')) {
+        for (const a of detailRoot.querySelectorAll('a[href*="tiktok.com"]')) {
             const m = a.href.match(/tiktok\.com\/@([A-Za-z0-9._]{2,50})/);
             if (m && !bad.has(m[1].toLowerCase())) { R.tiktok = '@' + m[1]; break; }
         }
@@ -1010,6 +1136,8 @@ NuviieMaps.extractAll = () => {
         /(Aberto\s*(?:24\s*horas)?|Fechado\s*(?:agora)?|Abre\s*às\s*\d{1,2}:\d{2}|Fecha\s*às\s*\d{1,2}:\d{2})/i
     );
     if (statusM) R.hours.status_atual = statusM[1].trim();
+
+    NuviieMaps.extractDeepSocialLinks(detailRoot, R);
 
     return R;
 };
