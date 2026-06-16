@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     'lead_scoring',
     'finance',
     'notifications',
+    'site_audit',
 ]
 
 MIDDLEWARE = [
@@ -230,6 +231,9 @@ OLLAMA_MODEL           = os.environ.get('OLLAMA_MODEL', 'qwen2.5:7b')
 PLAYWRIGHT_BROWSERS_PATH = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '')
 MAPS_SCRAPER_TIMEOUT     = int(os.environ.get('MAPS_SCRAPER_TIMEOUT', 600))
 NUVIIE_SCREENSHOT_DIR    = os.environ.get('NUVIIE_SCREENSHOT_DIR', '')
+
+# ── PageSpeed Insights ───────────────────────────────────────────────────────
+GOOGLE_PAGESPEED_API_KEY = os.environ.get('GOOGLE_PAGESPEED_API_KEY', '')
 
 # Propaga PLAYWRIGHT_BROWSERS_PATH para subprocessos lançados pelo Django
 if PLAYWRIGHT_BROWSERS_PATH:

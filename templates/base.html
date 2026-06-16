@@ -46,12 +46,17 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     
+    <!-- Nuviie forms (before Alpine for directive registration) -->
+    <script src="{% static 'js/nuviie-forms.js' %}"></script>
+    <script src="{% static 'js/nuviie-calendar.js' %}"></script>
+
     <!-- Alpine.js for interactive states -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Custom CSS -->
     {% load static %}
     <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    <link rel="stylesheet" href="{% static 'css/nuviie-ui.css' %}">
     
     {% block extra_head %}{% endblock %}
 </head>
@@ -156,6 +161,11 @@
                 <span>Regras de Pontuação</span>
             </a>
 
+            <a href="{% url 'site_audit' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'site_audit' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-solid fa-gauge-high text-lg"></i>
+                <span>Auditoria de Sites</span>
+            </a>
+
             <div class="pt-4 pb-2">
                 <span class="px-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">Sistema</span>
             </div>
@@ -237,6 +247,7 @@
                     {% elif current_page == 'chat' %}Atendente IA
                     {% elif current_page == 'prompt_library' %}Biblioteca de Prompts
                     {% elif current_page == 'lead_scoring' %}Regras de Pontuação
+                    {% elif current_page == 'site_audit' %}Auditoria de Sites
                     {% elif current_page == 'monitoring' %}Analytics Servidor
                     {% elif current_page == 'audit_history' %}Histórico
                     {% else %}Minha Conta{% endif %}

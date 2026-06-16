@@ -566,3 +566,170 @@ class WebsiteUtilsTests(TestCase):
         self.assertEqual(detect_website_type('https://instagram.com/user'), 'instagram')
         self.assertEqual(detect_website_type('https://example.com'), 'website')
         self.assertEqual(detect_website_type(''), 'website')
+
+
+class PaletteTests(TestCase):
+    def test_extract_palette_min_max_colors(self):
+        import base64
+        from leads.palette_utils import extract_palette
+
+        png = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+        )
+        colors = extract_palette(png)
+        self.assertGreaterEqual(len(colors), 3)
+        self.assertLessEqual(len(colors), 5)
+        self.assertTrue(all(c.get('hex', '').startswith('#') for c in colors))
+
+    def test_extract_palette_api(self):
+        from rest_framework.test import APIClient
+        from leads.profile_picture_utils import save_lead_profile_picture_from_data_url
+
+        user = get_user_model().objects.create_user(username='paluser', password='pass12345')
+        lead = Lead.objects.create(user=user, name='Palette Lead', source='google_maps', status='novo')
+        save_lead_profile_picture_from_data_url(
+            lead,
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+        resp = client.post(f'/api/leads/{lead.id}/extract-palette/', {}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('color_palette', resp.data)
+        lead.refresh_from_db()
+        self.assertIn('color_palette', lead.amenities)
+
+    def test_color_palette_crud(self):
+        from rest_framework.test import APIClient
+
+        user = get_user_model().objects.create_user(username='crudpal', password='pass12345')
+        lead = Lead.objects.create(user=user, name='CRUD Lead', source='google_maps', status='novo')
+        client = APIClient()
+        client.force_authenticate(user=user)
+        base = f'/api/leads/{lead.id}/color-palette/'
+
+        get_empty = client.get(base)
+        self.assertEqual(get_empty.status_code, 200)
+        self.assertIsNone(get_empty.data['color_palette'])
+
+        create = client.post(base, {'hex': '#FF0000'}, format='json')
+        self.assertEqual(create.status_code, 200)
+        self.assertEqual(create.data['color_palette']['colors'][0]['hex'], '#FF0000')
+
+        add = client.post(base, {'hex': '#00FF00'}, format='json')
+        self.assertEqual(len(add.data['color_palette']['colors']), 2)
+
+        patch = client.patch(base, {'index': 0, 'hex': '#0000FF'}, format='json')
+        self.assertEqual(patch.data['color_palette']['colors'][0]['hex'], '#0000FF')
+
+        delete_one = client.delete(f'{base}?index=1')
+        self.assertEqual(len(delete_one.data['color_palette']['colors']), 1)
+
+        replace = client.put(base, {'colors': [{'hex': '#111111'}, {'hex': '#222222'}]}, format='json')
+        self.assertEqual(len(replace.data['color_palette']['colors']), 2)
+
+        delete_all = client.delete(base)
+        self.assertEqual(delete_all.status_code, 200)
+        self.assertIsNone(delete_all.data['color_palette'])
+        lead.refresh_from_db()
+        self.assertNotIn('color_palette', lead.amenities or {})
+
+
+class LeadExportPaletteAuditTests(TestCase):
+    def setUp(self):
+        user = get_user_model().objects.create_user(username='expaudit', password='pass12345')
+        self.user = user
+        self.lead = Lead.objects.create(
+            user=user,
+            name='Site Lead',
+            website='https://example.com',
+            source='google_maps',
+            status='novo',
+            amenities={
+                'color_palette': {
+                    'colors': [{'hex': '#FF0000', 'rgb': [255, 0, 0], 'prominence': 1.0}],
+                    'extracted_at': '2026-01-01T00:00:00',
+                    'source': 'profile_picture',
+                },
+            },
+        )
+        from site_audit.models import SiteAuditReport
+        SiteAuditReport.objects.create(
+            user=user,
+            lead=self.lead,
+            url='https://example.com',
+            status=SiteAuditReport.STATUS_COMPLETED,
+            scores={'mobile': {'performance': 55, 'seo': 80}, 'desktop': {'performance': 70, 'seo': 85}},
+            summary='Mobile: Performance 55/100',
+            recommendations={'mobile': {'performance': [{'title': 'Reduce LCP', 'severity': 'high'}]}},
+        )
+
+    def test_export_includes_palette_and_audit(self):
+        from leads.lead_export import build_lead_profile, lead_to_markdown
+
+        profile = build_lead_profile(self.lead)
+        self.assertIn('paleta_cores', profile)
+        self.assertIn('auditoria_site', profile)
+        md = lead_to_markdown(profile)
+        self.assertIn('Paleta de cores', md)
+        self.assertIn('#FF0000', md)
+        self.assertIn('Auditoria do site', md)
+        self.assertIn('Performance', md)
+
+
+class RetornouMigrationTests(TestCase):
+    def test_status_choices_exclude_retornou(self):
+        codes = [c[0] for c in Lead.STATUS_CHOICES]
+        self.assertNotIn('retornou', codes)
+
+    def test_retornou_migrates_to_contatado(self):
+        import importlib
+        from django.apps import apps
+
+        mod = importlib.import_module('leads.migrations.0009_remove_retornou_status')
+        user = get_user_model().objects.create_user(username='miguser2', password='pass12345')
+        lead = Lead.objects.create(user=user, name='Ret Lead', source='manual', status='novo')
+        Lead.objects.filter(pk=lead.pk).update(status='retornou')
+        mod.migrate_retornou_to_contatado(apps, None)
+        lead.refresh_from_db()
+        self.assertEqual(lead.status, 'contatado')
+
+
+class CreateLeadFullFieldsTests(TestCase):
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.user = get_user_model().objects.create_user(username='createlead', password='pass12345')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_create_lead_with_all_fields(self):
+        payload = {
+            'name': 'Empresa Completa LTDA',
+            'category': 'Restaurante',
+            'city': 'Ribeirão Preto',
+            'phone_number': '16996013343',
+            'address': 'Rua Teste, 100',
+            'website': 'https://empresa.com.br',
+            'instagram': 'empresa',
+            'facebook': 'https://facebook.com/empresa',
+            'linkedin': 'https://linkedin.com/company/empresa',
+            'youtube': 'https://youtube.com/@empresa',
+            'twitter': 'https://x.com/empresa',
+            'preview_site_url': 'https://preview.empresa.com',
+            'final_site_url': 'https://www.empresa.com.br',
+            'bio': 'Bio comercial do cliente.',
+            'source': 'manual',
+            'status': 'novo',
+        }
+        r = self.client.post('/api/leads/', payload, format='json')
+        self.assertEqual(r.status_code, 201)
+        data = r.json()
+        self.assertEqual(data['name'], payload['name'])
+        self.assertEqual(data['city'], 'Ribeirão Preto')
+        self.assertEqual(data['instagram'], 'empresa')
+        self.assertEqual(data['source'], 'manual')
+
+    def test_update_status_rejects_retornou(self):
+        lead = Lead.objects.create(user=self.user, name='X', source='manual', status='novo')
+        r = self.client.patch(f'/api/leads/{lead.id}/update-status/', {'status': 'retornou'}, format='json')
+        self.assertEqual(r.status_code, 400)

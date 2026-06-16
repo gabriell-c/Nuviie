@@ -43,6 +43,7 @@ urlpatterns = [
     path('', include('lead_scoring.urls')),
     path('', include('finance.urls')),
     path('', include('notifications.urls')),
+    path('', include('site_audit.urls')),
 ]
 
 if settings.DEBUG:

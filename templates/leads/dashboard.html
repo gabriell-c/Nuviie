@@ -118,17 +118,6 @@
                     </div>
                 </div>
 
-                <!-- Row: Retornou -->
-                <div class="space-y-1.5">
-                    <div class="flex items-center justify-between text-xs font-semibold">
-                        <span class="text-slate-700 dark:text-slate-300">Retornou</span>
-                        <span class="text-slate-400 dark:text-slate-500">{{ retornou }} leads</span>
-                    </div>
-                    <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2">
-                        <div class="bg-purple-500 h-2 rounded-full" style="width: {% if total_leads > 0 %}{% widthratio retornou total_leads 100 %}{% else %}0{% endif %}%"></div>
-                    </div>
-                </div>
-
                 <!-- Row: Fechado -->
                 <div class="space-y-1.5">
                     <div class="flex items-center justify-between text-xs font-semibold">

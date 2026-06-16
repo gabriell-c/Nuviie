@@ -1,0 +1,66 @@
+{
+  "lighthouseResult": {
+    "categories": {
+      "performance": {"score": 0.72, "auditRefs": [{"id": "largest-contentful-paint"}]},
+      "seo": {"score": 0.91, "auditRefs": [{"id": "meta-description"}]},
+      "accessibility": {"score": 0.65, "auditRefs": [{"id": "color-contrast"}]},
+      "best-practices": {"score": 0.95, "auditRefs": []}
+    },
+    "audits": {
+      "final-screenshot": {
+        "id": "final-screenshot",
+        "score": 1,
+        "scoreDisplayMode": "informative",
+        "details": {
+          "type": "screenshot",
+          "data": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAgEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k="
+        }
+      },
+      "largest-contentful-paint": {
+        "id": "largest-contentful-paint",
+        "title": "Largest Contentful Paint",
+        "description": "LCP desc",
+        "score": 0.45,
+        "numericValue": 4200,
+        "displayValue": "4.2 s",
+        "scoreDisplayMode": "numeric"
+      },
+      "meta-description": {
+        "id": "meta-description",
+        "title": "Document does not have a meta description",
+        "description": "Meta description is missing",
+        "score": 0,
+        "scoreDisplayMode": "binary"
+      },
+      "color-contrast": {
+        "id": "color-contrast",
+        "title": "Background and foreground colors do not have sufficient contrast ratio",
+        "description": "Low contrast text",
+        "score": 0,
+        "scoreDisplayMode": "binary",
+        "details": {
+          "type": "table",
+          "items": [
+            {
+              "node": {
+                "snippet": "<p class=\"subtitle\">Texto de exemplo</p>",
+                "selector": "body > div.hero > p.subtitle",
+                "nodeLabel": "Texto visível",
+                "boundingRect": {"top": 10, "left": 10, "width": 80, "height": 20, "bottom": 30, "right": 90}
+              },
+              "explanation": "Contraste 3.2:1 insuficiente"
+            }
+          ]
+        }
+      },
+      "render-blocking-resources": {
+        "id": "render-blocking-resources",
+        "title": "Eliminate render-blocking resources",
+        "description": "Resources blocking",
+        "score": 0.3,
+        "scoreDisplayMode": "numeric",
+        "details": {"type": "opportunity", "overallSavingsMs": 850}
+      }
+    }
+  }
+}

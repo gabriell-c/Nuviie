@@ -77,16 +77,82 @@
                 </div>
             </div>
             <template x-if="filters.period === 'single'">
-                <input type="text" x-model="filters.date_on" @change="applyPeriodDates()"
-                       placeholder="AAAA-MM-DD" class="nui-input nui-input-compact w-36">
+                <div class="relative nui-calendar-anchor" @click.outside="ui.periodCalOpen = false">
+                    <button type="button" @click="openPeriodCal('single')"
+                            class="nui-select-trigger nui-input-compact min-w-[10.5rem]" :class="ui.periodCalOpen && 'open'">
+                        <span class="flex items-center gap-2 truncate">
+                            <i class="fa-regular fa-calendar text-slate-400 text-xs shrink-0"></i>
+                            <span class="truncate" x-text="periodSingleDisplay()"></span>
+                        </span>
+                        <i class="fa-solid fa-chevron-down chevron shrink-0 text-[9px]"></i>
+                    </button>
+                    <div x-show="ui.periodCalOpen && filters.period === 'single'" x-cloak
+                         class="nui-calendar nui-calendar-popover">
+                        <div class="flex items-center justify-between mb-3">
+                            <button type="button" @click="periodCalPrevMonth()" class="nui-cal-nav">
+                                <i class="fa-solid fa-chevron-left text-xs"></i>
+                            </button>
+                            <span class="text-sm font-bold capitalize" x-text="periodCalMonthLabel()"></span>
+                            <button type="button" @click="periodCalNextMonth()" class="nui-cal-nav">
+                                <i class="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-7 gap-0.5 mb-1">
+                            <template x-for="d in ['D','S','T','Q','Q','S','S']" :key="'ps-' + d">
+                                <div class="text-[10px] font-bold text-slate-400 text-center py-1" x-text="d"></div>
+                            </template>
+                        </div>
+                        <div class="grid grid-cols-7 gap-0.5">
+                            <template x-for="(cell, ci) in periodCalCells()" :key="'psc-' + ci">
+                                <button type="button"
+                                        @click="pickPeriodCell(cell)"
+                                        @mouseenter="periodCalHover(cell)"
+                                        class="nui-cal-day"
+                                        :class="periodCalDayClass(cell)"
+                                        x-text="cell.empty ? '' : cell.day"></button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
             </template>
             <template x-if="filters.period === 'range'">
-                <div class="flex items-center gap-2">
-                    <input type="text" x-model="filters.date_from" @change="applyPeriodDates()"
-                           placeholder="De AAAA-MM-DD" class="nui-input nui-input-compact w-36">
-                    <span class="text-slate-400 text-xs">→</span>
-                    <input type="text" x-model="filters.date_to" @change="applyPeriodDates()"
-                           placeholder="Até AAAA-MM-DD" class="nui-input nui-input-compact w-36">
+                <div class="relative nui-calendar-anchor" @click.outside="ui.periodCalOpen = false">
+                    <button type="button" @click="openPeriodCal('range')"
+                            class="nui-select-trigger nui-input-compact min-w-[14rem]" :class="ui.periodCalOpen && 'open'">
+                        <span class="flex items-center gap-2 truncate">
+                            <i class="fa-regular fa-calendar text-slate-400 text-xs shrink-0"></i>
+                            <span class="truncate" x-text="periodRangeDisplay()"></span>
+                        </span>
+                        <i class="fa-solid fa-chevron-down chevron shrink-0 text-[9px]"></i>
+                    </button>
+                    <div x-show="ui.periodCalOpen && filters.period === 'range'" x-cloak
+                         class="nui-calendar nui-calendar-popover nui-calendar-range">
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mb-2" x-text="periodRangeHint()"></p>
+                        <div class="flex items-center justify-between mb-3">
+                            <button type="button" @click="periodCalPrevMonth()" class="nui-cal-nav">
+                                <i class="fa-solid fa-chevron-left text-xs"></i>
+                            </button>
+                            <span class="text-sm font-bold capitalize" x-text="periodCalMonthLabel()"></span>
+                            <button type="button" @click="periodCalNextMonth()" class="nui-cal-nav">
+                                <i class="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-7 gap-0.5 mb-1">
+                            <template x-for="d in ['D','S','T','Q','Q','S','S']" :key="'pr-' + d">
+                                <div class="text-[10px] font-bold text-slate-400 text-center py-1" x-text="d"></div>
+                            </template>
+                        </div>
+                        <div class="grid grid-cols-7 gap-0.5">
+                            <template x-for="(cell, ci) in periodCalCells()" :key="'prc-' + ci">
+                                <button type="button"
+                                        @click="pickPeriodCell(cell)"
+                                        @mouseenter="periodCalHover(cell)"
+                                        class="nui-cal-day"
+                                        :class="periodCalDayClass(cell)"
+                                        x-text="cell.empty ? '' : cell.day"></button>
+                            </template>
+                        </div>
+                    </div>
                 </div>
             </template>
             <span class="text-[11px] text-slate-400 ml-auto hidden sm:inline">Filtra cards, gráficos e lançamentos</span>
@@ -382,7 +448,7 @@
                             <div class="nui-input-wrap">
                                 <i class="fa-solid fa-coins nui-input-icon"></i>
                                 <input type="text" inputmode="decimal" x-model="modal.amountDisplay"
-                                       @blur="formatAmountInput()" placeholder="0,00" class="nui-input tabular-nums">
+                                       data-nui-mask="currency" placeholder="R$ 0,00" class="nui-input tabular-nums">
                             </div>
                         </div>
 
@@ -808,8 +874,15 @@ function financeDashboard() {
         },
         colorPresets: ['#6366f1','#10b981','#ef4444','#f59e0b','#8b5cf6','#06b6d4','#ec4899','#64748b'],
         iconPresets: ['fa-globe','fa-server','fa-bullhorn','fa-repeat','fa-cart-shopping','fa-briefcase','fa-house','fa-car','fa-utensils','fa-heart-pulse','fa-graduation-cap','fa-wrench'],
-        ui: { dateOpen: false, categoryOpen: false, statusOpen: false, fileDrag: false },
+        ui: { dateOpen: false, categoryOpen: false, statusOpen: false, fileDrag: false, periodCalOpen: false },
         cal: { year: new Date().getFullYear(), month: new Date().getMonth() },
+        periodCal: {
+            year: new Date().getFullYear(),
+            month: new Date().getMonth(),
+            rangeStart: '',
+            rangeEnd: '',
+            hover: '',
+        },
         charts: { monthly: null, donut: null },
         chartCache: null,
         orderingOptions: [
@@ -901,8 +974,143 @@ function financeDashboard() {
             this.filters.period = id;
             this.pagination.page = 1;
             if (id !== 'single') this.filters.date_on = '';
-            if (id !== 'range') { this.filters.date_from = ''; this.filters.date_to = ''; }
-            if (id !== 'single' && id !== 'range') this.refreshAll();
+            if (id !== 'range') {
+                this.filters.date_from = '';
+                this.filters.date_to = '';
+                this.periodCal.rangeStart = '';
+                this.periodCal.rangeEnd = '';
+            }
+            if (id !== 'single' && id !== 'range') {
+                this.ui.periodCalOpen = false;
+                this.refreshAll();
+            } else {
+                this.$nextTick(() => this.openPeriodCal(id));
+            }
+        },
+
+        openPeriodCal(mode) {
+            if (this.ui.periodCalOpen && this.filters.period === mode) {
+                this.ui.periodCalOpen = false;
+                return;
+            }
+            const iso = mode === 'single'
+                ? this.filters.date_on
+                : (this.filters.date_from || this.filters.date_to);
+            const parsed = iso ? NuviieCalendar.parseIso(iso) : null;
+            const now = new Date();
+            this.periodCal.year = parsed ? parsed.y : now.getFullYear();
+            this.periodCal.month = parsed ? parsed.m : now.getMonth();
+            this.periodCal.rangeStart = this.filters.date_from || '';
+            this.periodCal.rangeEnd = this.filters.date_to || '';
+            this.periodCal.hover = '';
+            this.ui.periodCalOpen = true;
+        },
+
+        periodSingleDisplay() {
+            return this.filters.date_on
+                ? NuviieCalendar.formatBr(this.filters.date_on)
+                : 'Escolher data';
+        },
+
+        periodRangeDisplay() {
+            if (this.filters.date_from && this.filters.date_to) {
+                return NuviieCalendar.formatBr(this.filters.date_from) + ' → ' + NuviieCalendar.formatBr(this.filters.date_to);
+            }
+            if (this.periodCal.rangeStart && !this.periodCal.rangeEnd) {
+                return 'De ' + NuviieCalendar.formatBr(this.periodCal.rangeStart) + ' — escolha o fim';
+            }
+            return 'Escolher intervalo';
+        },
+
+        periodRangeHint() {
+            if (this.periodCal.rangeStart && !this.periodCal.rangeEnd) {
+                return 'Agora clique na data final do intervalo.';
+            }
+            return 'Clique na data inicial, depois na data final.';
+        },
+
+        periodCalMonthLabel() {
+            return NuviieCalendar.monthLabel(this.periodCal.year, this.periodCal.month);
+        },
+
+        periodCalPrevMonth() {
+            if (this.periodCal.month === 0) {
+                this.periodCal.month = 11;
+                this.periodCal.year--;
+            } else this.periodCal.month--;
+        },
+
+        periodCalNextMonth() {
+            if (this.periodCal.month === 11) {
+                this.periodCal.month = 0;
+                this.periodCal.year++;
+            } else this.periodCal.month++;
+        },
+
+        periodCalState() {
+            return {
+                mode: this.filters.period === 'range' ? 'range' : 'single',
+                viewYear: this.periodCal.year,
+                viewMonth: this.periodCal.month,
+                selected: this.filters.date_on || '',
+                rangeStart: this.periodCal.rangeStart || this.filters.date_from || '',
+                rangeEnd: this.periodCal.rangeEnd || this.filters.date_to || '',
+                hover: this.periodCal.hover || '',
+            };
+        },
+
+        periodCalCells() {
+            return NuviieCalendar.cells(this.periodCalState());
+        },
+
+        periodCalDayClass(cell) {
+            if (cell.empty) return { empty: true };
+            return {
+                selected: cell.isSelected || cell.isRangeStart || cell.isRangeEnd,
+                'in-range': cell.inRange && !cell.isRangeStart && !cell.isRangeEnd,
+                'range-start': cell.isRangeStart,
+                'range-end': cell.isRangeEnd,
+                today: cell.isToday && !cell.isSelected && !cell.inRange,
+            };
+        },
+
+        periodCalHover(cell) {
+            if (this.filters.period !== 'range' || cell.empty) return;
+            if (this.periodCal.rangeStart && !this.periodCal.rangeEnd) {
+                this.periodCal.hover = cell.iso;
+            }
+        },
+
+        pickPeriodCell(cell) {
+            if (cell.empty) return;
+            if (this.filters.period === 'single') {
+                this.filters.date_on = cell.iso;
+                this.ui.periodCalOpen = false;
+                this.applyPeriodDates();
+                return;
+            }
+            const state = {
+                mode: 'range',
+                open: true,
+                viewYear: this.periodCal.year,
+                viewMonth: this.periodCal.month,
+                selected: '',
+                rangeStart: this.periodCal.rangeStart || this.filters.date_from || '',
+                rangeEnd: this.periodCal.rangeEnd || this.filters.date_to || '',
+                hover: '',
+            };
+            NuviieCalendar.pick(state, cell.iso);
+            this.periodCal.rangeStart = state.rangeStart;
+            this.periodCal.rangeEnd = state.rangeEnd;
+            this.periodCal.hover = '';
+            if (state.rangeStart && state.rangeEnd) {
+                this.filters.date_from = state.rangeStart;
+                this.filters.date_to = state.rangeEnd;
+                this.periodCal.rangeStart = '';
+                this.periodCal.rangeEnd = '';
+                this.ui.periodCalOpen = false;
+                this.applyPeriodDates();
+            }
         },
 
         applyPeriodDates() {
@@ -928,6 +1136,12 @@ function financeDashboard() {
         formatDateDisplay(iso) {
             if (!iso) return 'Selecionar data';
             return this.formatDate(iso);
+        },
+
+        toApiDate(value) {
+            if (!value) return '';
+            if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+            return NuviieForms.parseDate(value) || value;
         },
 
         orderingLabel() {
@@ -972,11 +1186,11 @@ function financeDashboard() {
                 p.set('period', this.filters.period);
             }
             if (this.filters.period === 'single' && this.filters.date_on) {
-                p.set('date_on', this.filters.date_on);
+                p.set('date_on', this.toApiDate(this.filters.date_on));
             }
             if (this.filters.period === 'range') {
-                if (this.filters.date_from) p.set('date_from', this.filters.date_from);
-                if (this.filters.date_to) p.set('date_to', this.filters.date_to);
+                if (this.filters.date_from) p.set('date_from', this.toApiDate(this.filters.date_from));
+                if (this.filters.date_to) p.set('date_to', this.toApiDate(this.filters.date_to));
             }
             return p.toString();
         },
@@ -1203,10 +1417,10 @@ function financeDashboard() {
         },
 
         formatAmountInput() {
-            const parsed = this.parseAmount(this.modal.amountDisplay);
-            if (parsed) {
-                this.modal.amount = parsed;
-                this.modal.amountDisplay = Number(parsed).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const parsed = NuviieForms.parseCurrency(this.modal.amountDisplay);
+            if (parsed != null) {
+                this.modal.amount = parsed.toFixed(2);
+                this.modal.amountDisplay = NuviieForms.maskCurrency(String(Math.round(parsed * 100)));
             }
         },
 

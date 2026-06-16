@@ -33,6 +33,7 @@ class LeadSerializer(serializers.ModelSerializer):
     deadline_urgency = serializers.SerializerMethodField()
     days_until_deadline = serializers.SerializerMethodField()
     contract_summary = serializers.SerializerMethodField()
+    site_audit_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
@@ -46,6 +47,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'preview_site_url', 'final_site_url',
             'contract', 'project_deadline', 'contract_value',
             'deadline_urgency', 'days_until_deadline', 'contract_summary',
+            'site_audit_summary',
             'source', 'source_display', 'status', 'status_display',
             'quality_score', 'score_breakdown', 'is_verified', 'whatsapp_link',
             'price_range', 'plus_code', 'amenities', 'total_photos',
@@ -95,6 +97,13 @@ class LeadSerializer(serializers.ModelSerializer):
             'payment_mode': (c.payment_plan or {}).get('mode'),
             'download_path': f'/contracts/history/{c.id}/download/',
         }
+
+    def get_site_audit_summary(self, obj):
+        try:
+            from site_audit.lead_integration import build_site_audit_summary
+            return build_site_audit_summary(obj)
+        except Exception:
+            return None
 
     def _normalize_phone(self, phone):
         import re

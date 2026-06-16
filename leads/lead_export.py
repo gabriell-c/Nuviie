@@ -153,6 +153,21 @@ def _instagram_export_section(amenities: Any) -> dict:
     }
 
 
+def _palette_export_section(lead: Lead) -> dict | None:
+    amenities = lead.amenities if isinstance(lead.amenities, dict) else {}
+    palette = amenities.get('color_palette')
+    if not palette or not isinstance(palette, dict):
+        return None
+    colors = palette.get('colors') or []
+    if not colors:
+        return None
+    return {
+        'cores': colors,
+        'extraida_em': palette.get('extracted_at'),
+        'fonte': palette.get('source'),
+    }
+
+
 def build_lead_profile(lead: Lead) -> dict:
     """Monta dict completo do perfil do lead para exportação."""
     reviews = _normalize_reviews(lead.recent_reviews)
@@ -219,6 +234,19 @@ def build_lead_profile(lead: Lead) -> dict:
     }
     if lead.source == 'instagram' and isinstance(lead.amenities, dict):
         profile['instagram'] = _instagram_export_section(lead.amenities)
+
+    palette = _palette_export_section(lead)
+    if palette:
+        profile['paleta_cores'] = palette
+
+    try:
+        from site_audit.lead_integration import build_site_audit_export_section
+        audit_section = build_site_audit_export_section(lead)
+        if audit_section:
+            profile['auditoria_site'] = audit_section
+    except Exception:
+        pass
+
     return profile
 
 
@@ -278,6 +306,56 @@ def lead_to_markdown(profile: dict) -> str:
 
     if perfil.get('bio'):
         lines += ['## Descrição / Biografia', '', str(perfil.get('bio')), '']
+
+    paleta = profile.get('paleta_cores') or {}
+    cores = paleta.get('cores') or []
+    if cores:
+        lines += ['## Paleta de cores', '']
+        if paleta.get('extraida_em'):
+            lines.append(f'_Extraída em {paleta["extraida_em"]}_')
+            lines.append('')
+        for i, c in enumerate(cores, 1):
+            hex_v = c.get('hex', '')
+            rgb = c.get('rgb') or []
+            rgb_s = f'rgb({rgb[0]}, {rgb[1]}, {rgb[2]})' if len(rgb) == 3 else ''
+            lines.append(f'{i}. `{hex_v}` — {rgb_s}')
+        lines.append('')
+
+    audit = profile.get('auditoria_site') or {}
+    if audit:
+        lines += ['## Auditoria do site', '']
+        lines.append(f'- **URL:** {audit.get("url", "—")}')
+        if audit.get('summary'):
+            lines.append('')
+            lines.append(audit['summary'])
+            lines.append('')
+        scores = audit.get('scores') or {}
+        if scores:
+            lines.append('| Categoria | Mobile | Desktop |')
+            lines.append('|-----------|--------|---------|')
+            for cat, label in [
+                ('performance', 'Performance'),
+                ('seo', 'SEO'),
+                ('accessibility', 'Acessibilidade'),
+                ('best_practices', 'Boas práticas'),
+            ]:
+                mob = (scores.get('mobile') or {}).get(cat, '—')
+                desk = (scores.get('desktop') or {}).get(cat, '—')
+                lines.append(f'| {label} | {mob} | {desk} |')
+            lines.append('')
+        melhorias = audit.get('principais_melhorias') or []
+        if melhorias:
+            lines += ['### O que melhorar', '']
+            for i, item in enumerate(melhorias, 1):
+                lines.append(f'{i}. **{item.get("title", "Item")}** ({item.get("category")}, {item.get("strategy")})')
+                if item.get('display_value'):
+                    lines.append(f'   - Valor: {item["display_value"]}')
+                if item.get('savings_ms'):
+                    lines.append(f'   - Economia estimada: {item["savings_ms"]} ms')
+                desc = (item.get('description') or '').strip()
+                if desc:
+                    lines.append(f'   - {desc[:300]}')
+            lines.append('')
 
     ig = profile.get('instagram') or {}
     if ig:

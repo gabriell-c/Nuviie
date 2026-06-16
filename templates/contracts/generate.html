@@ -134,8 +134,7 @@
 
                     <div>
                         <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase">Nome interno do documento *</label>
-                        <input type="text" name="contract_name" x-model="values.contract_name" required
-                               class="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                        <input type="text" name="contract_name" x-model="values.contract_name" required class="nui-input">
                     </div>
 
                     <template x-for="group in schema" :key="group.group">
@@ -173,7 +172,8 @@
                                                @input="updatePreview()"
                                                :placeholder="field.placeholder || field.label"
                                                :required="field.required || false"
-                                               class="block w-full px-3 py-2 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-900 dark:text-white">
+                                               :data-nui-mask="field.type === 'money' ? 'currency' : (field.key === 'cpf_cnpj' ? 'cpf' : null)"
+                                               class="nui-input">
                                     </template>
                                 </div>
                             </template>
@@ -247,6 +247,7 @@ function nuviieContract() {
             const tab = params.get('tab');
             if (tab === 'meus' || tab === 'historico' || tab === 'gerar') this.activeTab = tab;
             this.updatePreview();
+            this.$nextTick(() => NuviieForms.init(this.$el));
         },
 
         setTab(tab) {

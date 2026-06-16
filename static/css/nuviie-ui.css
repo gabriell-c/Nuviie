@@ -296,6 +296,36 @@
 }
 .nui-cal-day.empty { cursor: default; }
 
+.nui-cal-nav {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+.nui-cal-nav:hover { background: #f1f5f9; }
+.dark .nui-cal-nav:hover { background: #1e293b; }
+
+.nui-calendar-popover {
+    left: 0;
+    top: 100%;
+    z-index: 70;
+}
+.nui-period-bar .nui-calendar-anchor {
+    position: relative;
+}
+
+.nui-cal-day.in-range:not(.selected) {
+    background: rgba(99, 102, 241, 0.14);
+    border-radius: 0;
+    color: #6366f1;
+}
+.nui-cal-day.range-start:not(.range-end) { border-radius: 0.5rem 0 0 0.5rem; }
+.nui-cal-day.range-end:not(.range-start) { border-radius: 0 0.5rem 0.5rem 0; }
+.nui-cal-day.range-start.range-end { border-radius: 0.5rem; }
+
 /* ── Filter pills ── */
 .nui-pill {
     display: inline-flex;
@@ -809,5 +839,204 @@
     background: rgba(250, 204, 21, 0.35);
     border-radius: 2px;
     padding: 0 1px;
+}
+
+/* ── Typography minimums (legibility) ── */
+.nui { font-size: 0.8125rem; }
+.nui .nui-section-title { font-size: 0.875rem; font-weight: 700; color: #334155; }
+.dark .nui .nui-section-title { color: #e2e8f0; }
+.nui-field label { font-size: 0.75rem !important; }
+
+/* ── Input validation ── */
+.nui-input-error-state,
+.nui-input.nui-input-error-state {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12) !important;
+}
+.nui-field-error {
+    font-size: 0.75rem;
+    color: #ef4444;
+    margin-top: 0.25rem;
+}
+
+/* ── Checkbox ── */
+.nui-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    color: #475569;
+}
+.dark .nui-checkbox { color: #cbd5e1; }
+.nui-checkbox input {
+    width: 1rem;
+    height: 1rem;
+    accent-color: #6366f1;
+    cursor: pointer;
+}
+
+/* ── Score ring (Lighthouse-style) ── */
+.nui-score-ring {
+    position: relative;
+    width: 7.5rem;
+    height: 7.5rem;
+    flex-shrink: 0;
+}
+.nui-score-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.nui-score-ring .ring-bg { fill: none; stroke: rgba(148, 163, 184, 0.25); stroke-width: 8; }
+.nui-score-ring .ring-fg { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+.nui-score-ring .nui-score-value {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+.nui-score-ring .nui-score-label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    margin-top: 0.25rem;
+}
+.nui-score-good .ring-fg, .nui-score-good .nui-score-value { stroke: #22c55e; color: #16a34a; }
+.nui-score-avg .ring-fg, .nui-score-avg .nui-score-value { stroke: #eab308; color: #ca8a04; }
+.nui-score-poor .ring-fg, .nui-score-poor .nui-score-value { stroke: #ef4444; color: #dc2626; }
+
+/* ── CWV cards ── */
+.nui-cwv-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.75rem;
+}
+.nui-cwv-card {
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(255, 255, 255, 0.5);
+}
+.dark .nui-cwv-card {
+    background: rgba(15, 23, 42, 0.5);
+    border-color: rgba(51, 65, 85, 0.8);
+}
+.nui-cwv-card .nui-cwv-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    margin-bottom: 0.375rem;
+}
+.nui-cwv-card .nui-cwv-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: #0f172a;
+}
+.dark .nui-cwv-card .nui-cwv-value { color: #f1f5f9; }
+.nui-cwv-badge {
+    display: inline-block;
+    margin-top: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+}
+.nui-cwv-badge.good { background: rgba(34, 197, 94, 0.15); color: #16a34a; }
+.nui-cwv-badge.avg { background: rgba(234, 179, 8, 0.15); color: #ca8a04; }
+.nui-cwv-badge.poor { background: rgba(239, 68, 68, 0.15); color: #dc2626; }
+
+/* ── Audit issue cards ── */
+.nui-issue-card {
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    border-radius: 0.875rem;
+    padding: 1rem 1.125rem;
+    background: rgba(255, 255, 255, 0.55);
+    margin-bottom: 0.75rem;
+}
+.dark .nui-issue-card {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: rgba(51, 65, 85, 0.9);
+}
+.nui-issue-card .nui-issue-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 0.5rem;
+}
+.dark .nui-issue-card .nui-issue-title { color: #f1f5f9; }
+.nui-issue-card .nui-issue-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+}
+@media (min-width: 640px) {
+    .nui-issue-card .nui-issue-body.has-thumb {
+        grid-template-columns: 120px minmax(0, 1fr);
+    }
+}
+.nui-issue-thumb {
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    cursor: zoom-in;
+    background: #f1f5f9;
+}
+.nui-issue-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.5rem;
+    background: rgba(15, 23, 42, 0.06);
+    color: #334155;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.dark .nui-issue-code {
+    background: rgba(0, 0, 0, 0.35);
+    color: #cbd5e1;
+}
+.nui-issue-explanation {
+    font-size: 0.8125rem;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+/* ── Calendar range ── */
+.nui-calendar-range .nui-cal-cell.in-range {
+    background: rgba(99, 102, 241, 0.12);
+    border-radius: 0;
+}
+.nui-calendar-range .nui-cal-cell.range-start { border-radius: 0.5rem 0 0 0.5rem; }
+.nui-calendar-range .nui-cal-cell.range-end { border-radius: 0 0.5rem 0.5rem 0; }
+.nui-calendar-range .nui-cal-cell.range-start.range-end { border-radius: 0.5rem; }
+
+/* ── Lightbox ── */
+.nui-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    cursor: zoom-out;
+}
+.nui-lightbox img {
+    max-width: min(96vw, 1200px);
+    max-height: 90vh;
+    border-radius: 0.5rem;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
 }
 

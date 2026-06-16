@@ -42,7 +42,6 @@ def dashboard_view(request):
     novo = leads_by_status.get('novo', 0)
     contatado = leads_by_status.get('contatado', 0)
     negociacao = leads_by_status.get('negociacao', 0)
-    retornou = leads_by_status.get('retornou', 0)
     fechado = leads_by_status.get('fechado', 0)
     finalizado = leads_by_status.get('finalizado', 0)
     perdido = leads_by_status.get('perdido', 0)
@@ -70,7 +69,6 @@ def dashboard_view(request):
         'novo': novo,
         'contatado': contatado,
         'negociacao': negociacao,
-        'retornou': retornou,
         'fechado': fechado,
         'finalizado': finalizado,
         'perdido': perdido,
@@ -379,6 +377,81 @@ class LeadViewSet(viewsets.ModelViewSet):
         response = HttpResponse(content, content_type=content_type)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+    @action(detail=True, methods=['post'], url_path='extract-palette')
+    def extract_palette(self, request, pk=None):
+        from .palette_utils import extract_and_store_palette
+
+        lead = self.get_object()
+        image_url = (request.data.get('image_url') or '').strip() or None
+        try:
+            palette_data = extract_and_store_palette(lead, image_url=image_url)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({'error': f'Falha ao extrair paleta: {exc}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        lead.refresh_from_db()
+        return Response({
+            'color_palette': palette_data,
+            'lead': LeadSerializer(lead, context={'request': request}).data,
+        })
+
+    @action(detail=True, methods=['get', 'put', 'post', 'patch', 'delete'], url_path='color-palette')
+    def color_palette_crud(self, request, pk=None):
+        from .palette_utils import (
+            add_palette_color,
+            clear_palette,
+            delete_palette_color,
+            get_stored_palette,
+            save_palette,
+            update_palette_color,
+        )
+
+        lead = self.get_object()
+
+        if request.method == 'GET':
+            palette = get_stored_palette(lead)
+            return Response({'color_palette': palette})
+
+        try:
+            if request.method == 'PUT':
+                colors = request.data.get('colors')
+                source = (request.data.get('source') or 'manual').strip() or 'manual'
+                palette_data = save_palette(lead, colors, source=source)
+            elif request.method == 'POST':
+                hex_value = request.data.get('hex') or request.data.get('color')
+                if not hex_value and request.data.get('colors'):
+                    palette_data = save_palette(lead, request.data['colors'], source='manual')
+                elif hex_value:
+                    palette_data = add_palette_color(lead, hex_value)
+                else:
+                    return Response({'error': 'Informe hex ou colors.'}, status=status.HTTP_400_BAD_REQUEST)
+            elif request.method == 'PATCH':
+                index = request.data.get('index')
+                hex_value = request.data.get('hex') or request.data.get('color')
+                if index is None or hex_value is None:
+                    return Response({'error': 'Informe index e hex.'}, status=status.HTTP_400_BAD_REQUEST)
+                palette_data = update_palette_color(lead, int(index), hex_value)
+            elif request.method == 'DELETE':
+                index_raw = request.query_params.get('index')
+                if index_raw is not None and index_raw != '':
+                    palette_data = delete_palette_color(lead, int(index_raw))
+                else:
+                    clear_palette(lead)
+                    palette_data = None
+            else:
+                return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({'error': f'Falha na paleta: {exc}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        lead.refresh_from_db()
+        return Response({
+            'color_palette': palette_data,
+            'lead': LeadSerializer(lead, context={'request': request}).data,
+        })
 
     @action(detail=True, methods=['get'], url_path='avatar')
     def avatar(self, request, pk=None):

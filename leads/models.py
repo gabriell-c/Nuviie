@@ -7,7 +7,6 @@ class Lead(models.Model):
         ('novo', 'Novo Lead'),
         ('contatado', 'Contatado'),
         ('negociacao', 'Em Negociação'),
-        ('retornou', 'Retornou'),
         ('fechado', 'Em Produção'),
         ('finalizado', 'Projeto Entregue'),
         ('perdido', 'Perdido'),
@@ -16,6 +15,7 @@ class Lead(models.Model):
     SOURCE_CHOICES = [
         ('google_maps', 'Google Maps Scraper'),
         ('instagram', 'Instagram Scraper'),
+        ('manual', 'Manual'),
     ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='leads')

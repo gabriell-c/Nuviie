@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div class="nui max-w-4xl mx-auto">
     <!-- Header Page Section -->
     <div class="mb-8">
         <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Configurações de Conta</h1>
@@ -87,10 +87,10 @@
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label for="phone_number" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 uppercase">WhatsApp (com DDD) *</label>
+                        <div class="nui-field">
+                            <label for="phone_number">WhatsApp (com DDD) *</label>
                             <input type="text" name="phone_number" id="phone_number" required value="{{ user.phone_number }}"
-                                   class="block w-full px-4 py-2.5 bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition text-slate-900 dark:text-white">
+                                   data-nui-mask="phone" class="nui-input">
                         </div>
                     </div>
 
@@ -176,7 +176,6 @@
 
 {% block extra_scripts %}
 <script>
-    // Update name label when selecting file
     document.getElementById('profile_picture').addEventListener('change', function(e) {
         const file = e.target.files[0];
         const label = document.getElementById('file-name-text');
@@ -185,6 +184,10 @@
         } else {
             label.textContent = 'Nenhum arquivo selecionado';
         }
+    });
+    NuviieForms.init(document);
+    document.querySelector('form[action*="profile"]')?.addEventListener('submit', function(e) {
+        if (!NuviieForms.validateForm(this)) e.preventDefault();
     });
 </script>
 {% endblock %}
