@@ -86,23 +86,43 @@ NuviieMaps.getWebResultsContext = (placeName) => {
     return null;
 };
 
-NuviieMaps.waitForWebResultsIframe = async (placeName, maxMs = 5000, intervalMs = 200) => {
+NuviieMaps._iframeHasRealLinks = (ctx) => {
+    if (!ctx?.fdoc) return false;
+    const doc = ctx.fdoc;
+    const socialLink = doc.querySelector(
+        'a[href*="instagram.com"], a[href*="facebook.com"], a[href*="linkedin.com"], ' +
+        'a[href*="youtube.com"], a[href*="twitter.com"], a[href*="x.com"]'
+    );
+    if (socialLink?.href) return true;
+    const cards = doc.querySelectorAll('#gsr .V2ynS, .RMrS6d, .CIdPsb');
+    for (const card of cards) {
+        const text = (card.textContent || '').trim();
+        if (text.length > 8 && !/CiOaN|skeleton|loading/i.test(text)) return true;
+    }
+    return false;
+};
+
+NuviieMaps.waitForWebResultsIframe = async (placeName, maxMs = 5000, intervalMs = 150) => {
     const deadline = Date.now() + maxMs;
     let ctx = null;
     while (Date.now() < deadline) {
         ctx = NuviieMaps.getWebResultsContext(placeName);
-        const hasCards = ctx?.fdoc?.querySelector('#gsr .V2ynS, .RMrS6d, .CIdPsb');
-        const hasBody = ctx?.fdoc?.body?.classList?.contains('trex');
-        const hasWjd = ctx?.fwin?.W_jd && Object.keys(ctx.fwin.W_jd).length > 0;
-        if (ctx && (hasBody || hasCards || hasWjd)) {
+        if (ctx && NuviieMaps._iframeHasRealLinks(ctx)) {
             NuviieMaps._webResultsCtx = ctx;
             return ctx;
+        }
+        if (NuviieMaps.hasWebResultsContent && NuviieMaps.hasWebResultsContent()) {
+            break;
         }
         await new Promise((r) => setTimeout(r, intervalMs));
     }
     ctx = NuviieMaps.getWebResultsContext(placeName);
-    NuviieMaps._webResultsCtx = ctx;
-    return ctx;
+    if (ctx && NuviieMaps._iframeHasRealLinks(ctx)) {
+        NuviieMaps._webResultsCtx = ctx;
+        return ctx;
+    }
+    NuviieMaps._webResultsCtx = null;
+    return null;
 };
 
 NuviieMaps.collectWjd = (fwin, fdoc) => {
@@ -813,7 +833,7 @@ NuviieMaps.extractAll = () => {
 
     // ── Telefone/Endereço via Io6YTe e data-item-id (Maps 2024+) ───────────
     if (!R.phone) {
-        for (const el of document.querySelectorAll(
+        for (const el of detailRoot.querySelectorAll(
             'button[data-item-id*="phone"], button[aria-label*="Copiar número"], div.Io6YTe'
         )) {
             const did = el.getAttribute('data-item-id') || '';
@@ -825,7 +845,7 @@ NuviieMaps.extractAll = () => {
         }
     }
     if (!R.address) {
-        for (const el of document.querySelectorAll(
+        for (const el of detailRoot.querySelectorAll(
             'button[data-item-id*="address"], button[aria-label*="Endereço"], div.Io6YTe'
         )) {
             const lbl = (el.getAttribute('aria-label') || '').replace(/endereço:?/i,'').trim();
@@ -841,7 +861,7 @@ NuviieMaps.extractAll = () => {
 
     // ── Telefone via botão "Ligar" (href tel:) ──────────────────────────────
     if (!R.phone) {
-        const telLink = document.querySelector('a[href^="tel:"]');
+        const telLink = detailRoot.querySelector('a[href^="tel:"]');
         if (telLink) {
             R.phone = decodeURIComponent(telLink.getAttribute('href').replace('tel:','').trim());
         }

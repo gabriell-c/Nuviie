@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from urllib.parse import unquote, urlparse
+
 from django.db.models import Q
 
 from .models import Lead
@@ -29,10 +32,41 @@ def _format_phone_br(normalized: str | None) -> str | None:
     return normalized
 
 
+def _normalize_maps_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    raw = str(url).strip()
+    if raw.startswith('/maps/place/'):
+        path = raw.split('?')[0]
+    else:
+        try:
+            path = urlparse(raw).path
+        except Exception:
+            return None
+    decoded = unquote(path)
+    match = re.match(r'(/maps/place/[^/]+)', decoded, re.IGNORECASE)
+    if match:
+        return match.group(1).lower().rstrip('/')
+    return None
+
+
 def _find_instagram_lead(user, inst_norm: str):
     return Lead.objects.filter(user=user).filter(
         Q(instagram__iexact=f'@{inst_norm}') | Q(instagram__iexact=inst_norm)
     ).first()
+
+
+def _find_maps_lead(user, maps_norm: str) -> Lead | None:
+    if not maps_norm:
+        return None
+    slug = maps_norm.rsplit('/', 1)[-1].lower()
+    candidates = Lead.objects.filter(user=user).exclude(
+        Q(maps_url__isnull=True) | Q(maps_url='')
+    ).filter(maps_url__icontains=slug)
+    for lead in candidates:
+        if _normalize_maps_url(lead.maps_url) == maps_norm:
+            return lead
+    return None
 
 
 def _update_instagram_lead(existing: Lead, item: dict) -> None:
@@ -78,28 +112,129 @@ def _update_instagram_lead(existing: Lead, item: dict) -> None:
     existing.save()
 
 
-def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
+def _update_maps_lead(existing: Lead, item: dict) -> None:
+    """Atualiza lead Google Maps existente com dados mais recentes da extensão."""
+    if item.get('name'):
+        existing.name = item['name']
+    if item.get('category'):
+        existing.category = item['category']
+    if item.get('city'):
+        existing.city = item['city']
+    if item.get('address'):
+        existing.address = item['address']
+    if item.get('phone_number'):
+        existing.phone_number = item['phone_number']
+    if item.get('normalized_phone'):
+        existing.normalized_phone = item['normalized_phone']
+    if not existing.phone_number and existing.normalized_phone:
+        existing.phone_number = _format_phone_br(existing.normalized_phone)
+    if item.get('website'):
+        existing.website = item['website']
+    if item.get('website_detected_type'):
+        existing.website_detected_type = item['website_detected_type']
+    for field in ('instagram', 'facebook', 'youtube', 'twitter', 'linkedin'):
+        if item.get(field):
+            setattr(existing, field, item[field])
+    if item.get('bio'):
+        existing.bio = item['bio']
+    if item.get('rating') is not None:
+        existing.rating = item['rating']
+    if item.get('review_count') is not None:
+        existing.review_count = item['review_count']
+    if item.get('recent_reviews'):
+        existing.recent_reviews = item['recent_reviews']
+    if item.get('business_hours'):
+        existing.business_hours = item['business_hours']
+    if item.get('maps_url'):
+        existing.maps_url = item['maps_url']
+    if item.get('maps_share_url'):
+        existing.maps_share_url = item['maps_share_url']
+    if item.get('_price_range') or item.get('price_range'):
+        existing.price_range = item.get('_price_range') or item.get('price_range')
+    if item.get('_plus_code') or item.get('plus_code'):
+        existing.plus_code = item.get('_plus_code') or item.get('plus_code')
+    amenities = item.get('_amenities') or item.get('amenities')
+    if amenities:
+        existing.amenities = amenities
+    if item.get('_total_photos') or item.get('total_photos'):
+        existing.total_photos = item.get('_total_photos') or item.get('total_photos')
+    apply_profile_picture_from_import(existing, item)
+    existing.save()
+
+
+def _is_duplicate_google_maps(user, name: str, norm_p: str | None, city: str, maps_norm: str | None) -> tuple[bool, str | None]:
+    if norm_p and maps_norm:
+        for other in Lead.objects.filter(user=user, normalized_phone=norm_p):
+            other_maps = _normalize_maps_url(other.maps_url)
+            if other_maps and other_maps == maps_norm:
+                return True, 'duplicate_phone'
+    elif norm_p:
+        if Lead.objects.filter(user=user, normalized_phone=norm_p, maps_url__isnull=True).exists():
+            return True, 'duplicate_phone'
+        if Lead.objects.filter(user=user, normalized_phone=norm_p, maps_url='').exists():
+            return True, 'duplicate_phone'
+
+    if city:
+        if Lead.objects.filter(user=user, name__iexact=name, city__iexact=city).exists():
+            return True, 'duplicate_name_city'
+    elif Lead.objects.filter(user=user, name__iexact=name).exists():
+        return True, 'duplicate_name'
+
+    return False, None
+
+
+def _is_duplicate_generic(user, name: str, norm_p: str | None, inst: str | None, inst_norm: str | None) -> tuple[bool, str | None]:
+    if norm_p and Lead.objects.filter(user=user, normalized_phone=norm_p).exists():
+        return True, 'duplicate_phone'
+    if Lead.objects.filter(user=user, name__iexact=name).exists():
+        return True, 'duplicate_name'
+    if inst and Lead.objects.filter(user=user, instagram__iexact=inst, name__iexact=name).exists():
+        return True, 'duplicate_instagram_name'
+    if inst_norm:
+        existing_ig = _find_instagram_lead(user, inst_norm)
+        if existing_ig:
+            return True, 'duplicate_instagram'
+    return False, None
+
+
+def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int, int, dict]:
     """
-    Salva leads no banco com deduplicação por telefone, nome ou Instagram.
-    Retorna (saved, skipped).
+    Salva leads no banco com deduplicação.
+    Retorna (saved, skipped, updated, skipped_reasons).
     """
-    saved = skipped = 0
+    saved = skipped = updated = 0
+    skipped_reasons: dict[str, int] = {}
+
+    def _skip(reason: str) -> None:
+        nonlocal skipped
+        skipped += 1
+        skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
 
     for item in leads:
         norm_p = item.get('normalized_phone')
         inst = item.get('instagram')
         name = (item.get('name') or '').strip()
+        source = item.get('source', 'google_maps')
+        city = (item.get('city') or '').strip()
+        maps_norm = _normalize_maps_url(item.get('maps_url')) or _normalize_maps_url(item.get('_place_key'))
 
         if not name:
-            skipped += 1
+            _skip('empty_name')
             continue
 
         inst_norm = _normalize_instagram_handle(inst)
         if inst_norm:
             existing_ig = _find_instagram_lead(user, inst_norm)
-            if existing_ig and (item.get('source') == 'instagram' or existing_ig.source == 'instagram'):
+            if existing_ig and (source == 'instagram' or existing_ig.source == 'instagram'):
                 _update_instagram_lead(existing_ig, item)
                 saved += 1
+                continue
+
+        if source == 'google_maps' and maps_norm:
+            existing_maps = _find_maps_lead(user, maps_norm)
+            if existing_maps:
+                _update_maps_lead(existing_maps, item)
+                updated += 1
                 continue
 
         if not norm_p and item.get('phone_number'):
@@ -110,24 +245,20 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
         if website and not website_type:
             website_type = detect_website_type(website)
 
-        dup = (
-            (norm_p and Lead.objects.filter(user=user, normalized_phone=norm_p).exists())
-            or Lead.objects.filter(user=user, name__iexact=name).exists()
-            or (inst and Lead.objects.filter(user=user, instagram__iexact=inst, name__iexact=name).exists())
-        )
-        if inst_norm and not dup:
-            existing_ig = _find_instagram_lead(user, inst_norm)
-            if existing_ig:
-                dup = True
+        if source == 'google_maps':
+            dup, reason = _is_duplicate_google_maps(user, name, norm_p, city, maps_norm)
+        else:
+            dup, reason = _is_duplicate_generic(user, name, norm_p, inst, inst_norm)
+
         if dup:
-            skipped += 1
+            _skip(reason or 'duplicate')
             continue
 
         lead = Lead.objects.create(
             user=user,
             name=name,
             category=item.get('category') or '',
-            city=item.get('city') or '',
+            city=city,
             phone_number=item.get('phone_number'),
             normalized_phone=norm_p,
             website=website,
@@ -146,7 +277,7 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
             maps_url=item.get('maps_url'),
             maps_share_url=item.get('maps_share_url'),
             profile_picture_url=item.get('profile_picture_url'),
-            source=item.get('source', 'google_maps'),
+            source=source,
             status=item.get('status', 'novo'),
             is_verified=item.get('is_verified', False),
             price_range=item.get('_price_range') or item.get('price_range'),
@@ -157,11 +288,10 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int]:
         apply_profile_picture_from_import(lead, item)
         saved += 1
 
-    return saved, skipped
+    return saved, skipped, updated, skipped_reasons
 
 
 def _normalize_phone_local(phone: str) -> str | None:
-    import re
     digits = re.sub(r'\D', '', str(phone))
     if not digits:
         return None

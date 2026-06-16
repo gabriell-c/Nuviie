@@ -477,15 +477,21 @@ def bulk_import_leads_view(request):
             lead['source'] = 'google_maps'
         normalized.append(lead)
 
-    saved, skipped = save_leads_from_dicts(user, normalized)
+    saved, skipped, updated, skipped_reasons = save_leads_from_dicts(user, normalized)
     log_activity(
         'lead_import',
-        f'Importação via extensão: {saved} salvos, {skipped} duplicados.',
+        f'Importação via extensão: {saved} salvos, {updated} atualizados, {skipped} ignorados.',
         user=user,
-        metadata={'saved': saved, 'skipped': skipped, 'source': 'extension'},
+        metadata={'saved': saved, 'updated': updated, 'skipped': skipped, 'source': 'extension'},
         request=request,
     )
-    return Response({'saved': saved, 'skipped': skipped, 'errors': []})
+    return Response({
+        'saved': saved,
+        'updated': updated,
+        'skipped': skipped,
+        'skipped_reasons': skipped_reasons,
+        'errors': [],
+    })
 
 
 @login_required
@@ -499,7 +505,7 @@ def import_leads_view(request):
         try:
             content = upload.read().decode('utf-8-sig')
             leads_data = parse_leads_upload(content, upload.name)
-            saved, skipped = save_leads_from_dicts(request.user, leads_data)
+            saved, skipped, _updated, _reasons = save_leads_from_dicts(request.user, leads_data)
             log_activity(
                 'lead_import',
                 f'Importação de arquivo: {saved} salvos, {skipped} duplicados.',

@@ -5,6 +5,7 @@ NuviieMaps.state = {
   running: false,
   stopRequested: false,
   leads: [],
+  skippedPlaces: 0,
   progress: { current: 0, total: 0, status: 'idle', message: '' },
 };
 
@@ -13,43 +14,56 @@ NuviieMaps.sendProgress = () => {
     type: 'PROGRESS',
     progress: { ...NuviieMaps.state.progress },
     leadsCount: NuviieMaps.state.leads.length,
+    skippedPlaces: NuviieMaps.state.skippedPlaces,
   }).catch(() => {});
 };
 
 NuviieMaps.extractSinglePlace = async (linkInfo, options) => {
+  NuviieMaps._webResultsCtx = null;
+
   const clicked = await NuviieMaps.clickPlaceLink(linkInfo);
   if (!clicked) return null;
 
-  const name = await NuviieMaps.waitForStableH1();
-  if (!name) return null;
+  const ready = await NuviieMaps.waitForPlaceReady(linkInfo);
+  if (!ready.name) return null;
 
-  await NuviieMaps.scrollPanel();
   await NuviieMaps.expandHours();
-
-  const contactSnapshot = NuviieMaps.extractContactFields();
-
-  const aboutAmenities = await NuviieMaps.visitAboutTab();
-  const reviews = await NuviieMaps.visitReviewsTab();
-
-  await NuviieMaps.revealContactButtons();
   await NuviieMaps.revealContactButtons();
 
-  await NuviieMaps.scrollToTopContact();
-  await NuviieMaps.scrollToWebResults();
-  await NuviieMaps.waitForWebResultsIframe(name);
+  await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 8000);
+  await NuviieMaps.waitForWebResultsIframe(ready.name, 4000);
 
+  let contactSnapshot = NuviieMaps.extractContactFields();
   let jsData = NuviieMaps.extractAll();
   jsData = NuviieMaps.mergeExtractData(jsData, contactSnapshot);
-  if (!jsData.facebook || !jsData.instagram || !jsData.website) {
-    await NuviieMaps.sleep(800);
-    await NuviieMaps.waitForWebResultsIframe(name, 3000);
+  jsData.name = ready.name;
+  jsData._extract_warnings = ready.warnings;
+
+  if (!jsData.facebook && !jsData.instagram && !jsData.linkedin && !jsData.website) {
+    await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 4000);
+    await NuviieMaps.waitForWebResultsIframe(ready.name, 3000);
     const retry = NuviieMaps.extractAll();
     jsData = NuviieMaps.mergeExtractData(jsData, NuviieMaps.mergeExtractData(retry, contactSnapshot));
+    jsData.name = ready.name;
   }
+
   if (!jsData.phone || !jsData.address) {
     await NuviieMaps.revealContactButtons();
     const retry = NuviieMaps.extractAll();
     jsData = NuviieMaps.mergeExtractData(jsData, NuviieMaps.mergeExtractData(retry, contactSnapshot));
+    jsData.name = ready.name;
+  }
+
+  let aboutAmenities = [];
+  let reviews = [];
+  if (options.fullExtract !== false) {
+    aboutAmenities = await NuviieMaps.visitAboutTab();
+    reviews = await NuviieMaps.visitReviewsTab({ fast: true });
+    await NuviieMaps.scrollUntilSection(['Resultados da Web', 'Web results'], 4000);
+    await NuviieMaps.waitForWebResultsIframe(ready.name, 2500);
+    const retryAfterTabs = NuviieMaps.extractAll();
+    jsData = NuviieMaps.mergeExtractData(jsData, retryAfterTabs);
+    jsData.name = ready.name;
   }
 
   const hoursExtra = NuviieMaps.extractHours();
@@ -59,9 +73,12 @@ NuviieMaps.extractSinglePlace = async (linkInfo, options) => {
     city: options.city,
     niche: options.niche,
     mapsUrl,
+    placeKey: linkInfo.base,
+    expectedName: ready.fromUrl || ready.name,
     reviews,
     aboutAmenities,
     hoursExtra,
+    extractWarnings: ready.warnings,
   });
 };
 
@@ -73,6 +90,7 @@ NuviieMaps.runExtraction = async (options) => {
   NuviieMaps.state.running = true;
   NuviieMaps.state.stopRequested = false;
   NuviieMaps.state.leads = [];
+  NuviieMaps.state.skippedPlaces = 0;
 
   const limit = options.limit > 0 ? options.limit : 9999;
   const links = NuviieMaps.collectPlaceLinks().slice(0, limit);
@@ -92,7 +110,7 @@ NuviieMaps.runExtraction = async (options) => {
   };
   NuviieMaps.sendProgress();
 
-  const seenNames = new Set();
+  const seenPlaces = new Set();
 
   for (let i = 0; i < links.length; i++) {
     if (NuviieMaps.state.stopRequested) break;
@@ -108,28 +126,35 @@ NuviieMaps.runExtraction = async (options) => {
 
     try {
       const lead = await NuviieMaps.extractSinglePlace(link, options);
-      if (lead && !seenNames.has(lead.name.toLowerCase())) {
-        seenNames.add(lead.name.toLowerCase());
+      const placeKey = lead?._place_key || link.base;
+      if (lead && placeKey && !seenPlaces.has(placeKey)) {
+        seenPlaces.add(placeKey);
         NuviieMaps.state.leads.push(lead);
+      } else if (!lead) {
+        NuviieMaps.state.skippedPlaces += 1;
       }
     } catch (err) {
       console.warn('[NuviieMaps] Erro no lugar', link.base, err);
+      NuviieMaps.state.skippedPlaces += 1;
     }
 
     NuviieMaps.state.progress.current = i + 1;
     NuviieMaps.sendProgress();
-    await NuviieMaps.randomDelay(options.delayMin || 800, options.delayMax || 1500);
+    await NuviieMaps.randomDelay(options.delayMin || 500, options.delayMax || 1000);
   }
 
   NuviieMaps.state.running = false;
   const stopped = NuviieMaps.state.stopRequested;
+  const skippedMsg = NuviieMaps.state.skippedPlaces
+    ? ` (${NuviieMaps.state.skippedPlaces} ignorados)`
+    : '';
   NuviieMaps.state.progress = {
     current: NuviieMaps.state.progress.current,
     total: links.length,
     status: stopped ? 'stopped' : 'done',
     message: stopped
-      ? `Parado. ${NuviieMaps.state.leads.length} leads extraídos.`
-      : `Concluído! ${NuviieMaps.state.leads.length} leads extraídos.`,
+      ? `Parado. ${NuviieMaps.state.leads.length} leads extraídos${skippedMsg}.`
+      : `Concluído! ${NuviieMaps.state.leads.length}/${links.length} leads extraídos${skippedMsg}.`,
   };
   NuviieMaps.sendProgress();
 
@@ -137,6 +162,7 @@ NuviieMaps.runExtraction = async (options) => {
     type: 'EXTRACTION_DONE',
     leads: NuviieMaps.state.leads,
     progress: NuviieMaps.state.progress,
+    skippedPlaces: NuviieMaps.state.skippedPlaces,
   }).catch(() => {});
 
   return { ok: true, leads: NuviieMaps.state.leads, progress: NuviieMaps.state.progress };
@@ -159,6 +185,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       progress: NuviieMaps.state.progress,
       detectedCity: NuviieMaps.detectCityFromPage(),
       placeCount: NuviieMaps.collectPlaceLinks().length,
+      skippedPlaces: NuviieMaps.state.skippedPlaces,
     });
     return false;
   }

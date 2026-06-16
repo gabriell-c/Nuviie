@@ -172,11 +172,60 @@ class ImportUtilsTests(TestCase):
             'normalized_phone': '5516999998888',
             'source': 'google_maps',
         }]
-        saved, skipped = save_leads_from_dicts(self.user, payload)
+        saved, skipped, _, _ = save_leads_from_dicts(self.user, payload)
         self.assertEqual(saved, 1)
-        saved2, skipped2 = save_leads_from_dicts(self.user, payload)
+        saved2, skipped2, updated2, _ = save_leads_from_dicts(self.user, payload)
         self.assertEqual(saved2, 0)
         self.assertEqual(skipped2, 1)
+        self.assertEqual(updated2, 0)
+
+    def test_save_leads_maps_same_phone_different_url(self):
+        from leads.import_utils import save_leads_from_dicts
+
+        shared_phone = '5516999998888'
+        leads = [
+            {
+                'name': 'Nutricionista A',
+                'city': 'Ribeirão Preto',
+                'normalized_phone': shared_phone,
+                'maps_url': 'https://www.google.com/maps/place/Nutricionista+A/data=abc',
+                'source': 'google_maps',
+            },
+            {
+                'name': 'Nutricionista B',
+                'city': 'Ribeirão Preto',
+                'normalized_phone': shared_phone,
+                'maps_url': 'https://www.google.com/maps/place/Nutricionista+B/data=xyz',
+                'source': 'google_maps',
+            },
+        ]
+        saved, skipped, _, _ = save_leads_from_dicts(self.user, leads)
+        self.assertEqual(saved, 2)
+        self.assertEqual(skipped, 0)
+        self.assertEqual(Lead.objects.filter(user=self.user, normalized_phone=shared_phone).count(), 2)
+
+    def test_save_leads_maps_reimport_updates(self):
+        from leads.import_utils import save_leads_from_dicts
+
+        maps_url = 'https://www.google.com/maps/place/Thiago+Vitorazzi/data=abc'
+        payload = [{
+            'name': 'Thiago Vitorazzi',
+            'city': 'Ribeirão Preto',
+            'instagram': '@nutri.thiagovitorazzi',
+            'maps_url': maps_url,
+            'source': 'google_maps',
+        }]
+        saved, skipped, updated, _ = save_leads_from_dicts(self.user, payload)
+        self.assertEqual(saved, 1)
+
+        payload[0]['instagram'] = '@nutri.thiagovitorazzi.novo'
+        payload[0]['rating'] = 5.0
+        saved2, skipped2, updated2, _ = save_leads_from_dicts(self.user, payload)
+        self.assertEqual(saved2, 0)
+        self.assertEqual(skipped2, 0)
+        self.assertEqual(updated2, 1)
+        lead = Lead.objects.get(user=self.user, name='Thiago Vitorazzi')
+        self.assertEqual(lead.instagram, '@nutri.thiagovitorazzi.novo')
 
     def test_save_leads_from_dicts_dedup_instagram_handle(self):
         from leads.import_utils import save_leads_from_dicts
@@ -195,7 +244,7 @@ class ImportUtilsTests(TestCase):
             'source': 'instagram',
             'amenities': {'recent_posts': [{'type': 'photo'}]},
         }]
-        saved, skipped = save_leads_from_dicts(self.user, payload)
+        saved, skipped, _, _ = save_leads_from_dicts(self.user, payload)
         self.assertEqual(saved, 1)
         self.assertEqual(skipped, 0)
         existing = Lead.objects.get(user=self.user, instagram__iexact='@clinica.teste')
@@ -222,7 +271,7 @@ class ImportUtilsTests(TestCase):
                 'recent_posts': [{'shortcode': 'abc123', 'type': 'photo', 'caption': 'Teste'}],
             },
         }]
-        saved, skipped = save_leads_from_dicts(self.user, payload)
+        saved, skipped, _, _ = save_leads_from_dicts(self.user, payload)
         self.assertEqual(saved, 1)
         self.assertEqual(skipped, 0)
         lead = Lead.objects.get(user=self.user, instagram__iexact='@fcsadvocacia')
@@ -249,7 +298,7 @@ class ImportUtilsTests(TestCase):
             'normalized_phone': '5516999998888',
             'phone_number': '(16) 99999-8888',
         }]
-        saved, skipped = save_leads_from_dicts(self.user, payload)
+        saved, skipped, _, _ = save_leads_from_dicts(self.user, payload)
         self.assertEqual(saved, 1)
         lead = Lead.objects.get(user=self.user, instagram__iexact='@advwa')
         self.assertEqual(lead.phone_number, '(16) 99999-8888')
@@ -429,7 +478,7 @@ class ProfilePictureTests(TestCase):
             'profile_picture_data': self._PNG_DATA_URL,
             'profile_picture_url': 'https://instagram.frao6-1.fna.fbcdn.net/v/test.jpg',
         }]
-        saved, skipped = save_leads_from_dicts(self.user, payload)
+        saved, skipped, _, _ = save_leads_from_dicts(self.user, payload)
         self.assertEqual(saved, 1)
         lead = Lead.objects.get(user=self.user, instagram__iexact='@fototest')
         self.assertIn('lead_avatars', lead.profile_picture_url or '')
@@ -452,7 +501,7 @@ class ProfilePictureTests(TestCase):
             'source': 'instagram',
             'profile_picture_data': self._PNG_DATA_URL,
         }]
-        saved, skipped = save_leads_from_dicts(self.user, payload)
+        saved, skipped, _, _ = save_leads_from_dicts(self.user, payload)
         self.assertEqual(saved, 1)
         lead = Lead.objects.get(user=self.user, instagram__iexact='@fototest')
         self.assertIn('lead_avatars', lead.profile_picture_url or '')

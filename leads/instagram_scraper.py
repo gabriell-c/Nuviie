@@ -192,4 +192,5 @@ def run_instagram_scraper(
     if not leads_data:
         logger.warning("[Instagram] Nenhum perfil encontrado para '%s' em '%s'.", niche, city)
 
-    return save_leads_from_dicts(user, leads_data[:limit])
+    saved, skipped, _updated, _reasons = save_leads_from_dicts(user, leads_data[:limit])
+    return saved, skipped

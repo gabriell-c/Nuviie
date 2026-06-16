@@ -41,9 +41,14 @@ NuviieMaps.mergeAmenities = (aboutList, jsList) => {
   return out;
 };
 
-NuviieMaps.mapToLead = (raw, { city, niche, mapsUrl, reviews, aboutAmenities, hoursExtra }) => {
+NuviieMaps.mapToLead = (raw, {
+  city, niche, mapsUrl, placeKey, expectedName, reviews, aboutAmenities, hoursExtra, extractWarnings,
+}) => {
   const js = raw || {};
-  let name = (js.name || '').trim();
+  let name = (expectedName || '').trim();
+  if (!NuviieMaps.isValidPlaceName(name)) {
+    name = (js.name || '').trim();
+  }
   if (!NuviieMaps.isValidPlaceName(name)) {
     name = NuviieMaps.nameFromUrl(mapsUrl || window.location.href) || name;
   }
@@ -111,6 +116,7 @@ NuviieMaps.mapToLead = (raw, { city, niche, mapsUrl, reviews, aboutAmenities, ho
   const amenities = NuviieMaps.mergeAmenities(aboutAmenities, js.amenities);
 
   const mapsCanonical = mapsUrl || js.maps_url || window.location.href.split('?')[0];
+  const warnings = [...(extractWarnings || []), ...(js._extract_warnings || [])];
 
   return {
     name,
@@ -145,5 +151,7 @@ NuviieMaps.mapToLead = (raw, { city, niche, mapsUrl, reviews, aboutAmenities, ho
     _longitude: js.longitude || null,
     _cid: js.cid || null,
     _kgmid: js.kgmid || null,
+    _place_key: placeKey || NuviieMaps.basePlaceUrl(mapsCanonical),
+    _extract_warnings: warnings.length ? warnings : null,
   };
 };

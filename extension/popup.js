@@ -419,8 +419,9 @@ document.getElementById('btnToggle').addEventListener('click', async () => {
           city: settings.city,
           niche: settings.niche,
           limit: settings.limit,
-          delayMin: 1500,
-          delayMax: 3000,
+          delayMin: 500,
+          delayMax: 1000,
+          fullExtract: true,
         },
       });
       setToggleButton(true);
@@ -470,10 +471,16 @@ document.getElementById('btnSendNuviie').addEventListener('click', async () => {
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || data.detail || 'Falha no envio');
-    const msg = `Enviado com sucesso! ${data.saved} salvos, ${data.skipped} duplicados.`;
+    const parts = [];
+    if (data.saved) parts.push(`${data.saved} novo${data.saved > 1 ? 's' : ''}`);
+    if (data.updated) parts.push(`${data.updated} atualizado${data.updated > 1 ? 's' : ''}`);
+    if (data.skipped) parts.push(`${data.skipped} já existia${data.skipped > 1 ? 'm' : ''}`);
+    const msg = parts.length
+      ? `Enviado com sucesso! ${parts.join(', ')}.`
+      : 'Enviado — nenhuma alteração no banco.';
     setStatus(msg, 'done');
     showToast(msg, 'success', 6000);
-    await notifyKanbanRefresh({ saved: data.saved, skipped: data.skipped });
+    await notifyKanbanRefresh({ saved: data.saved, updated: data.updated, skipped: data.skipped });
   } catch (e) {
     const msg = e.message || 'Erro ao enviar ao Nuviie.';
     setStatus(msg, 'error');
@@ -505,6 +512,9 @@ chrome.runtime.onMessage.addListener((msg) => {
     NM.progress = msg.progress;
     setToggleButton(false);
     applyProgressUpdate(NM.progress, NM.leads.length);
+    if (msg.skippedPlaces > 0 && NM.progress?.message) {
+      setStatus(NM.progress.message, NM.progress.status);
+    }
     stopProgressPoll();
   }
 });
