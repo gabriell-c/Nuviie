@@ -165,6 +165,7 @@ window.NuviieForms = window.NuviieForms || {};
   };
 
   NF.validateForm = (root) => {
+    if (!root || typeof root.querySelectorAll !== 'function') return true;
     const fields = root.querySelectorAll('[data-nui-mask], [data-nui-validate], [x-nui-mask]');
     let ok = true;
     fields.forEach((el) => {
@@ -190,6 +191,7 @@ window.NuviieForms = window.NuviieForms || {};
   };
 
   NF.init = (root = document) => {
+    if (!root || typeof root.querySelectorAll !== 'function') return;
     root.querySelectorAll('[data-nui-mask]').forEach(NF.bindMaskInput);
   };
 

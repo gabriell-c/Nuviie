@@ -1,509 +1,518 @@
-{% extends 'base.html' %}
-{% load static %}
-
-{% block content %}
-<div class="nui max-w-[1400px] mx-auto flex flex-col gap-6 pb-8" x-data="siteAuditTool()" x-init="init()">
-
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div class="flex items-center gap-3">
-            <span class="w-10 h-10 rounded-xl bg-indigo-500/12 text-indigo-500 flex items-center justify-center">
-                <i class="fa-solid fa-gauge-high"></i>
-            </span>
-            <div>
-                <h1 class="text-xl font-bold text-slate-900 dark:text-white">Auditoria de Sites</h1>
-                <p class="text-sm text-slate-500 dark:text-slate-400">PageSpeed Insights — mobile e desktop com evidências visuais.</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Form -->
-    <div class="glass-panel p-5 rounded-2xl space-y-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="nui-field">
-                <label><i class="fa-solid fa-link"></i> URL do site</label>
-                <input type="url" x-model="form.url" x-nui-mask="'url'" data-nui-mask="url" placeholder="https://exemplo.com.br" class="nui-input" required>
-            </div>
-            <div class="nui-field relative">
-                <label><i class="fa-solid fa-user"></i> Associar a lead (opcional)</label>
-                <div class="nui-lead-picker">
-                    <input type="text" x-model="leadSearch" @input.debounce.300ms="searchLeads()"
-                           placeholder="Buscar lead por nome..." class="nui-input">
-                    <div x-show="leadResults.length" x-cloak
-                         class="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
-                        <template x-for="l in leadResults" :key="l.id">
-                            <button type="button" @click="selectLead(l)"
-                                    class="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border-b border-slate-100 dark:border-slate-800 last:border-0">
-                                <span x-text="l.name"></span>
-                                <span class="text-slate-400 ml-1" x-text="l.website ? '— ' + l.website : ''"></span>
-                            </button>
-                        </template>
-                    </div>
-                </div>
-                <p x-show="form.lead_id" class="text-xs text-indigo-500 mt-1">
-                    Lead #<span x-text="form.lead_id"></span>: <span x-text="form.lead_name"></span>
-                    <button type="button" @click="clearLead()" class="ml-2 text-slate-400 hover:underline">remover</button>
-                </p>
-            </div>
-        </div>
-        <button type="button" @click="startAudit()" :disabled="running || !form.url"
-                class="nui-btn-primary disabled:opacity-50">
-            <i class="fa-solid" :class="running ? 'fa-spinner fa-spin' : 'fa-play'"></i>
-            <span x-text="running ? 'Analisando (mobile + desktop)...' : 'Analisar site'"></span>
-        </button>
-        <p x-show="errorMsg" class="text-sm text-red-500" x-text="errorMsg"></p>
-    </div>
-
-    <!-- Current result -->
-    <template x-if="current && current.status === 'completed'">
-        <div class="space-y-5">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h2 class="text-base font-bold text-slate-800 dark:text-slate-200 break-all" x-text="current.url"></h2>
-                    <p class="text-sm text-slate-500 mt-0.5" x-text="current.lead_name ? 'Lead: ' + current.lead_name : ''"></p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                    <a :href="'/api/site-audits/' + current.id + '/export/?file_type=md'" class="nui-btn-secondary text-sm">Exportar .md</a>
-                    <a :href="'/api/site-audits/' + current.id + '/export/?file_type=json'" class="nui-btn-secondary text-sm">Exportar .json</a>
-                    <button type="button" @click="linkLeadToCurrent()" x-show="form.lead_id && current.lead !== form.lead_id"
-                            class="nui-btn-primary text-sm">Vincular ao lead</button>
-                </div>
-            </div>
-
-            <!-- Score hero rings -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <template x-for="strategy in ['mobile', 'desktop']" :key="'scores-' + strategy">
-                    <div class="glass-panel p-5 rounded-2xl">
-                        <h3 class="nui-section-title mb-4" x-text="strategy === 'mobile' ? 'Mobile' : 'Desktop'"></h3>
-                        <div class="flex flex-wrap items-center gap-6 mb-5">
-                            <template x-for="cat in scoreCategories" :key="strategy + cat.key">
-                                <div class="flex flex-col items-center gap-1">
-                                    <div class="nui-score-ring" :class="scoreRingClass(getScore(strategy, cat.key))">
-                                        <svg viewBox="0 0 100 100">
-                                            <circle class="ring-bg" cx="50" cy="50" r="42"></circle>
-                                            <circle class="ring-fg" cx="50" cy="50" r="42"
-                                                    :stroke-dasharray="264"
-                                                    :stroke-dashoffset="264 - (264 * (getScore(strategy, cat.key) || 0) / 100)"></circle>
-                                        </svg>
-                                        <div class="nui-score-value" x-text="getScore(strategy, cat.key) ?? '—'"></div>
-                                    </div>
-                                    <span class="nui-score-label" x-text="cat.label"></span>
-                                </div>
-                            </template>
-                        </div>
-                        <!-- CWV -->
-                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Core Web Vitals</h4>
-                        <div class="nui-cwv-grid">
-                            <template x-for="(item, key) in (current.core_web_vitals?.[strategy] || {})" :key="strategy + key">
-                                <div class="nui-cwv-card">
-                                    <div class="nui-cwv-label" x-text="cwvLabel(key)"></div>
-                                    <div class="nui-cwv-value" x-text="item.display || item.value"></div>
-                                    <span class="nui-cwv-badge" :class="cwvBadgeClass(item.score)" x-text="cwvBadgeText(item.score)"></span>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-                </template>
-            </div>
-
-            <!-- Recommendations -->
-            <div class="glass-panel p-5 rounded-2xl">
-                <div class="flex flex-wrap gap-2 mb-4 border-b border-slate-200 dark:border-slate-800 pb-3">
-                    <template x-for="tab in recTabs" :key="tab.key">
-                        <button type="button" @click="recTab = tab.key"
-                                class="px-3 py-1.5 text-xs font-semibold rounded-lg transition"
-                                :class="recTab === tab.key ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'"
-                                x-text="tab.label"></button>
-                    </template>
-                    <select x-model="recStrategy" class="ml-auto text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent px-2 py-1.5 nui-input w-auto">
-                        <option value="mobile">Mobile</option>
-                        <option value="desktop">Desktop</option>
-                    </select>
-                </div>
-                <div class="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-                    <template x-for="(item, i) in currentRecs()" :key="recTab + recStrategy + i">
-                        <div class="nui-issue-card">
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0"
-                                      :class="item.severity === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : item.severity === 'medium' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : 'bg-slate-100 text-slate-600'"
-                                      x-text="item.severity === 'high' ? 'Alto' : item.severity === 'medium' ? 'Médio' : 'Baixo'"></span>
-                                <p class="nui-issue-title flex-1" x-text="item.title"></p>
-                            </div>
-                            <p x-show="item.display_value" class="text-sm text-slate-500 mb-2" x-text="item.display_value"></p>
-                            <p x-show="item.savings_ms" class="text-sm text-emerald-600 mb-2">Economia estimada: <span x-text="item.savings_ms"></span> ms</p>
-                            <template x-for="(el, ei) in (item.elements || [])" :key="i + '-' + ei">
-                                <div class="nui-issue-body" :class="el.visual_url ? 'has-thumb' : ''">
-                                    <img x-show="el.visual_url" :src="el.visual_url" alt="Evidência" class="nui-issue-thumb"
-                                         @click="lightboxUrl = el.visual_url">
-                                    <div class="min-w-0 space-y-2">
-                                        <pre x-show="el.snippet" class="nui-issue-code" x-text="el.snippet"></pre>
-                                        <p x-show="el.selector" class="text-xs text-slate-400 font-mono truncate" x-text="'Seletor: ' + el.selector"></p>
-                                        <p x-show="el.explanation" class="nui-issue-explanation" x-text="el.explanation"></p>
-                                    </div>
-                                </div>
-                            </template>
-                            <p x-show="!(item.elements || []).length && item.description" class="nui-issue-explanation mt-2" x-text="item.description"></p>
-                        </div>
-                    </template>
-                    <p x-show="!currentRecs().length" class="text-sm text-slate-400 text-center py-8">Nenhum problema nesta categoria.</p>
-                </div>
-            </div>
-        </div>
-    </template>
-
-    <template x-if="current && (current.status === 'pending' || current.status === 'running')">
-        <div class="glass-panel p-8 rounded-2xl text-center">
-            <i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-500 mb-3"></i>
-            <p class="text-base text-slate-600 dark:text-slate-300">Executando Lighthouse via Google PageSpeed...</p>
-            <p class="text-sm text-slate-400 mt-1">Mobile + Desktop — pode levar até 60 segundos.</p>
-        </div>
-    </template>
-
-    <template x-if="current && current.status === 'failed'">
-        <div class="glass-panel p-5 rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20">
-            <p class="text-base font-bold text-red-600">Auditoria falhou</p>
-            <p class="text-sm text-red-500 mt-1" x-text="current.error_message"></p>
-        </div>
-    </template>
-
-    <!-- Lightbox -->
-    <div x-show="lightboxUrl" x-cloak @click="lightboxUrl = null" class="nui-lightbox" style="display:none;">
-        <img :src="lightboxUrl" alt="Evidência ampliada" @click.stop>
-    </div>
-
-    <!-- History -->
-    <div class="glass-panel p-5 rounded-2xl space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <h3 class="nui-section-title">Histórico</h3>
-            <div class="nui-segment flex flex-wrap gap-1">
-                <template x-for="p in periodOptions" :key="p.key">
-                    <button type="button" @click="setPeriod(p.key)"
-                            class="nui-segment-btn text-xs"
-                            :class="historyPeriod === p.key && !historyDateFrom ? 'active' : ''"
-                            x-text="p.label"></button>
-                </template>
-            </div>
-        </div>
-        <div class="flex flex-wrap items-end gap-3">
-            <div class="nui-field">
-                <label>De</label>
-                <input type="text" x-model="historyDateFromDisplay" data-nui-mask="date" placeholder="dd/mm/aaaa" class="nui-input w-36">
-            </div>
-            <div class="nui-field">
-                <label>Até</label>
-                <input type="text" x-model="historyDateToDisplay" data-nui-mask="date" placeholder="dd/mm/aaaa" class="nui-input w-36">
-            </div>
-            <button type="button" @click="applyDateRange()" class="nui-btn-secondary text-sm">Filtrar datas</button>
-            <button type="button" x-show="historyDateFrom || historyDateTo" @click="clearDateRange()" class="text-sm text-slate-400 hover:underline">Limpar</button>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm">
-                <thead>
-                    <tr class="border-b border-slate-200 dark:border-slate-800 text-slate-400 text-xs uppercase">
-                        <th class="py-2 pr-3">URL</th>
-                        <th class="py-2 pr-3">Lead</th>
-                        <th class="py-2 pr-3">Mobile</th>
-                        <th class="py-2 pr-3">Desktop</th>
-                        <th class="py-2 pr-3">Status</th>
-                        <th class="py-2 pr-3">Data</th>
-                        <th class="py-2">Ação</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <template x-for="a in history" :key="a.id">
-                        <tr class="border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                            <td class="py-2.5 pr-3 max-w-[200px] truncate font-medium" x-text="a.url"></td>
-                            <td class="py-2.5 pr-3">
-                                <span x-show="a.lead_name" class="text-indigo-600 dark:text-indigo-400" x-text="a.lead_name"></span>
-                                <span x-show="!a.lead_name" class="text-slate-400">—</span>
-                            </td>
-                            <td class="py-2.5 pr-3">
-                                <span class="font-bold" :class="scoreClass(a.scores?.mobile?.performance)" x-text="a.scores?.mobile?.performance ?? '—'"></span>
-                            </td>
-                            <td class="py-2.5 pr-3">
-                                <span class="font-bold" :class="scoreClass(a.scores?.desktop?.performance)" x-text="a.scores?.desktop?.performance ?? '—'"></span>
-                            </td>
-                            <td class="py-2.5 pr-3">
-                                <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
-                                      :class="statusBadgeClass(a.status)" x-text="a.status_display"></span>
-                            </td>
-                            <td class="py-2.5 pr-3 text-slate-500" x-text="formatDate(a.created_at)"></td>
-                            <td class="py-2.5">
-                                <button type="button" @click="loadAudit(a.id)" class="text-indigo-600 hover:underline text-sm font-semibold">Ver</button>
-                            </td>
-                        </tr>
-                    </template>
-                </tbody>
-            </table>
-            <p x-show="!history.length" class="text-sm text-slate-400 py-6 text-center">Nenhuma auditoria neste período.</p>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-function siteAuditTool() {
-    return {
-        form: { url: '', lead_id: null, lead_name: '' },
-        leadSearch: '',
-        leadResults: [],
-        history: [],
-        current: null,
-        running: false,
-        errorMsg: '',
-        pollTimer: null,
-        recTab: 'performance',
-        recStrategy: 'mobile',
-        lightboxUrl: null,
-        historyPeriod: 'all',
-        historyDateFrom: '',
-        historyDateTo: '',
-        historyDateFromDisplay: '',
-        historyDateToDisplay: '',
-        periodOptions: [
-            { key: 'today', label: 'Hoje' },
-            { key: 'yesterday', label: 'Ontem' },
-            { key: '7d', label: '7d' },
-            { key: '30d', label: '30d' },
-            { key: '90d', label: '90d' },
-            { key: '365d', label: '365d' },
-            { key: 'all', label: 'Tudo' },
-        ],
-        scoreCategories: [
-            { key: 'performance', label: 'Perf.' },
-            { key: 'seo', label: 'SEO' },
-            { key: 'accessibility', label: 'A11y' },
-            { key: 'best_practices', label: 'BP' },
-        ],
-        recTabs: [
-            { key: 'performance', label: 'Performance' },
-            { key: 'seo', label: 'SEO' },
-            { key: 'accessibility', label: 'Acessibilidade' },
-            { key: 'best_practices', label: 'Boas práticas' },
-        ],
-
-        init() {
-            const params = new URLSearchParams(window.location.search);
-            const url = params.get('url');
-            const lead = params.get('lead');
-            const audit = params.get('audit');
-            if (url) this.form.url = url;
-            if (lead) {
-                this.form.lead_id = parseInt(lead, 10);
-                this.prefillLead(lead);
-            }
-            if (audit) this.loadAudit(parseInt(audit, 10));
-            this.$nextTick(() => NuviieForms.init(this.$el));
-            this.fetchHistory();
-        },
-
-        async prefillLead(id) {
-            try {
-                const r = await fetch(`/api/leads/${id}/`);
-                if (r.ok) {
-                    const l = await r.json();
-                    this.form.lead_name = l.name;
-                    if (!this.form.url && l.website) this.form.url = l.website;
-                }
-            } catch { /* ignore */ }
-        },
-
-        getCookie(name) {
-            let v = null;
-            if (document.cookie) {
-                document.cookie.split(';').forEach(c => {
-                    c = c.trim();
-                    if (c.startsWith(name + '=')) v = decodeURIComponent(c.substring(name.length + 1));
-                });
-            }
-            return v;
-        },
-
-        async searchLeads() {
-            const q = (this.leadSearch || '').trim();
-            if (q.length < 2) { this.leadResults = []; return; }
-            const r = await fetch(`/api/leads/?search=${encodeURIComponent(q)}`);
-            if (r.ok) this.leadResults = await r.json();
-        },
-
-        selectLead(l) {
-            this.form.lead_id = l.id;
-            this.form.lead_name = l.name;
-            if (!this.form.url && l.website) this.form.url = l.website;
-            this.leadResults = [];
-            this.leadSearch = l.name;
-        },
-
-        clearLead() {
-            this.form.lead_id = null;
-            this.form.lead_name = '';
-            this.leadSearch = '';
-        },
-
-        setPeriod(key) {
-            this.historyPeriod = key;
-            this.historyDateFrom = '';
-            this.historyDateTo = '';
-            this.historyDateFromDisplay = '';
-            this.historyDateToDisplay = '';
-            this.fetchHistory();
-        },
-
-        applyDateRange() {
-            this.historyDateFrom = NuviieForms.parseDate(this.historyDateFromDisplay) || '';
-            this.historyDateTo = NuviieForms.parseDate(this.historyDateToDisplay) || '';
-            this.fetchHistory();
-        },
-
-        clearDateRange() {
-            this.historyDateFrom = '';
-            this.historyDateTo = '';
-            this.historyDateFromDisplay = '';
-            this.historyDateToDisplay = '';
-            this.fetchHistory();
-        },
-
-        async fetchHistory() {
-            const params = new URLSearchParams();
-            if (this.historyDateFrom) params.set('date_from', this.historyDateFrom);
-            else if (this.historyDateTo) params.set('date_to', this.historyDateTo);
-            else if (this.historyPeriod && this.historyPeriod !== 'all') params.set('period', this.historyPeriod);
-            if (this.historyDateFrom) params.set('date_from', this.historyDateFrom);
-            if (this.historyDateTo) params.set('date_to', this.historyDateTo);
-            const r = await fetch('/api/site-audits/?' + params.toString());
-            if (r.ok) this.history = await r.json();
-        },
-
-        async startAudit() {
-            this.errorMsg = '';
-            const root = this.$el.querySelector('.glass-panel');
-            if (!NuviieForms.validateForm(this.$el.querySelector('.glass-panel'))) {
-                this.errorMsg = 'Corrija os campos antes de continuar.';
-                return;
-            }
-            this.running = true;
-            try {
-                const body = { url: this.form.url };
-                if (this.form.lead_id) body.lead_id = this.form.lead_id;
-                const r = await fetch('/api/site-audits/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': this.getCookie('csrftoken'),
-                    },
-                    body: JSON.stringify(body),
-                });
-                const data = await r.json();
-                if (!r.ok) {
-                    this.errorMsg = data.error || data.url?.[0] || 'Falha ao iniciar.';
-                    this.running = false;
-                    return;
-                }
-                this.current = data;
-                this.pollAudit(data.id);
-            } catch (e) {
-                this.errorMsg = e.message;
-                this.running = false;
-            }
-        },
-
-        pollAudit(id) {
-            if (this.pollTimer) clearInterval(this.pollTimer);
-            this.pollTimer = setInterval(async () => {
-                await this.loadAudit(id, true);
-                if (this.current && (this.current.status === 'completed' || this.current.status === 'failed')) {
-                    clearInterval(this.pollTimer);
-                    this.running = false;
-                    this.fetchHistory();
-                }
-            }, 2500);
-        },
-
-        async loadAudit(id, silent) {
-            const r = await fetch(`/api/site-audits/${id}/`);
-            if (r.ok) {
-                this.current = await r.json();
-                if (!silent) this.running = this.current.status === 'running' || this.current.status === 'pending';
-            }
-        },
-
-        async linkLeadToCurrent() {
-            if (!this.current?.id || !this.form.lead_id) return;
-            const r = await fetch(`/api/site-audits/${this.current.id}/link-lead/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this.getCookie('csrftoken'),
-                },
-                body: JSON.stringify({ lead_id: this.form.lead_id }),
-            });
-            if (r.ok) {
-                this.current = await r.json();
-                this.fetchHistory();
-            }
-        },
-
-        getScore(strategy, cat) {
-            return this.current?.scores?.[strategy]?.[cat];
-        },
-
-        scoreClass(score) {
-            const s = Number(score);
-            if (Number.isNaN(s)) return 'text-slate-400';
-            if (s >= 90) return 'text-emerald-600';
-            if (s >= 50) return 'text-amber-600';
-            return 'text-red-600';
-        },
-
-        scoreRingClass(score) {
-            const s = Number(score);
-            if (Number.isNaN(s)) return '';
-            if (s >= 90) return 'nui-score-good';
-            if (s >= 50) return 'nui-score-avg';
-            return 'nui-score-poor';
-        },
-
-        cwvLabel(key) {
-            const map = { lcp_ms: 'LCP', cls: 'CLS', inp_ms: 'INP', fcp_ms: 'FCP', ttfb_ms: 'TTFB', speed_index_ms: 'Speed Index' };
-            return map[key] || key;
-        },
-
-        cwvBadgeClass(score) {
-            if (score == null) return 'avg';
-            if (score >= 0.9) return 'good';
-            if (score >= 0.5) return 'avg';
-            return 'poor';
-        },
-
-        cwvBadgeText(score) {
-            if (score == null) return '—';
-            if (score >= 0.9) return 'Bom';
-            if (score >= 0.5) return 'Precisa melhorar';
-            return 'Ruim';
-        },
-
-        statusBadgeClass(status) {
-            const map = {
-                completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-                failed: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-                running: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-                pending: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-            };
-            return map[status] || map.pending;
-        },
-
-        currentRecs() {
-            if (!this.current?.recommendations) return [];
-            const s = this.current.recommendations[this.recStrategy] || {};
-            return s[this.recTab] || [];
-        },
-
-        formatDate(iso) {
-            if (!iso) return '—';
-            return new Date(iso).toLocaleString('pt-BR');
-        },
-    };
-}
-</script>
-{% endblock %}
-
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="nui max-w-[1400px] mx-auto flex flex-col gap-6 pb-8" x-data="siteAuditTool()" x-init="init()">
+
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-indigo-500/12 text-indigo-500 flex items-center justify-center">
+                <i class="fa-solid fa-gauge-high"></i>
+            </span>
+            <div>
+                <h1 class="text-xl font-bold text-slate-900 dark:text-white">Auditoria de Sites</h1>
+                <p class="text-sm text-slate-500 dark:text-slate-400">PageSpeed Insights — mobile e desktop com evidências visuais.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form -->
+    <div class="glass-panel p-5 rounded-2xl space-y-4" x-ref="auditForm">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="nui-field">
+                <label><i class="fa-solid fa-link"></i> URL do site</label>
+                <input type="url" x-model="form.url" x-nui-mask="'url'" data-nui-mask="url" placeholder="https://exemplo.com.br" class="nui-input" required>
+            </div>
+            <div class="nui-field relative">
+                <label><i class="fa-solid fa-user"></i> Associar a lead (opcional)</label>
+                <div class="nui-lead-picker">
+                    <input type="text" x-model="leadSearch" @input.debounce.300ms="searchLeads()"
+                           placeholder="Buscar lead por nome..." class="nui-input">
+                    <div x-show="leadResults.length" x-cloak
+                         class="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
+                        <template x-for="l in leadResults" :key="l.id">
+                            <button type="button" @click="selectLead(l)"
+                                    class="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                <span x-text="l.name"></span>
+                                <span class="text-slate-400 ml-1" x-text="l.website ? '— ' + l.website : ''"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+                <p x-show="form.lead_id" class="text-xs text-indigo-500 mt-1">
+                    Lead #<span x-text="form.lead_id"></span>: <span x-text="form.lead_name"></span>
+                    <button type="button" @click="clearLead()" class="ml-2 text-slate-400 hover:underline">remover</button>
+                </p>
+            </div>
+        </div>
+        <button type="button" @click="startAudit()" :disabled="running || !form.url"
+                class="nui-btn-primary disabled:opacity-50">
+            <i class="fa-solid" :class="running ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+            <span x-text="running ? 'Analisando (mobile + desktop)...' : 'Analisar site'"></span>
+        </button>
+        <p x-show="errorMsg" class="text-sm text-red-500" x-text="errorMsg"></p>
+    </div>
+
+    <!-- Current result -->
+    <template x-if="current && current.status === 'completed'">
+        <div class="space-y-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-base font-bold text-slate-800 dark:text-slate-200 break-all" x-text="current.url"></h2>
+                    <p class="text-sm text-slate-500 mt-0.5" x-text="current.lead_name ? 'Lead: ' + current.lead_name : ''"></p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <a :href="'/api/site-audits/' + current.id + '/export/?file_type=md'" class="nui-btn-secondary text-sm">Exportar .md</a>
+                    <a :href="'/api/site-audits/' + current.id + '/export/?file_type=json'" class="nui-btn-secondary text-sm">Exportar .json</a>
+                    <button type="button" @click="linkLeadToCurrent()" x-show="form.lead_id && current.lead !== form.lead_id"
+                            class="nui-btn-primary text-sm">Vincular ao lead</button>
+                </div>
+            </div>
+
+            <!-- Score hero rings -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <template x-for="strategy in ['mobile', 'desktop']" :key="'scores-' + strategy">
+                    <div class="glass-panel p-5 rounded-2xl">
+                        <h3 class="nui-section-title mb-4" x-text="strategy === 'mobile' ? 'Mobile' : 'Desktop'"></h3>
+                        <div class="flex flex-wrap items-center gap-6 mb-5">
+                            <template x-for="cat in scoreCategories" :key="strategy + cat.key">
+                                <div class="flex flex-col items-center gap-1">
+                                    <div class="nui-score-ring" :class="scoreRingClass(getScore(strategy, cat.key))">
+                                        <svg viewBox="0 0 100 100">
+                                            <circle class="ring-bg" cx="50" cy="50" r="42"></circle>
+                                            <circle class="ring-fg" cx="50" cy="50" r="42"
+                                                    :stroke-dasharray="264"
+                                                    :stroke-dashoffset="264 - (264 * (getScore(strategy, cat.key) || 0) / 100)"></circle>
+                                        </svg>
+                                        <div class="nui-score-value" x-text="getScore(strategy, cat.key) ?? '—'"></div>
+                                    </div>
+                                    <span class="nui-score-label" x-text="cat.label"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <!-- CWV -->
+                        <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Core Web Vitals</h4>
+                        <div class="nui-cwv-grid">
+                            <template x-for="(item, key) in (current.core_web_vitals?.[strategy] || {})" :key="strategy + key">
+                                <div class="nui-cwv-card">
+                                    <div class="nui-cwv-label" x-text="cwvLabel(key)"></div>
+                                    <div class="nui-cwv-value" x-text="item.display || item.value"></div>
+                                    <span class="nui-cwv-badge" :class="cwvBadgeClass(item.score)" x-text="cwvBadgeText(item.score)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Recommendations -->
+            <div class="glass-panel p-5 rounded-2xl">
+                <div class="flex flex-wrap gap-2 mb-4 border-b border-slate-200 dark:border-slate-800 pb-3">
+                    <template x-for="tab in recTabs" :key="tab.key">
+                        <button type="button" @click="recTab = tab.key"
+                                class="px-3 py-1.5 text-xs font-semibold rounded-lg transition"
+                                :class="recTab === tab.key ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'"
+                                x-text="tab.label"></button>
+                    </template>
+                    <select x-model="recStrategy" class="ml-auto text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-transparent px-2 py-1.5 nui-input w-auto">
+                        <option value="mobile">Mobile</option>
+                        <option value="desktop">Desktop</option>
+                    </select>
+                </div>
+                <div class="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                    <template x-for="(item, i) in currentRecs()" :key="recTab + recStrategy + i">
+                        <div class="nui-issue-card">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0"
+                                      :class="item.severity === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : item.severity === 'medium' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : 'bg-slate-100 text-slate-600'"
+                                      x-text="item.severity === 'high' ? 'Alto' : item.severity === 'medium' ? 'Médio' : 'Baixo'"></span>
+                                <p class="nui-issue-title flex-1" x-text="item.title"></p>
+                            </div>
+                            <p x-show="item.display_value" class="text-sm text-slate-500 mb-2" x-text="item.display_value"></p>
+                            <p x-show="item.savings_ms" class="text-sm text-emerald-600 mb-2">Economia estimada: <span x-text="item.savings_ms"></span> ms</p>
+                            <template x-for="(el, ei) in (item.elements || [])" :key="i + '-' + ei">
+                                <div class="nui-issue-body" :class="el.visual_url ? 'has-thumb' : ''">
+                                    <img x-show="el.visual_url" :src="el.visual_url" alt="Evidência" class="nui-issue-thumb"
+                                         @click="lightboxUrl = el.visual_url">
+                                    <div class="min-w-0 space-y-2">
+                                        <pre x-show="el.snippet" class="nui-issue-code" x-text="el.snippet"></pre>
+                                        <p x-show="el.selector" class="text-xs text-slate-400 font-mono truncate" x-text="'Seletor: ' + el.selector"></p>
+                                        <p x-show="el.explanation" class="nui-issue-explanation" x-text="el.explanation"></p>
+                                    </div>
+                                </div>
+                            </template>
+                            <p x-show="!(item.elements || []).length && item.description" class="nui-issue-explanation mt-2" x-text="item.description"></p>
+                        </div>
+                    </template>
+                    <p x-show="!currentRecs().length" class="text-sm text-slate-400 text-center py-8">Nenhum problema nesta categoria.</p>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <template x-if="current && (current.status === 'pending' || current.status === 'running')">
+        <div class="glass-panel p-8 rounded-2xl text-center">
+            <i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-500 mb-3"></i>
+            <p class="text-base text-slate-600 dark:text-slate-300">Executando Lighthouse via Google PageSpeed...</p>
+            <p class="text-sm text-slate-400 mt-1">Mobile + Desktop — pode levar até 60 segundos.</p>
+        </div>
+    </template>
+
+    <template x-if="current && current.status === 'failed'">
+        <div class="glass-panel p-5 rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50/50 dark:bg-red-950/20">
+            <p class="text-base font-bold text-red-600">Auditoria falhou</p>
+            <p class="text-sm text-red-500 mt-1" x-text="current.error_message"></p>
+        </div>
+    </template>
+
+    <!-- Lightbox -->
+    <div x-show="lightboxUrl" x-cloak @click="lightboxUrl = null" class="nui-lightbox" style="display:none;">
+        <img :src="lightboxUrl" alt="Evidência ampliada" @click.stop>
+    </div>
+
+    <!-- History -->
+    <div class="glass-panel p-5 rounded-2xl space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <h3 class="nui-section-title">Histórico</h3>
+            <div class="nui-segment flex flex-wrap gap-1">
+                <template x-for="p in periodOptions" :key="p.key">
+                    <button type="button" @click="setPeriod(p.key)"
+                            class="nui-segment-btn text-xs"
+                            :class="historyPeriod === p.key && !historyDateFrom ? 'active' : ''"
+                            x-text="p.label"></button>
+                </template>
+            </div>
+        </div>
+        <div class="flex flex-wrap items-end gap-3">
+            <div class="nui-field">
+                <label>De</label>
+                <input type="text" x-model="historyDateFromDisplay" data-nui-mask="date" placeholder="dd/mm/aaaa" class="nui-input w-36">
+            </div>
+            <div class="nui-field">
+                <label>Até</label>
+                <input type="text" x-model="historyDateToDisplay" data-nui-mask="date" placeholder="dd/mm/aaaa" class="nui-input w-36">
+            </div>
+            <button type="button" @click="applyDateRange()" class="nui-btn-secondary text-sm">Filtrar datas</button>
+            <button type="button" x-show="historyDateFrom || historyDateTo" @click="clearDateRange()" class="text-sm text-slate-400 hover:underline">Limpar</button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead>
+                    <tr class="border-b border-slate-200 dark:border-slate-800 text-slate-400 text-xs uppercase">
+                        <th class="py-2 pr-3">URL</th>
+                        <th class="py-2 pr-3">Lead</th>
+                        <th class="py-2 pr-3">Mobile</th>
+                        <th class="py-2 pr-3">Desktop</th>
+                        <th class="py-2 pr-3">Status</th>
+                        <th class="py-2 pr-3">Data</th>
+                        <th class="py-2">Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="a in history" :key="a.id">
+                        <tr class="border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <td class="py-2.5 pr-3 max-w-[200px] truncate font-medium" x-text="a.url"></td>
+                            <td class="py-2.5 pr-3">
+                                <span x-show="a.lead_name" class="text-indigo-600 dark:text-indigo-400" x-text="a.lead_name"></span>
+                                <span x-show="!a.lead_name" class="text-slate-400">—</span>
+                            </td>
+                            <td class="py-2.5 pr-3">
+                                <span class="font-bold" :class="scoreClass(a.scores?.mobile?.performance)" x-text="a.scores?.mobile?.performance ?? '—'"></span>
+                            </td>
+                            <td class="py-2.5 pr-3">
+                                <span class="font-bold" :class="scoreClass(a.scores?.desktop?.performance)" x-text="a.scores?.desktop?.performance ?? '—'"></span>
+                            </td>
+                            <td class="py-2.5 pr-3">
+                                <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                                      :class="statusBadgeClass(a.status)" x-text="a.status_display"></span>
+                            </td>
+                            <td class="py-2.5 pr-3 text-slate-500" x-text="formatDate(a.created_at)"></td>
+                            <td class="py-2.5">
+                                <button type="button" @click="loadAudit(a.id)" class="text-indigo-600 hover:underline text-sm font-semibold">Ver</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <p x-show="!history.length" class="text-sm text-slate-400 py-6 text-center">Nenhuma auditoria neste período.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function siteAuditTool() {
+    return {
+        form: { url: '', lead_id: null, lead_name: '' },
+        leadSearch: '',
+        leadResults: [],
+        history: [],
+        current: null,
+        running: false,
+        errorMsg: '',
+        pollTimer: null,
+        recTab: 'performance',
+        recStrategy: 'mobile',
+        lightboxUrl: null,
+        historyPeriod: 'all',
+        historyDateFrom: '',
+        historyDateTo: '',
+        historyDateFromDisplay: '',
+        historyDateToDisplay: '',
+        periodOptions: [
+            { key: 'today', label: 'Hoje' },
+            { key: 'yesterday', label: 'Ontem' },
+            { key: '7d', label: '7d' },
+            { key: '30d', label: '30d' },
+            { key: '90d', label: '90d' },
+            { key: '365d', label: '365d' },
+            { key: 'all', label: 'Tudo' },
+        ],
+        scoreCategories: [
+            { key: 'performance', label: 'Perf.' },
+            { key: 'seo', label: 'SEO' },
+            { key: 'accessibility', label: 'A11y' },
+            { key: 'best_practices', label: 'BP' },
+        ],
+        recTabs: [
+            { key: 'performance', label: 'Performance' },
+            { key: 'seo', label: 'SEO' },
+            { key: 'accessibility', label: 'Acessibilidade' },
+            { key: 'best_practices', label: 'Boas práticas' },
+        ],
+
+        init() {
+            const params = new URLSearchParams(window.location.search);
+            const url = params.get('url');
+            const lead = params.get('lead');
+            const audit = params.get('audit');
+            if (url) this.form.url = url;
+            if (lead) {
+                this.form.lead_id = parseInt(lead, 10);
+                this.prefillLead(lead);
+            }
+            if (audit) this.loadAudit(parseInt(audit, 10));
+            this.$nextTick(() => {
+                const root = this.$refs.auditForm || this.$el;
+                if (root) NuviieForms.init(root);
+            });
+            this.fetchHistory();
+        },
+
+        async prefillLead(id) {
+            try {
+                const r = await fetch(`/api/leads/${id}/`);
+                if (r.ok) {
+                    const l = await r.json();
+                    this.form.lead_name = l.name;
+                    if (!this.form.url && l.website) this.form.url = l.website;
+                }
+            } catch { /* ignore */ }
+        },
+
+        getCookie(name) {
+            let v = null;
+            if (document.cookie) {
+                document.cookie.split(';').forEach(c => {
+                    c = c.trim();
+                    if (c.startsWith(name + '=')) v = decodeURIComponent(c.substring(name.length + 1));
+                });
+            }
+            return v;
+        },
+
+        async searchLeads() {
+            const q = (this.leadSearch || '').trim();
+            if (q.length < 2) { this.leadResults = []; return; }
+            const r = await fetch(`/api/leads/?search=${encodeURIComponent(q)}`);
+            if (r.ok) this.leadResults = await r.json();
+        },
+
+        selectLead(l) {
+            this.form.lead_id = l.id;
+            this.form.lead_name = l.name;
+            if (!this.form.url && l.website) this.form.url = l.website;
+            this.leadResults = [];
+            this.leadSearch = l.name;
+        },
+
+        clearLead() {
+            this.form.lead_id = null;
+            this.form.lead_name = '';
+            this.leadSearch = '';
+        },
+
+        setPeriod(key) {
+            this.historyPeriod = key;
+            this.historyDateFrom = '';
+            this.historyDateTo = '';
+            this.historyDateFromDisplay = '';
+            this.historyDateToDisplay = '';
+            this.fetchHistory();
+        },
+
+        applyDateRange() {
+            this.historyDateFrom = NuviieForms.parseDate(this.historyDateFromDisplay) || '';
+            this.historyDateTo = NuviieForms.parseDate(this.historyDateToDisplay) || '';
+            this.fetchHistory();
+        },
+
+        clearDateRange() {
+            this.historyDateFrom = '';
+            this.historyDateTo = '';
+            this.historyDateFromDisplay = '';
+            this.historyDateToDisplay = '';
+            this.fetchHistory();
+        },
+
+        async fetchHistory() {
+            const params = new URLSearchParams();
+            if (this.historyDateFrom) params.set('date_from', this.historyDateFrom);
+            else if (this.historyDateTo) params.set('date_to', this.historyDateTo);
+            else if (this.historyPeriod && this.historyPeriod !== 'all') params.set('period', this.historyPeriod);
+            if (this.historyDateFrom) params.set('date_from', this.historyDateFrom);
+            if (this.historyDateTo) params.set('date_to', this.historyDateTo);
+            const r = await fetch('/api/site-audits/?' + params.toString());
+            if (r.ok) this.history = await r.json();
+        },
+
+        async startAudit() {
+            this.errorMsg = '';
+            const root = this.$refs.auditForm;
+            if (root && !NuviieForms.validateForm(root)) {
+                this.errorMsg = 'Corrija os campos antes de continuar.';
+                return;
+            }
+            const url = (this.form.url || '').trim();
+            if (!url || !NuviieForms.validateUrl(url)) {
+                this.errorMsg = 'Informe uma URL válida (https://...).';
+                return;
+            }
+            this.form.url = url;
+            this.running = true;
+            try {
+                const body = { url: this.form.url };
+                if (this.form.lead_id) body.lead_id = this.form.lead_id;
+                const r = await fetch('/api/site-audits/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': this.getCookie('csrftoken'),
+                    },
+                    body: JSON.stringify(body),
+                });
+                const data = await r.json();
+                if (!r.ok) {
+                    this.errorMsg = data.error || data.url?.[0] || 'Falha ao iniciar.';
+                    this.running = false;
+                    return;
+                }
+                this.current = data;
+                this.pollAudit(data.id);
+            } catch (e) {
+                this.errorMsg = e.message;
+                this.running = false;
+            }
+        },
+
+        pollAudit(id) {
+            if (this.pollTimer) clearInterval(this.pollTimer);
+            this.pollTimer = setInterval(async () => {
+                await this.loadAudit(id, true);
+                if (this.current && (this.current.status === 'completed' || this.current.status === 'failed')) {
+                    clearInterval(this.pollTimer);
+                    this.running = false;
+                    this.fetchHistory();
+                }
+            }, 2500);
+        },
+
+        async loadAudit(id, silent) {
+            const r = await fetch(`/api/site-audits/${id}/`);
+            if (r.ok) {
+                this.current = await r.json();
+                if (!silent) this.running = this.current.status === 'running' || this.current.status === 'pending';
+            }
+        },
+
+        async linkLeadToCurrent() {
+            if (!this.current?.id || !this.form.lead_id) return;
+            const r = await fetch(`/api/site-audits/${this.current.id}/link-lead/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCookie('csrftoken'),
+                },
+                body: JSON.stringify({ lead_id: this.form.lead_id }),
+            });
+            if (r.ok) {
+                this.current = await r.json();
+                this.fetchHistory();
+            }
+        },
+
+        getScore(strategy, cat) {
+            return this.current?.scores?.[strategy]?.[cat];
+        },
+
+        scoreClass(score) {
+            const s = Number(score);
+            if (Number.isNaN(s)) return 'text-slate-400';
+            if (s >= 90) return 'text-emerald-600';
+            if (s >= 50) return 'text-amber-600';
+            return 'text-red-600';
+        },
+
+        scoreRingClass(score) {
+            const s = Number(score);
+            if (Number.isNaN(s)) return '';
+            if (s >= 90) return 'nui-score-good';
+            if (s >= 50) return 'nui-score-avg';
+            return 'nui-score-poor';
+        },
+
+        cwvLabel(key) {
+            const map = { lcp_ms: 'LCP', cls: 'CLS', inp_ms: 'INP', fcp_ms: 'FCP', ttfb_ms: 'TTFB', speed_index_ms: 'Speed Index' };
+            return map[key] || key;
+        },
+
+        cwvBadgeClass(score) {
+            if (score == null) return 'avg';
+            if (score >= 0.9) return 'good';
+            if (score >= 0.5) return 'avg';
+            return 'poor';
+        },
+
+        cwvBadgeText(score) {
+            if (score == null) return '—';
+            if (score >= 0.9) return 'Bom';
+            if (score >= 0.5) return 'Precisa melhorar';
+            return 'Ruim';
+        },
+
+        statusBadgeClass(status) {
+            const map = {
+                completed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+                failed: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+                running: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+                pending: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+            };
+            return map[status] || map.pending;
+        },
+
+        currentRecs() {
+            if (!this.current?.recommendations) return [];
+            const s = this.current.recommendations[this.recStrategy] || {};
+            return s[this.recTab] || [];
+        },
+
+        formatDate(iso) {
+            if (!iso) return '—';
+            return new Date(iso).toLocaleString('pt-BR');
+        },
+    };
+}
+</script>
+{% endblock %}
+
