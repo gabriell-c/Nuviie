@@ -596,18 +596,43 @@
                             <div class="flex flex-wrap items-center gap-1.5">
                                 <button type="button" @click="extractPalette()"
                                         :disabled="paletteExtracting || !profilePictureSrc()"
-                                        class="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg bg-indigo-600 text-white disabled:opacity-40 hover:bg-indigo-700 transition">
+                                        class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white disabled:opacity-40 hover:bg-indigo-700 transition">
                                     <span x-show="!paletteExtracting"><i class="fa-solid fa-eyedropper mr-1"></i>Extrair</span>
                                     <span x-show="paletteExtracting"><i class="fa-solid fa-spinner fa-spin"></i></span>
                                 </button>
                                 <button type="button" @click="clearPalette()"
                                         x-show="colorPaletteColors().length"
                                         :disabled="paletteSaving"
-                                        class="px-2.5 py-1.5 text-[10px] font-semibold rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-100 transition">
+                                        class="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-100 transition">
                                     <i class="fa-solid fa-trash-can mr-1"></i>Apagar tudo
                                 </button>
                             </div>
                         </div>
+
+                        <!-- Zona de colar/arrastar imagem -->
+                        <div tabindex="0"
+                             @paste="handlePalettePaste($event)"
+                             @click="$refs.paletteFileInput.click()"
+                             @dragover.prevent="paletteDragOver = true"
+                             @dragleave.prevent="paletteDragOver = false"
+                             @drop.prevent="handlePaletteDrop($event)"
+                             :class="paletteDragOver ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40' : 'border-slate-300 dark:border-slate-700'"
+                             class="relative border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition focus:outline-none focus:border-indigo-500 focus:bg-indigo-50/40 dark:focus:bg-indigo-950/30">
+                            <template x-if="palettePastePreview">
+                                <img :src="palettePastePreview" alt="Imagem colada" class="mx-auto max-h-28 rounded-lg mb-2 shadow-sm">
+                            </template>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                                <i class="fa-solid fa-paste mr-1 text-indigo-500"></i>
+                                Clique aqui e dê <span class="font-mono font-bold px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Ctrl+V</span>
+                                para colar uma imagem
+                            </p>
+                            <p class="text-xs text-slate-400 mt-1">ou arraste uma imagem / clique para escolher um arquivo</p>
+                            <div x-show="paletteExtracting" x-cloak
+                                 class="absolute inset-0 flex items-center justify-center rounded-xl bg-white/70 dark:bg-slate-900/70">
+                                <i class="fa-solid fa-spinner fa-spin text-indigo-500"></i>
+                            </div>
+                        </div>
+                        <input type="file" x-ref="paletteFileInput" accept="image/*" class="hidden" @change="handlePaletteFile($event)">
 
                         <template x-if="colorPaletteColors().length">
                             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -617,16 +642,16 @@
                                         <div class="flex-1 p-2 bg-white/80 dark:bg-slate-900/80 min-w-0">
                                             <template x-if="paletteEditingIndex !== idx">
                                                 <div class="flex items-center justify-between gap-1">
-                                                    <span class="text-[9px] font-mono font-bold text-slate-600 dark:text-slate-300 truncate" x-text="c.hex"></span>
-                                                    <div class="flex items-center gap-1 shrink-0">
+                                                    <span class="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 truncate" x-text="c.hex"></span>
+                                                    <div class="flex items-center gap-1.5 shrink-0">
                                                         <button type="button" @click="startEditPaletteColor(idx, c.hex)" class="text-slate-400 hover:text-indigo-500" title="Editar">
-                                                            <i class="fa-solid fa-pen text-[10px]"></i>
+                                                            <i class="fa-solid fa-pen text-xs"></i>
                                                         </button>
                                                         <button type="button" @click="copyHex(c.hex)" class="text-slate-400 hover:text-indigo-500" title="Copiar">
-                                                            <i class="fa-regular fa-copy text-[10px]"></i>
+                                                            <i class="fa-regular fa-copy text-xs"></i>
                                                         </button>
                                                         <button type="button" @click="deletePaletteColor(idx)" class="text-slate-400 hover:text-red-500" title="Remover">
-                                                            <i class="fa-solid fa-xmark text-[10px]"></i>
+                                                            <i class="fa-solid fa-xmark text-xs"></i>
                                                         </button>
                                                     </div>
                                                 </div>
@@ -634,12 +659,12 @@
                                             <template x-if="paletteEditingIndex === idx">
                                                 <div class="flex items-center gap-1">
                                                     <input type="text" x-model="paletteEditHex" maxlength="7"
-                                                           class="flex-1 min-w-0 px-1.5 py-1 text-[9px] font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 uppercase">
+                                                           class="flex-1 min-w-0 px-1.5 py-1 text-xs font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 uppercase">
                                                     <button type="button" @click="saveEditPaletteColor(idx)" class="text-emerald-500 hover:text-emerald-600" title="Salvar">
-                                                        <i class="fa-solid fa-check text-[10px]"></i>
+                                                        <i class="fa-solid fa-check text-xs"></i>
                                                     </button>
                                                     <button type="button" @click="cancelEditPaletteColor()" class="text-slate-400 hover:text-slate-600" title="Cancelar">
-                                                        <i class="fa-solid fa-xmark text-[10px]"></i>
+                                                        <i class="fa-solid fa-xmark text-xs"></i>
                                                     </button>
                                                 </div>
                                             </template>
@@ -651,21 +676,23 @@
 
                         <div x-show="colorPaletteColors().length < 5" class="flex flex-wrap items-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                             <div>
-                                <label class="text-[9px] text-slate-400 block mb-1">Adicionar cor manualmente</label>
+                                <label class="text-xs text-slate-400 block mb-1">Adicionar cor manualmente</label>
                                 <div class="flex items-center gap-2">
-                                    <input type="color" x-model="paletteNewHex" class="w-8 h-8 rounded cursor-pointer border-0 p-0 bg-transparent">
+                                    <input type="color" :value="paletteNewHex || '#6366F1'" @input="paletteNewHex = $event.target.value"
+                                           class="w-9 h-9 rounded cursor-pointer border-0 p-0 bg-transparent">
                                     <input type="text" x-model="paletteNewHex" maxlength="7" placeholder="#6366F1"
-                                           class="w-24 px-2 py-1.5 text-[10px] font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 uppercase">
+                                           @keydown.enter.prevent="addPaletteColor()"
+                                           class="w-28 px-2 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 uppercase">
                                 </div>
                             </div>
                             <button type="button" @click="addPaletteColor()"
                                     :disabled="paletteSaving || colorPaletteColors().length >= 5"
-                                    class="px-3 py-1.5 text-[10px] font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 disabled:opacity-40 transition">
+                                    class="px-3 py-2 text-sm font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 disabled:opacity-40 transition">
                                 <i class="fa-solid fa-plus mr-1"></i>Adicionar
                             </button>
                         </div>
                         <p x-show="!colorPaletteColors().length" class="text-xs text-slate-400">Nenhuma cor na paleta. Extraia da foto ou adicione manualmente (até 5 cores).</p>
-                        <p x-show="colorPaletteColors().length" class="text-[9px] text-slate-400">
+                        <p x-show="colorPaletteColors().length" class="text-xs text-slate-400">
                             <span x-text="colorPaletteColors().length"></span>/5 cores
                             <span x-show="currentLead.amenities?.color_palette?.source"> · fonte: <span x-text="currentLead.amenities.color_palette.source"></span></span>
                         </p>
@@ -1406,9 +1433,11 @@
             profilePicFailed: false,
             paletteExtracting: false,
             paletteSaving: false,
-            paletteNewHex: '#6366F1',
+            paletteNewHex: '',
             paletteEditingIndex: null,
             paletteEditHex: '',
+            paletteDragOver: false,
+            palettePastePreview: '',
             noteSaving: false,
             currentLead: {},
             newNoteText: '',
@@ -1717,6 +1746,9 @@
                 this.detailTab = 'reviews';
                 this.profilePicFailed = false;
                 this.noteSaving = false;
+                this.palettePastePreview = '';
+                this.paletteDragOver = false;
+                this.paletteEditingIndex = null;
                 
                 try {
                     const response = await fetch(`/api/leads/${id}/`);
@@ -1837,6 +1869,81 @@
                 }
             },
 
+            handlePalettePaste(event) {
+                const items = (event.clipboardData || window.clipboardData)?.items;
+                if (!items) return;
+                for (const item of items) {
+                    if (item.type && item.type.startsWith('image/')) {
+                        const file = item.getAsFile();
+                        if (file) {
+                            event.preventDefault();
+                            this.processPaletteImageFile(file);
+                            return;
+                        }
+                    }
+                }
+            },
+
+            handlePaletteDrop(event) {
+                this.paletteDragOver = false;
+                const file = event.dataTransfer?.files?.[0];
+                if (file && file.type.startsWith('image/')) {
+                    this.processPaletteImageFile(file);
+                } else {
+                    NuviieModal.alert('Solte um arquivo de imagem válido.', 'Imagem inválida');
+                }
+            },
+
+            handlePaletteFile(event) {
+                const file = event.target.files?.[0];
+                if (file && file.type.startsWith('image/')) {
+                    this.processPaletteImageFile(file);
+                }
+                event.target.value = '';
+            },
+
+            processPaletteImageFile(file) {
+                if (file.size > 5 * 1024 * 1024) {
+                    NuviieModal.alert('Imagem muito grande (máx 5MB).', 'Erro');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const dataUrl = e.target.result;
+                    this.palettePastePreview = dataUrl;
+                    this.extractPaletteFromData(dataUrl);
+                };
+                reader.onerror = () => {
+                    NuviieModal.alert('Não foi possível ler a imagem.', 'Erro');
+                };
+                reader.readAsDataURL(file);
+            },
+
+            async extractPaletteFromData(dataUrl) {
+                if (!this.currentLead?.id || this.paletteExtracting) return;
+                this.paletteExtracting = true;
+                try {
+                    const response = await fetch(`/api/leads/${this.currentLead.id}/extract-palette/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({ image_data: dataUrl }),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        await NuviieModal.alert(data.error || 'Falha ao extrair paleta.', 'Erro');
+                        return;
+                    }
+                    this.applyPaletteResponse(data);
+                } catch (e) {
+                    await NuviieModal.alert('Erro ao extrair paleta: ' + e.message, 'Erro');
+                } finally {
+                    this.paletteExtracting = false;
+                }
+            },
+
             applyPaletteResponse(data) {
                 if (data.lead) {
                     this.currentLead = data.lead;
@@ -1863,7 +1970,16 @@
                     };
                     if (body !== undefined) opts.body = JSON.stringify(body);
                     const response = await fetch(url, opts);
-                    const data = await response.json();
+                    const raw = await response.text();
+                    let data = {};
+                    try { data = raw ? JSON.parse(raw) : {}; }
+                    catch (_) {
+                        await NuviieModal.alert(
+                            response.ok ? 'Resposta inválida do servidor.'
+                                        : `Erro ${response.status} ao salvar a paleta. Tente novamente.`,
+                            'Erro');
+                        return null;
+                    }
                     if (!response.ok) {
                         await NuviieModal.alert(data.error || 'Falha ao salvar paleta.', 'Erro');
                         return null;
@@ -1880,8 +1996,12 @@
 
             async addPaletteColor() {
                 const hex = (this.paletteNewHex || '').trim();
-                if (!hex) return;
-                await this.paletteRequest('POST', { hex });
+                if (!/^#?[0-9a-fA-F]{6}$/.test(hex)) {
+                    await NuviieModal.alert('Escolha ou digite uma cor válida (ex: #1A2B3C).', 'Cor inválida');
+                    return;
+                }
+                const result = await this.paletteRequest('POST', { hex: hex.startsWith('#') ? hex : '#' + hex });
+                if (result) this.paletteNewHex = '';
             },
 
             startEditPaletteColor(idx, hex) {

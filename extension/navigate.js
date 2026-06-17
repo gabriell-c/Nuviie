@@ -233,12 +233,33 @@ NuviieMaps.visitAboutTab = async () => {
   return amenities;
 };
 
+NuviieMaps.reviewContainersCount = () => (
+  document.querySelectorAll('[data-review-id], div.jftiEf').length
+);
+
+// Rola a lista de avaliações até carregar reviews suficientes (lazy-load do Maps).
+NuviieMaps.loadReviewsList = async ({ minReviews = 10, maxSteps = 8 } = {}) => {
+  let lastCount = -1;
+  for (let i = 0; i < maxSteps; i++) {
+    const count = NuviieMaps.reviewContainersCount();
+    if (count >= minReviews) break;
+    if (count === lastCount && count > 0 && i > 1) break; // não carrega mais
+    lastCount = count;
+    NuviieMaps.setScrollTop(99999);
+    await NuviieMaps.sleep(350);
+  }
+};
+
 NuviieMaps.visitReviewsTab = async ({ fast = false } = {}) => {
   const ok = await NuviieMaps.clickTab(['Avaliações', 'Avaliacoes']);
   if (!ok) {
+    // Fallback: tenta extrair o que já estiver visível na ficha.
+    await NuviieMaps.loadReviewsList({ minReviews: 5, maxSteps: 4 });
     return NuviieMaps.extractReviews();
   }
-  await NuviieMaps.scrollPanel({ light: true });
+  // Espera os primeiros containers de avaliação renderizarem após trocar de aba.
+  await NuviieMaps.waitForCondition(() => NuviieMaps.reviewContainersCount() > 0, 4000, 150);
+  await NuviieMaps.loadReviewsList({ minReviews: 10, maxSteps: fast ? 6 : 10 });
   if (!fast) {
     NuviieMaps.getDetailPanelRoot().querySelectorAll(
       'button[aria-label*="Ver mais"], button.w8nwRe, button[jsaction*="reviewfulltext"]'
@@ -248,6 +269,7 @@ NuviieMaps.visitReviewsTab = async ({ fast = false } = {}) => {
     await NuviieMaps.sleep(250);
   }
   const reviews = NuviieMaps.extractReviews();
+  NuviieMaps.setScrollTop(0);
   await NuviieMaps.goToOverview();
   await NuviieMaps.sleep(300);
   return reviews;

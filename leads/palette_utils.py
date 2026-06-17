@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import io
 import logging
 import re
 from typing import TYPE_CHECKING
 
 import requests
-from colorthief import ColorThief
 from django.utils import timezone
 
 from .profile_picture_utils import (
@@ -184,6 +184,14 @@ def extract_palette(
     if not image_bytes or len(image_bytes) < 50:
         raise ValueError('Imagem inválida ou muito pequena.')
 
+    try:
+        from colorthief import ColorThief
+    except ImportError as exc:
+        raise ValueError(
+            'Biblioteca de extração de cores não instalada (colorthief). '
+            'Rode: pip install colorthief'
+        ) from exc
+
     thief = ColorThief(io.BytesIO(image_bytes))
     raw = thief.get_palette(color_count=max_colors, quality=1) or []
     if not raw:
@@ -208,6 +216,26 @@ def extract_palette(
                 colors.append(_color_entry(varied, 0.15))
 
     return colors[:max_colors]
+
+
+def decode_image_data(data: str) -> bytes:
+    """Decodifica imagem colada (data URI base64) em bytes."""
+    if not data:
+        raise ValueError('Nenhuma imagem colada.')
+    raw_str = data.strip()
+    if raw_str.startswith('data:'):
+        if ',' not in raw_str:
+            raise ValueError('Imagem colada inválida.')
+        raw_str = raw_str.split(',', 1)[1]
+    try:
+        raw = base64.b64decode(raw_str, validate=False)
+    except Exception as exc:
+        raise ValueError('Imagem colada inválida.') from exc
+    if len(raw) < 50:
+        raise ValueError('Imagem colada inválida ou muito pequena.')
+    if len(raw) > 5_000_000:
+        raise ValueError('Imagem colada muito grande (máx 5MB).')
+    return raw
 
 
 def _fetch_url_bytes(url: str) -> bytes | None:
@@ -260,8 +288,19 @@ def get_lead_image_bytes(lead: Lead, image_url: str | None = None) -> tuple[byte
     raise ValueError('Nenhuma imagem disponível para este lead.')
 
 
-def extract_and_store_palette(lead: Lead, image_url: str | None = None) -> dict:
-    """Extrai paleta e persiste em lead.amenities['color_palette']."""
-    image_bytes, source = get_lead_image_bytes(lead, image_url)
+def extract_and_store_palette(
+    lead: Lead,
+    image_url: str | None = None,
+    image_data: str | None = None,
+) -> dict:
+    """Extrai paleta e persiste em lead.amenities['color_palette'].
+
+    image_data: imagem colada/enviada como data URI base64 (Ctrl+V, arrastar, upload).
+    """
+    if image_data:
+        image_bytes = decode_image_data(image_data)
+        source = 'pasted_image'
+    else:
+        image_bytes, source = get_lead_image_bytes(lead, image_url)
     colors = extract_palette(image_bytes)
     return persist_palette(lead, colors, source=source)

@@ -384,8 +384,11 @@ class LeadViewSet(viewsets.ModelViewSet):
 
         lead = self.get_object()
         image_url = (request.data.get('image_url') or '').strip() or None
+        image_data = request.data.get('image_data') or None
         try:
-            palette_data = extract_and_store_palette(lead, image_url=image_url)
+            palette_data = extract_and_store_palette(
+                lead, image_url=image_url, image_data=image_data,
+            )
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
