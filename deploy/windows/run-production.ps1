@@ -13,6 +13,14 @@ if (-not (Test-Path $Python)) {
 
 Write-Host "==> Nuviie produção (Waitress em 127.0.0.1:8000)" -ForegroundColor Cyan
 
+# Garante que o Ollama está rodando antes de subir o servidor
+$ollamaRunning = Test-NetConnection -ComputerName 127.0.0.1 -Port 11434 -InformationLevel Quiet
+if (-not $ollamaRunning) {
+    Write-Host "==> Ollama não detectado, iniciando..." -ForegroundColor Cyan
+    Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
+    Start-Sleep -Seconds 3
+}
+
 & $Python manage.py collectstatic --noinput
 
 $Waitress = Join-Path $Root ".venv\Scripts\waitress-serve.exe"
