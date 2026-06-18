@@ -1,0 +1,420 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div x-data="whatsappApp()" x-init="init()" class="h-full">
+
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-brands fa-whatsapp text-emerald-500"></i> WhatsApp
+            </h1>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Conecte seus números e converse com os leads pelo Evolution API.</p>
+        </div>
+        <button @click="openAddInstance()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">
+            <i class="fa-solid fa-plus mr-1"></i> Adicionar número
+        </button>
+    </div>
+
+    <template x-if="!webhookConfigured">
+        <div class="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-400 text-sm">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            <span class="font-semibold">WHATSAPP_WEBHOOK_TOKEN</span> não configurado no <code>.env</code>. O envio funciona, mas o recebimento de mensagens fica desativado.
+        </div>
+    </template>
+
+    <!-- Números conectados -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+        <template x-for="inst in instances" :key="inst.id">
+            <div class="glass-panel p-4 rounded-2xl">
+                <div class="flex items-start justify-between">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="font-semibold text-slate-800 dark:text-slate-100 truncate" x-text="inst.name"></span>
+                            <span x-show="inst.is_default" class="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-bold">PADRÃO</span>
+                        </div>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 truncate" x-text="inst.phone_number || inst.instance_name"></p>
+                    </div>
+                    <span class="shrink-0 text-xs font-semibold px-2 py-1 rounded-full"
+                          :class="inst.status === 'connected' ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                                  : inst.status === 'connecting' ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'"
+                          x-text="statusLabel(inst.status)"></span>
+                </div>
+                <div class="flex flex-wrap gap-2 mt-3">
+                    <button x-show="inst.status !== 'connected'" @click="connect(inst)"
+                            class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition">
+                        <i class="fa-solid fa-qrcode mr-1"></i> Conectar
+                    </button>
+                    <button @click="refreshState(inst)"
+                            class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition">
+                        <i class="fa-solid fa-rotate mr-1"></i> Atualizar
+                    </button>
+                    <button x-show="!inst.is_default" @click="setDefault(inst)"
+                            class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 transition">
+                        Tornar padrão
+                    </button>
+                    <button x-show="inst.status === 'connected'" @click="logoutInstance(inst)"
+                            class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/30 hover:bg-red-100 text-red-600 dark:text-red-400 transition">
+                        Desconectar
+                    </button>
+                </div>
+            </div>
+        </template>
+        <template x-if="!instances.length">
+            <div class="glass-panel p-6 rounded-2xl text-center text-sm text-slate-500 dark:text-slate-400 sm:col-span-2 lg:col-span-3">
+                Nenhum número conectado. Clique em <span class="font-semibold">Adicionar número</span> para começar.
+            </div>
+        </template>
+    </div>
+
+    <!-- Inbox -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4" style="height: calc(100vh - 22rem); min-height: 420px;">
+        <!-- Lista de conversas -->
+        <div class="glass-panel rounded-2xl overflow-hidden flex flex-col">
+            <div class="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <span class="font-semibold text-sm text-slate-700 dark:text-slate-200">Conversas</span>
+                <button @click="loadConversations()" class="text-slate-400 hover:text-emerald-500" title="Atualizar">
+                    <i class="fa-solid fa-rotate text-sm"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+                <template x-for="c in conversations" :key="c.phone">
+                    <button @click="openConversation(c)"
+                            class="w-full text-left px-3 py-3 border-b border-slate-50 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition flex items-center gap-3"
+                            :class="active && active.phone === c.phone ? 'bg-emerald-50 dark:bg-emerald-950/20' : ''">
+                        <div class="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm shrink-0">
+                            <span x-text="(c.contact_name || c.phone).charAt(0).toUpperCase()"></span>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate" x-text="c.contact_name"></span>
+                                <span class="text-[10px] text-slate-400 shrink-0" x-text="c.last_at"></span>
+                            </div>
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="text-xs text-slate-500 dark:text-slate-400 truncate" x-text="(c.last_direction === 'out' ? 'Você: ' : '') + c.last_text"></span>
+                                <span x-show="c.unread > 0" class="text-[10px] bg-emerald-500 text-white rounded-full px-1.5 py-0.5 font-bold shrink-0" x-text="c.unread"></span>
+                            </div>
+                        </div>
+                    </button>
+                </template>
+                <template x-if="!conversations.length">
+                    <p class="p-4 text-sm text-slate-400 text-center">Nenhuma conversa ainda.</p>
+                </template>
+            </div>
+        </div>
+
+        <!-- Thread -->
+        <div class="glass-panel rounded-2xl overflow-hidden flex flex-col lg:col-span-2">
+            <template x-if="!active">
+                <div class="flex-1 flex items-center justify-center text-slate-400 text-sm">
+                    <div class="text-center">
+                        <i class="fa-brands fa-whatsapp text-4xl text-emerald-500/40 mb-2"></i>
+                        <p>Selecione uma conversa para começar.</p>
+                    </div>
+                </div>
+            </template>
+            <template x-if="active">
+                <div class="flex flex-col h-full">
+                    <div class="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm">
+                            <span x-text="(active.contact_name || active.phone).charAt(0).toUpperCase()"></span>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate" x-text="active.contact_name"></p>
+                            <p class="text-xs text-slate-400 truncate">
+                                <span x-text="active.phone"></span>
+                                <template x-if="active.lead_id">
+                                    <a :href="'/?lead=' + active.lead_id" class="text-indigo-500 hover:underline ml-1">· ver lead</a>
+                                </template>
+                            </p>
+                        </div>
+                    </div>
+                    <div x-ref="thread" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/60 dark:bg-slate-900/30">
+                        <template x-for="m in messages" :key="m.id">
+                            <div class="flex" :class="m.direction === 'out' ? 'justify-end' : 'justify-start'">
+                                <div class="max-w-[75%] px-3 py-2 rounded-2xl text-sm shadow-sm"
+                                     :class="m.direction === 'out' ? 'bg-emerald-500 text-white rounded-br-sm' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-sm'">
+                                    <p class="whitespace-pre-wrap break-words" x-text="m.text || ('[' + m.message_type + ']')"></p>
+                                    <div class="text-[10px] mt-1 opacity-70 text-right flex items-center justify-end gap-1">
+                                        <span x-text="formatTime(m.timestamp || m.created_at)"></span>
+                                        <template x-if="m.direction === 'out'">
+                                            <i class="fa-solid"
+                                               :class="m.status === 'failed' ? 'fa-triangle-exclamation text-red-200' : (m.status === 'read' ? 'fa-check-double' : 'fa-check')"></i>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <form @submit.prevent="send()" class="p-3 border-t border-slate-100 dark:border-slate-800 flex items-end gap-2">
+                        <textarea x-model="draft" rows="1" placeholder="Digite uma mensagem..."
+                                  @keydown.enter.exact.prevent="send()"
+                                  class="flex-1 resize-none px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none"></textarea>
+                        <button type="submit" :disabled="sending || !draft.trim()"
+                                class="w-10 h-10 shrink-0 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 transition flex items-center justify-center">
+                            <i class="fa-solid" :class="sending ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
+                        </button>
+                    </form>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Modal: adicionar número -->
+    <div x-show="showAdd" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="showAdd = false">
+        <div class="glass-panel rounded-2xl p-6 w-full max-w-md">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Adicionar número WhatsApp</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs text-slate-500 dark:text-slate-400 block mb-1">Nome amigável</label>
+                    <input x-model="form.name" type="text" placeholder="Ex: Comercial"
+                           class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-500 dark:text-slate-400 block mb-1">Identificador da instância (Evolution)</label>
+                    <input x-model="form.instance_name" type="text" placeholder="Ex: nuviie-comercial"
+                           class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm">
+                    <p class="text-[11px] text-slate-400 mt-1">Sem espaços. Será o nome da instância criada no Evolution.</p>
+                </div>
+                <div>
+                    <label class="text-xs text-slate-500 dark:text-slate-400 block mb-1">Número (opcional, só dígitos)</label>
+                    <input x-model="form.phone_number" type="text" placeholder="5516999999999"
+                           class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm">
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 mt-5">
+                <button @click="showAdd = false" class="px-4 py-2 rounded-xl text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Cancelar</button>
+                <button @click="addInstance()" :disabled="savingInstance || !form.name || !form.instance_name"
+                        class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-40">
+                    Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: QR Code -->
+    <div x-show="showQr" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="closeQr()">
+        <div class="glass-panel rounded-2xl p-6 w-full max-w-sm text-center">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-1">Conectar WhatsApp</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho.</p>
+            <template x-if="qrImage">
+                <img :src="qrImage" alt="QR Code" class="mx-auto rounded-xl border border-slate-200 dark:border-slate-700 w-56 h-56 object-contain bg-white">
+            </template>
+            <template x-if="!qrImage && pairingCode">
+                <div class="py-6">
+                    <p class="text-xs text-slate-500 mb-1">Código de pareamento:</p>
+                    <p class="text-2xl font-mono font-bold tracking-widest text-emerald-600" x-text="pairingCode"></p>
+                </div>
+            </template>
+            <template x-if="!qrImage && !pairingCode">
+                <div class="py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-emerald-500"></i></div>
+            </template>
+            <p class="text-xs mt-4" :class="qrStatus === 'connected' ? 'text-emerald-500 font-semibold' : 'text-slate-400'"
+               x-text="qrStatus === 'connected' ? '✓ Conectado!' : 'Aguardando leitura...'"></p>
+            <button @click="closeQr()" class="mt-4 px-4 py-2 rounded-xl text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Fechar</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function whatsappApp() {
+    return {
+        instances: [],
+        conversations: [],
+        messages: [],
+        active: null,
+        draft: '',
+        sending: false,
+        webhookConfigured: {{ webhook_configured|yesno:"true,false" }},
+        showAdd: false,
+        savingInstance: false,
+        form: { name: '', instance_name: '', phone_number: '' },
+        showQr: false,
+        qrImage: '',
+        pairingCode: '',
+        qrStatus: '',
+        qrInstance: null,
+        _qrPoll: null,
+        _msgPoll: null,
+
+        async init() {
+            await this.loadInstances();
+            await this.loadConversations();
+            this.openFromQuery();
+            this._msgPoll = setInterval(() => {
+                this.loadConversations();
+                if (this.active) this.loadMessages(this.active.phone, true);
+            }, 15000);
+        },
+
+        openFromQuery() {
+            const p = new URLSearchParams(window.location.search);
+            const phone = (p.get('phone') || '').replace(/\D/g, '');
+            if (!phone) return;
+            const existing = this.conversations.find(c => c.phone === phone);
+            if (existing) { this.openConversation(existing); return; }
+            this.active = {
+                phone,
+                contact_name: p.get('name') || phone,
+                lead_id: p.get('lead') ? parseInt(p.get('lead'), 10) : null,
+            };
+            this.messages = [];
+        },
+
+        getCookie(name) {
+            const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            return m ? decodeURIComponent(m[2]) : '';
+        },
+        async api(url, opts = {}) {
+            opts.headers = Object.assign({ 'Content-Type': 'application/json', 'X-CSRFToken': this.getCookie('csrftoken') }, opts.headers || {});
+            const r = await fetch(url, opts);
+            const raw = await r.text();
+            let data = {};
+            try { data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; }
+            if (!r.ok) throw new Error(data.error || ('Erro ' + r.status));
+            return data;
+        },
+        statusLabel(s) {
+            return { connected: 'Conectado', connecting: 'Conectando', disconnected: 'Desconectado', created: 'Criada' }[s] || s;
+        },
+        formatTime(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        },
+
+        async loadInstances() {
+            try {
+                const d = await this.api('/api/whatsapp/instances/');
+                this.instances = Array.isArray(d) ? d : (d.results || []);
+            } catch (e) { console.warn(e); }
+        },
+        async loadConversations() {
+            try {
+                const d = await this.api('/api/whatsapp/messages/conversations/');
+                this.conversations = d.conversations || [];
+            } catch (e) { console.warn(e); }
+        },
+        async openConversation(c) {
+            this.active = c;
+            await this.loadMessages(c.phone, false);
+        },
+        async loadMessages(phone, keepScroll) {
+            try {
+                const d = await this.api('/api/whatsapp/messages/?phone=' + encodeURIComponent(phone));
+                const list = Array.isArray(d) ? d : (d.results || []);
+                const changed = list.length !== this.messages.length;
+                this.messages = list;
+                if (!keepScroll || changed) this.$nextTick(() => this.scrollDown());
+            } catch (e) { console.warn(e); }
+        },
+        scrollDown() {
+            const el = this.$refs.thread;
+            if (el) el.scrollTop = el.scrollHeight;
+        },
+        async send() {
+            const text = this.draft.trim();
+            if (!text || !this.active) return;
+            this.sending = true;
+            try {
+                const msg = await this.api('/api/whatsapp/messages/send/', {
+                    method: 'POST',
+                    body: JSON.stringify({ phone: this.active.phone, lead: this.active.lead_id, text }),
+                });
+                this.messages.push(msg);
+                this.draft = '';
+                this.$nextTick(() => this.scrollDown());
+                this.loadConversations();
+            } catch (e) {
+                await NuviieModal.alert(e.message, 'Falha ao enviar');
+            } finally {
+                this.sending = false;
+            }
+        },
+
+        openAddInstance() {
+            this.form = { name: '', instance_name: '', phone_number: '' };
+            this.showAdd = true;
+        },
+        async addInstance() {
+            this.savingInstance = true;
+            try {
+                const payload = {
+                    name: this.form.name.trim(),
+                    instance_name: this.form.instance_name.trim().replace(/\s+/g, '-'),
+                    phone_number: (this.form.phone_number || '').replace(/\D/g, ''),
+                };
+                await this.api('/api/whatsapp/instances/', { method: 'POST', body: JSON.stringify(payload) });
+                this.showAdd = false;
+                await this.loadInstances();
+            } catch (e) {
+                await NuviieModal.alert(e.message, 'Erro');
+            } finally {
+                this.savingInstance = false;
+            }
+        },
+        async connect(inst) {
+            this.qrInstance = inst;
+            this.qrImage = '';
+            this.pairingCode = '';
+            this.qrStatus = '';
+            this.showQr = true;
+            try {
+                const d = await this.api('/api/whatsapp/instances/' + inst.id + '/connect/', { method: 'POST' });
+                this.qrImage = d.qr || '';
+                this.pairingCode = d.pairing_code || '';
+                this.startQrPoll();
+            } catch (e) {
+                await NuviieModal.alert(e.message, 'Erro ao conectar');
+                this.showQr = false;
+            }
+        },
+        startQrPoll() {
+            this.stopQrPoll();
+            this._qrPoll = setInterval(async () => {
+                try {
+                    const d = await this.api('/api/whatsapp/instances/' + this.qrInstance.id + '/state/');
+                    this.qrStatus = d.status;
+                    if (d.status === 'connected') {
+                        this.stopQrPoll();
+                        await this.loadInstances();
+                        setTimeout(() => this.closeQr(), 1200);
+                    }
+                } catch (e) { /* segue tentando */ }
+            }, 3000);
+        },
+        stopQrPoll() {
+            if (this._qrPoll) { clearInterval(this._qrPoll); this._qrPoll = null; }
+        },
+        closeQr() {
+            this.stopQrPoll();
+            this.showQr = false;
+            this.loadInstances();
+        },
+        async refreshState(inst) {
+            try {
+                await this.api('/api/whatsapp/instances/' + inst.id + '/state/');
+                await this.loadInstances();
+            } catch (e) { await NuviieModal.alert(e.message, 'Erro'); }
+        },
+        async setDefault(inst) {
+            try {
+                await this.api('/api/whatsapp/instances/' + inst.id + '/set-default/', { method: 'POST' });
+                await this.loadInstances();
+            } catch (e) { await NuviieModal.alert(e.message, 'Erro'); }
+        },
+        async logoutInstance(inst) {
+            const ok = await NuviieModal.confirm('Desconectar este número do WhatsApp?', 'Confirmar');
+            if (!ok) return;
+            try {
+                await this.api('/api/whatsapp/instances/' + inst.id + '/logout/', { method: 'POST' });
+                await this.loadInstances();
+            } catch (e) { await NuviieModal.alert(e.message, 'Erro'); }
+        },
+    };
+}
+</script>
+{% endblock %}

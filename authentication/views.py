@@ -19,6 +19,13 @@ from django.views.decorators.http import require_POST
 
 from .models import CustomUser
 from .whatsapp import clean_phone_number, send_whatsapp_otp
+from .face_store import (
+    encode_samples_to_bytes,
+    decode_samples_from_bytes,
+    export_profile,
+    import_profiles,
+    remove_profile,
+)
 from audit.services import log_activity
 
 logger = logging.getLogger(__name__)
@@ -89,21 +96,25 @@ def compute_face_encoding(img_bgr: np.ndarray) -> list[float] | None:
 
 
 # ── Armazenamento multi-pose ─────────────────────────────────────────────────
+# encode_samples_to_bytes / decode_samples_from_bytes vêm de face_store.py
+# (perfil facial portátil, espelhado em arquivo versionável).
 
-def encode_samples_to_bytes(vectors: list[list[float]]) -> bytes:
-    return json.dumps({"samples": vectors}).encode()
+
+# Restaura perfis faciais dos arquivos para o banco uma vez por processo.
+_face_profiles_synced = False
 
 
-def decode_samples_from_bytes(data: bytes) -> list[list[float]]:
+def _ensure_face_profiles_synced():
+    global _face_profiles_synced
+    if _face_profiles_synced:
+        return
+    _face_profiles_synced = True
     try:
-        obj = json.loads(data.decode())
-        if isinstance(obj, dict) and "samples" in obj:
-            return obj["samples"]
-        if isinstance(obj, list):
-            return [obj]
+        restored, _ = import_profiles()
+        if restored:
+            logger.info("Perfis faciais restaurados de arquivo: %d", restored)
     except Exception:
-        pass
-    return []
+        logger.exception("Falha ao sincronizar perfis faciais")
 
 
 # ── Comparação ──────────────────────────────────────────────────────────────
@@ -203,6 +214,9 @@ def face_register_view(request):
         user.face_login_enabled = True
         user.save()
 
+        # Espelha o perfil em arquivo versionável para sobreviver a troca de PC / git clone.
+        export_profile(user)
+
         log_activity(
             'face_register',
             f'Cadastro facial concluído ({len(vectors)} poses).',
@@ -221,6 +235,9 @@ def face_register_view(request):
 
 def face_login_view(request):
     """Login using facial recognition — AJAX multi-frame with multi-sample matching."""
+    # Garante que perfis salvos em arquivo estejam restaurados no banco.
+    _ensure_face_profiles_synced()
+
     if request.method == 'POST':
 
         # ── AJAX multi-frame submission ──────────────────────────────────
@@ -481,6 +498,10 @@ def face_toggle_view(request):
         if not user.face_login_enabled:
             user.face_encoding = None
         user.save()
+        if user.face_login_enabled and user.face_encoding:
+            export_profile(user)
+        elif not user.face_login_enabled:
+            remove_profile(user.email)
         msg = "Reconhecimento facial ativado!" if user.face_login_enabled else "Reconhecimento facial desativado."
         messages.success(request, msg)
     return redirect('profile')

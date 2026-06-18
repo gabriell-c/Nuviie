@@ -98,6 +98,7 @@ INSTALLED_APPS = [
     'finance',
     'notifications',
     'site_audit',
+    'whatsapp',
 ]
 
 MIDDLEWARE = [
@@ -224,6 +225,8 @@ LOGOUT_REDIRECT_URL = 'login'
 EVOLUTION_API_URL      = os.environ.get('EVOLUTION_API_URL', '')
 EVOLUTION_API_KEY      = os.environ.get('EVOLUTION_API_KEY', '')
 EVOLUTION_INSTANCE     = os.environ.get('EVOLUTION_INSTANCE', '')
+# Token (Bearer) que o Evolution deve enviar no webhook → Nuviie. Gere um valor forte.
+WHATSAPP_WEBHOOK_TOKEN = os.environ.get('WHATSAPP_WEBHOOK_TOKEN', '')
 OLLAMA_URL             = os.environ.get('OLLAMA_URL', 'http://localhost:11434/api/chat')
 OLLAMA_MODEL           = os.environ.get('OLLAMA_MODEL', 'qwen2.5:7b')
 
@@ -285,6 +288,11 @@ LOGGING = {
         'django.request': {
             'handlers': ['console'],
             'level': 'WARNING',
+            'propagate': False,
+        },
+        'whatsapp': {
+            'handlers': ['console'],
+            'level': 'INFO',
             'propagate': False,
         },
     },

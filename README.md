@@ -6,6 +6,7 @@
 ![Django](https://img.shields.io/badge/Django-6.0-green?logo=django&logoColor=white)
 ![Chrome](https://img.shields.io/badge/Chrome_Extension-MV3-yellow)
 ![Ollama](https://img.shields.io/badge/Ollama-IA_Local-purple)
+![WhatsApp](https://img.shields.io/badge/WhatsApp-Evolution_API-25D366?logo=whatsapp&logoColor=white)
 
 ---
 
@@ -17,9 +18,10 @@ O **Nuviie Hub** é um monólito Django modular para uso **local** (você e sua 
 - 📊 **Organizar oportunidades** num CRM Kanban visual
 - 📄 **Gerar contratos** a partir de templates PDF
 - 💬 **Simular atendimento** com IA local (Ollama)
+- 🟢 **WhatsApp no CRM** — conecte 1+ números (Evolution API), envie e receba mensagens vinculadas aos leads
 - 📚 **Biblioteca de Prompts** — CRUD global de prompts e categorias para a equipe
 - ⚖️ **Regras de Pontuação** — motor configurável de score para leads (sem limite 0–100)
-- 🔐 **Autenticar com segurança** — e-mail, WhatsApp OTP e login facial
+- 🔐 **Autenticar com segurança** — e-mail, WhatsApp OTP e login facial (perfil portátil entre PCs)
 
 Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
 
@@ -40,9 +42,10 @@ Interface moderna com tema escuro, Tailwind CSS e Alpine.js.
 | 📊 **Analytics Servidor** | CPU, RAM, disco, rede (psutil) | `/monitoring/analytics/` |
 | 📜 **Histórico** | Auditoria de ações no sistema | `/audit/history/` |
 | 💬 **Chat IA** | Assistente comercial com Ollama | `/chat/` |
+| 🟢 **WhatsApp** | Conectar números (QR), enviar/receber mensagens por lead (Evolution API) | `/whatsapp/` |
 | 📚 **Biblioteca de Prompts** | CRUD global de prompts e categorias (título, conteúdo, cor) | `/biblioteca-prompts/` |
 | ⚖️ **Regras de Pontuação** | CRUD global de regras e condições; score ilimitado | `/regras-pontuacao/` |
-| 👤 **Autenticação** | Login, registro, face, OTP WhatsApp | `/auth/login/` |
+| 👤 **Autenticação** | Login, registro, face (portátil), OTP WhatsApp | `/auth/login/` |
 
 ---
 
@@ -205,7 +208,7 @@ extension/
 
 ### 📋 CRM Kanban
 
-**Status:** Novo Lead → Contatado → Em Negociação → Retornou → Fechado / Perdido
+**Status:** Novo Lead → Contatado → Em Negociação → Em Produção → Projeto Entregue / Perdido
 
 **Como usar:**
 
@@ -241,6 +244,42 @@ OLLAMA_MODEL=qwen2.5:7b
 ```
 
 Acesse `/chat/` — o Ollama **não é obrigatório** para leads e Kanban.
+
+---
+
+### 🟢 WhatsApp (Evolution API)
+
+**O que faz:** conecta um ou mais números de WhatsApp ao CRM via **Evolution API** e permite **enviar e receber** mensagens vinculadas automaticamente aos leads (pelo telefone).
+
+**Recursos:**
+
+- ✅ **Vários números** — cada número é uma "instância"; defina um como padrão de envio
+- 📲 **Conectar por QR Code** direto na tela (`/whatsapp/`)
+- 💬 **Inbox** estilo chat: conversas, histórico e envio
+- 🔗 **Vínculo automático** com o lead (casa o número, tolerante a DDI/9º dígito)
+- 🔔 Mensagem recebida vira **notificação** no sino do header
+- 🚀 Botão **WhatsApp CRM** no modal do lead abre a conversa já pronta
+
+**Pré-requisitos:**
+
+1. Um servidor **Evolution API** rodando (Docker é o jeito mais comum)
+2. No `.env`: `EVOLUTION_API_URL` e `EVOLUTION_API_KEY`
+3. Para **receber** mensagens: `WHATSAPP_WEBHOOK_TOKEN` (token forte) e `NUVIIE_PUBLIC_BASE_URL` (URL pública, ex.: Cloudflare Tunnel)
+
+> Só **enviar** mensagens já funciona apenas com `EVOLUTION_API_URL` + `EVOLUTION_API_KEY`.
+> O **recebimento** exige o webhook (token + URL pública), pois o Evolution precisa alcançar o CRM.
+
+**Como usar:**
+
+1. Configure o `.env` (veja acima) e reinicie o servidor
+2. Acesse **WhatsApp** no menu lateral → **Adicionar número**
+3. Informe um nome (ex.: *Comercial*) e um identificador de instância (ex.: *nuviie-comercial*)
+4. Clique em **Conectar** e leia o **QR Code** no app do WhatsApp (Aparelhos conectados)
+5. Repita para um **segundo número**, se quiser, e marque um como **padrão**
+6. Converse pela tela `/whatsapp/` ou pelo botão **WhatsApp CRM** dentro do lead
+
+> O OTP de recuperação de senha usa a instância única `EVOLUTION_INSTANCE`. Já o
+> módulo do CRM gerencia os números pela tela (não usa `EVOLUTION_INSTANCE`).
 
 ---
 
@@ -315,6 +354,29 @@ Filtros em prompts: `?category=<id>` e `?search=<texto>`
 - Login facial: `/auth/face-register/` + `/auth/face-login/`
 - Reset de senha via WhatsApp: `/auth/password-reset/` (Evolution API ou simulado no console)
 
+**🔁 Login facial portátil (entre PCs / após `git clone`):**
+
+O embedding facial (vetor, **não** a foto) fica no banco, mas é espelhado em
+arquivos versionáveis em `authentication/face_profiles/<email>.json`. Assim o
+cadastro sobrevive a troca de computador e a um `git clone`.
+
+- **Automático:** ao cadastrar/ativar o rosto, o arquivo é gerado; no boot do
+  servidor e na tela de login facial os arquivos são restaurados para o banco
+  (casando pelo **e-mail** do usuário).
+- **Manual:**
+
+```bash
+python manage.py sync_faces             # restaura arquivos -> banco (não sobrescreve)
+python manage.py sync_faces --overwrite # restaura e sobrescreve
+python manage.py sync_faces --export    # exporta banco -> arquivos
+```
+
+> **Levar um cadastro antigo para outro PC:** no PC onde o rosto já está
+> cadastrado, rode `python manage.py sync_faces --export`, faça commit da pasta
+> `authentication/face_profiles/` e dê `git pull` no outro PC (login com o mesmo e-mail).
+> Esses `.json` contêm dados biométricos e são versionados de propósito — se
+> preferir não commitar, adicione `authentication/face_profiles/*.json` ao `.gitignore`.
+
 ---
 
 ## 🔌 API REST
@@ -386,6 +448,20 @@ curl -X POST -u email@exemplo.com:senha \
   http://127.0.0.1:8000/api/prompts/
 ```
 
+### WhatsApp (requer login)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET/POST | `/api/whatsapp/instances/` | Lista/cria números (instâncias) |
+| POST | `/api/whatsapp/instances/{id}/connect/` | Cria a instância no Evolution e retorna o QR |
+| GET | `/api/whatsapp/instances/{id}/state/` | Estado da conexão (sincroniza status) |
+| POST | `/api/whatsapp/instances/{id}/set-default/` | Define como número padrão de envio |
+| POST | `/api/whatsapp/instances/{id}/logout/` | Desconecta o número |
+| GET | `/api/whatsapp/messages/conversations/` | Conversas agrupadas por telefone |
+| GET | `/api/whatsapp/messages/?lead={id}` | Mensagens de um lead (ou `?phone=`) |
+| POST | `/api/whatsapp/messages/send/` | Envia texto (`{lead, phone, text}`) |
+| POST | `/api/whatsapp/webhook/` | Recebe eventos do Evolution (Bearer token) |
+
 ### Health check
 
 ```bash
@@ -411,9 +487,10 @@ Copie `.env.example` para `.env`:
 | `CORS_ALLOWED_ORIGINS` | Não | Origens CORS permitidas | vazio (DEBUG = aberto) |
 | `OLLAMA_URL` | Não | URL da API Ollama | `localhost:11434` |
 | `OLLAMA_MODEL` | Não | Modelo Ollama | `qwen2.5:7b` |
-| `EVOLUTION_API_URL` | Não | API WhatsApp | simulado no console |
-| `EVOLUTION_API_KEY` | Não | Chave Evolution API | — |
-| `EVOLUTION_INSTANCE` | Não | Instância WhatsApp | — |
+| `EVOLUTION_API_URL` | WhatsApp | Endereço do servidor Evolution API (envio e recebimento) | simulado no console |
+| `EVOLUTION_API_KEY` | WhatsApp | API key global do Evolution | — |
+| `EVOLUTION_INSTANCE` | OTP | Instância única usada **só** pelo OTP de senha | — |
+| `WHATSAPP_WEBHOOK_TOKEN` | Receber msgs | Token Bearer do webhook Evolution → Nuviie (sem ele, só envio funciona) | vazio |
 
 ---
 
@@ -436,6 +513,7 @@ flowchart TB
         leads[leads]
         contracts[contracts]
         chat[chat]
+        wa[whatsapp]
         prompts[prompt_library]
         audit[audit]
         monitoring[monitoring]
@@ -444,7 +522,7 @@ flowchart TB
     subgraph external [Servicos opcionais]
         ddg[DuckDuckGo HTML]
         ollama[Ollama Local]
-        whatsapp[Evolution API]
+        evo[Evolution API]
     end
 
     maps --> ext
@@ -454,22 +532,25 @@ flowchart TB
     leads --> ddg
     monitoring --> psutil[psutil]
     chat --> ollama
-    auth --> whatsapp
+    auth --> evo
+    wa -->|enviar| evo
+    evo -->|webhook receber| wa
 ```
 
 ```
 Nuviie/
 ├── core/              → settings, urls, wsgi
-├── authentication/    → login, OTP, face recognition
+├── authentication/    → login, OTP, face recognition (perfil portátil em face_profiles/)
 ├── leads/             → import_utils, instagram_scraper, Lead model, Kanban, API
 ├── extension/         → Extensão Chrome Maps Extractor (MV3)
 ├── contracts/         → PDF/DOCX templates, parser inteligente, geração
 ├── audit/             → ActivityLog e histórico de auditoria
 ├── monitoring/        → Analytics do servidor (psutil)
 ├── chat/              → conversas com Ollama
+├── whatsapp/          → WhatsApp via Evolution API (instâncias, envio, webhook, inbox)
 ├── prompt_library/    → biblioteca global de prompts e categorias (CRUD + API)
 ├── lead_scoring/      → motor e CRUD de regras de pontuação de leads
-├── templates/         → HTML (auth, leads, contracts, chat, prompt_library, lead_scoring)
+├── templates/         → HTML (auth, leads, contracts, chat, whatsapp, prompt_library, lead_scoring)
 ├── deploy/            → scripts Windows (Waitress, backup, Cloudflare Tunnel)
 ├── .env.example       → template de configuração
 └── manage.py
@@ -512,7 +593,15 @@ NUVIIE_EXTENSION_TOKEN=token-forte-aleatorio
 NUVIIE_EXTENSION_USER=admin
 CORS_ALLOWED_ORIGINS=https://crm.seudominio.com
 OLLAMA_URL=http://127.0.0.1:11434/api/chat
+
+# WhatsApp (Evolution API) — opcional
+EVOLUTION_API_URL=https://sua-evolution-api.com
+EVOLUTION_API_KEY=sua-api-key
+WHATSAPP_WEBHOOK_TOKEN=token-forte-do-webhook
 ```
+
+> Com a URL pública (`NUVIIE_PUBLIC_BASE_URL`) + `WHATSAPP_WEBHOOK_TOKEN`, o
+> Evolution consegue entregar as mensagens recebidas no CRM (webhook).
 
 Gere `SECRET_KEY`:
 
@@ -665,6 +754,8 @@ Sim, para uso local. Carregue sem compactação no Chrome — não precisa publi
 - [x] Importação bulk via API token + upload CSV/JSON
 - [x] Biblioteca de Prompts (CRUD global + API REST)
 - [x] Regras de Pontuação configuráveis (CRUD + breakdown no Kanban)
+- [x] WhatsApp no CRM via Evolution API (multi-número, envio/recebimento, inbox)
+- [x] Login facial portátil (perfil em arquivo, sobrevive a troca de PC/clone)
 - [ ] Integrar prompts com o Chat IA (“Usar no Chat”)
 - [ ] Fila de tarefas (Celery) para scrapers longos
 - [ ] Suporte PostgreSQL via `DATABASE_URL`

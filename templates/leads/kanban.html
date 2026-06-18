@@ -474,13 +474,21 @@
                     <div class="glass-panel p-5 rounded-2xl space-y-4 transition-all duration-300">
                         <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Ações Rápidas de Contato</h4>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <!-- WhatsApp -->
+                            <!-- WhatsApp (wa.me) -->
                             <a :href="currentLead.whatsapp_link" target="_blank" 
                                :class="currentLead.normalized_phone ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
                                :title="currentLead.whatsapp_link || 'Telefone não disponível'"
                                class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
                                 <i class="fa-brands fa-whatsapp text-xl mb-1.5"></i>
                                 <span>WhatsApp</span>
+                            </a>
+                            <!-- WhatsApp pelo CRM (Evolution) -->
+                            <a :href="currentLead.normalized_phone ? ('/whatsapp/?phone=' + encodeURIComponent(currentLead.normalized_phone) + '&lead=' + currentLead.id + '&name=' + encodeURIComponent(currentLead.name || '')) : '#'"
+                               :class="currentLead.normalized_phone ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-teal-500/20 hover:scale-[1.03]' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 pointer-events-none opacity-60'"
+                               title="Conversar pelo CRM (Evolution)"
+                               class="flex flex-col items-center justify-center p-3.5 rounded-xl border border-transparent font-semibold text-[10px] text-center shadow-md transition-all duration-200">
+                                <i class="fa-solid fa-comments text-xl mb-1.5"></i>
+                                <span>WhatsApp CRM</span>
                             </a>
                             <!-- Website -->
                             <a :href="currentLead.website" target="_blank" 

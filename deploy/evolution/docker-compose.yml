@@ -1,0 +1,72 @@
+# Evolution API (v2) — servidor de WhatsApp para o Nuviie
+# Subir:   docker compose up -d
+# Logs:    docker compose logs -f evolution
+# Parar:   docker compose down   (use "down -v" para apagar tudo, inclusive sessões)
+#
+# Depois de subir:
+#   EVOLUTION_API_URL = http://localhost:8080   (ou a URL pública)
+#   EVOLUTION_API_KEY = o valor de AUTHENTICATION_API_KEY abaixo
+#
+# Os valores vêm do arquivo .env nesta mesma pasta (copie de .env.example).
+
+services:
+  evolution:
+    image: atendai/evolution-api:v2.1.1
+    container_name: evolution_api
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      # ── Servidor ──────────────────────────────────────────────────────────
+      SERVER_URL: ${SERVER_URL:-http://localhost:8080}
+      # ⚠️ ESTA é a sua EVOLUTION_API_KEY (use no .env do Nuviie)
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DEL_INSTANCE: "false"
+      LANGUAGE: pt-BR
+
+      # ── Banco de dados (Postgres) ─────────────────────────────────────────
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${POSTGRES_PASSWORD}@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+
+      # ── Cache (Redis) ─────────────────────────────────────────────────────
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "true"
+      CACHE_LOCAL_ENABLED: "false"
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: evolution_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: evolution_redis
+    restart: always
+    volumes:
+      - evolution_redis:/data
+
+volumes:
+  evolution_instances:
+  evolution_pgdata:
+  evolution_redis:

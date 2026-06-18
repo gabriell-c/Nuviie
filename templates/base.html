@@ -151,6 +151,11 @@
                 <span>Atendente IA</span>
             </a>
 
+            <a href="{% url 'whatsapp' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'whatsapp' %} bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
+                <i class="fa-brands fa-whatsapp text-lg"></i>
+                <span>WhatsApp</span>
+            </a>
+
             <a href="{% url 'prompt_library' %}" class="flex items-center space-x-3 px-4 py-3 rounded-xl transition font-medium text-sm {% if current_page == 'prompt_library' %} bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 {% else %} text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-100 {% endif %}">
                 <i class="fa-solid fa-book-bookmark text-lg"></i>
                 <span>Biblioteca de Prompts</span>

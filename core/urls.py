@@ -44,6 +44,7 @@ urlpatterns = [
     path('', include('finance.urls')),
     path('', include('notifications.urls')),
     path('', include('site_audit.urls')),
+    path('', include('whatsapp.urls')),
 ]
 
 if settings.DEBUG:

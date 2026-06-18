@@ -48,16 +48,12 @@ def send_whatsapp_otp(phone_number, otp_code):
         "Content-Type": "application/json",
         "apikey": EVOLUTION_API_KEY
     }
+    # Evolution API v2: campos `text`/`delay`/`linkPreview` ficam na raiz do payload.
     payload = {
         "number": cleaned_number,
-        "options": {
-            "delay": 500,
-            "presence": "composing",
-            "linkPreview": False
-        },
-        "textMessage": {
-            "text": message_text
-        }
+        "text": message_text,
+        "delay": 500,
+        "linkPreview": False,
     }
     
     try:
