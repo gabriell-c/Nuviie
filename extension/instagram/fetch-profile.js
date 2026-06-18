@@ -177,6 +177,22 @@
     return null;
   };
 
+  NS.extractAddressDetailsFromObject = function (addr) {
+    var out = { street_address: null, city_name: null, zip_code: null, latitude: null, longitude: null };
+    if (!addr || typeof addr !== 'object') return out;
+    out.street_address = addr.street_address || null;
+    out.city_name = addr.city_name || null;
+    out.zip_code = addr.zip_code || null;
+    if (addr.latitude != null) out.latitude = addr.latitude;
+    if (addr.longitude != null) out.longitude = addr.longitude;
+    return out;
+  };
+
+  NS.isValidEmail = function (email) {
+    if (!email) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim());
+  };
+
   NS.extractProfilePicsFromHtml = function (html) {
     var out = { profile_pic_url: null, profile_pic_url_hd: null };
     if (!html) return out;
@@ -304,6 +320,21 @@
       user.connected_fb_page = parsed.connected_fb_page;
     }
 
+    var carryFields = [
+      'whatsapp_number', 'is_whatsapp_linked', 'business_contact_method',
+      'public_email', 'business_email', 'is_business_account',
+      'is_professional_account', 'account_type', 'category_id', 'pronouns',
+      'city_name', 'zip_code', 'latitude', 'longitude', 'fbid', 'is_verified',
+    ];
+    carryFields.forEach(function (f) {
+      var cur = user[f];
+      var val = parsed[f];
+      if ((cur === undefined || cur === null || cur === '')
+        && val !== undefined && val !== null && val !== '') {
+        user[f] = val;
+      }
+    });
+
     return user;
   };
 
@@ -349,6 +380,25 @@
     }
 
     user.business_address = NS.parseAddress(user.business_address_json) || user.business_address;
+
+    var addrDetails = NS.extractAddressDetailsFromObject(user.business_address_json);
+    if (addrDetails.city_name && !user.city_name) user.city_name = addrDetails.city_name;
+    if (addrDetails.zip_code && !user.zip_code) user.zip_code = addrDetails.zip_code;
+    if (addrDetails.latitude != null && user.latitude == null) user.latitude = addrDetails.latitude;
+    if (addrDetails.longitude != null && user.longitude == null) user.longitude = addrDetails.longitude;
+
+    if (user.business_contact_method
+      && String(user.business_contact_method).toLowerCase() === 'unknown') {
+      user.business_contact_method = null;
+    }
+    if (user.whatsapp_number) {
+      user.whatsapp_number = String(user.whatsapp_number).trim() || null;
+      if (user.whatsapp_number && user.is_whatsapp_linked == null) {
+        user.is_whatsapp_linked = true;
+      }
+    }
+    if (user.public_email && !NS.isValidEmail(user.public_email)) user.public_email = null;
+    if (user.business_email && !NS.isValidEmail(user.business_email)) user.business_email = null;
 
     if (user.public_phone_number && !user.business_phone_number) {
       user.business_phone_number = user.business_phone_number || user.public_phone_number;
@@ -758,6 +808,80 @@
 
     var fbPage = html.match(/"connected_fb_page"\s*:\s*"((?:\\.|[^"\\])*)"/);
     if (fbPage) result.connected_fb_page = NS.unescapeJsonString(fbPage[1]);
+
+    var waNumber = html.match(/"whatsapp_number"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (waNumber) {
+      var wa = NS.unescapeJsonString(waNumber[1]).trim();
+      if (wa) result.whatsapp_number = wa;
+    }
+
+    var waLinked = html.match(/"is_whatsapp_linked"\s*:\s*(true|false)/);
+    if (waLinked) result.is_whatsapp_linked = waLinked[1] === 'true';
+
+    var contactMethod = html.match(/"business_contact_method"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (contactMethod) {
+      var cm = NS.unescapeJsonString(contactMethod[1]);
+      if (cm && cm.toLowerCase() !== 'unknown') result.business_contact_method = cm;
+    }
+
+    var pubEmail = html.match(/"public_email"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (pubEmail) {
+      var pe = NS.unescapeJsonString(pubEmail[1]).trim();
+      if (NS.isValidEmail(pe)) result.public_email = pe;
+    }
+
+    var bizEmail = html.match(/"business_email"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (bizEmail) {
+      var be = NS.unescapeJsonString(bizEmail[1]).trim();
+      if (NS.isValidEmail(be)) result.business_email = be;
+    }
+
+    var isBiz = html.match(/"is_business_account"\s*:\s*(true|false)/);
+    if (isBiz) result.is_business_account = isBiz[1] === 'true';
+
+    var isPro = html.match(/"is_professional_account"\s*:\s*(true|false)/);
+    if (isPro) result.is_professional_account = isPro[1] === 'true';
+
+    var acctType = html.match(/"account_type"\s*:\s*(\d+)/);
+    if (acctType) result.account_type = parseInt(acctType[1], 10);
+
+    var catId = html.match(/"category_id"\s*:\s*"?(\d+)"?/);
+    if (catId) result.category_id = catId[1];
+
+    var pronounsMatch = html.match(/"pronouns"\s*:\s*\[([^\]]*)\]/);
+    if (pronounsMatch && pronounsMatch[1].trim()) {
+      try {
+        var pronArr = JSON.parse('[' + pronounsMatch[1] + ']');
+        if (pronArr.length) result.pronouns = pronArr.join('/');
+      } catch (e) {
+        /* ignore */
+      }
+    }
+
+    var addrDetailsStr = html.match(/"business_address_json"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    if (addrDetailsStr) {
+      try {
+        var addrObj = JSON.parse(NS.unescapeJsonString(addrDetailsStr[1]));
+        var det = NS.extractAddressDetailsFromObject(addrObj);
+        if (det.city_name) result.city_name = det.city_name;
+        if (det.zip_code) result.zip_code = det.zip_code;
+        if (det.latitude != null) result.latitude = det.latitude;
+        if (det.longitude != null) result.longitude = det.longitude;
+        if (!result.business_address) {
+          var addrStr = NS.parseAddress(addrObj);
+          if (addrStr) result.business_address = addrStr;
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    if (!result.city_name) {
+      var cityName = html.match(/"city_name"\s*:\s*"((?:\\.|[^"\\])*)"/);
+      if (cityName) result.city_name = NS.unescapeJsonString(cityName[1]);
+    }
+
+    var fbid = html.match(/"fbid"\s*:\s*"?(\d{5,})"?/);
+    if (fbid) result.fbid = fbid[1];
 
     return result;
   };

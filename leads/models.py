@@ -26,6 +26,7 @@ class Lead(models.Model):
     # Contato
     phone_number = models.CharField(max_length=50, blank=True, null=True)
     normalized_phone = models.CharField(max_length=30, blank=True, null=True)
+    email = models.EmailField(max_length=254, blank=True, null=True)
     website = models.URLField(max_length=500, blank=True, null=True)
 
     # Redes sociais

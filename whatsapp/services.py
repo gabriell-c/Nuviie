@@ -67,6 +67,16 @@ class EvolutionClient:
     def configured(self) -> bool:
         return bool(self.base_url and self.api_key)
 
+    def _looks_like_evolution_misconfig(self, resp) -> bool:
+        """Detecta respostas que não vêm de um Evolution real (ex.: HTML do Django)."""
+        content_type = (resp.headers.get('Content-Type') or '').lower()
+        body_start = (resp.text or '').lstrip()[:200].lower()
+        return (
+            'text/html' in content_type
+            or body_start.startswith('<!doctype')
+            or body_start.startswith('<html')
+        )
+
     def _request(self, method, path, *, json=None, params=None):
         if not self.configured:
             raise EvolutionError('Evolution API não configurado (URL/API key ausentes).')
@@ -79,6 +89,18 @@ class EvolutionClient:
         except requests.RequestException as exc:
             logger.exception('Falha de conexão com Evolution API')
             raise EvolutionError(f'Falha de conexão com o Evolution API: {exc}') from exc
+
+        # A URL aponta para algo que não é um servidor Evolution (retornou HTML).
+        if self._looks_like_evolution_misconfig(resp):
+            logger.error(
+                'Evolution API %s %s -> %s: resposta HTML (URL não é um servidor Evolution). base_url=%s',
+                method, path, resp.status_code, self.base_url,
+            )
+            raise EvolutionError(
+                f'EVOLUTION_API_URL ("{self.base_url}") não aponta para um servidor Evolution '
+                f'(a resposta foi uma página HTML, não JSON). Verifique se o Evolution API está '
+                f'rodando e ajuste EVOLUTION_API_URL para o endereço dele (ex.: http://localhost:8080).'
+            )
 
         if resp.status_code not in (200, 201):
             detail = ''

@@ -285,6 +285,12 @@ NuviieInstagramMap.buildBio = (raw) => {
   if (raw.business_email || raw.public_email) {
     parts.push(`Email: ${raw.business_email || raw.public_email}`);
   }
+  if (raw.whatsapp_number || raw.is_whatsapp_linked) {
+    parts.push(`WhatsApp vinculado${raw.whatsapp_number ? `: ${raw.whatsapp_number}` : ''}`);
+  }
+  if (raw.connected_fb_page) {
+    parts.push(`Facebook conectado: ${raw.connected_fb_page}`);
+  }
   const cat = raw.business_category_name || raw.category_name;
   if (cat && String(cat).toLowerCase() !== 'none') {
     parts.push(`Categoria IG: ${cat}`);
@@ -304,6 +310,17 @@ NuviieInstagramMap.buildAmenities = (raw, handle) => {
     is_private: !!raw.is_private,
     is_business_account: !!raw.is_business_account,
   };
+  if (raw.is_professional_account != null) amenities.is_professional_account = !!raw.is_professional_account;
+  if (raw.account_type != null) amenities.account_type = raw.account_type;
+  if (raw.category_id) amenities.category_id = raw.category_id;
+  if (raw.pronouns) amenities.pronouns = raw.pronouns;
+  if (raw.whatsapp_number) amenities.whatsapp_number = raw.whatsapp_number;
+  if (raw.is_whatsapp_linked != null) amenities.is_whatsapp_linked = !!raw.is_whatsapp_linked;
+  if (raw.business_contact_method) amenities.business_contact_method = raw.business_contact_method;
+  if (raw.public_email || raw.business_email) amenities.email = raw.public_email || raw.business_email;
+  if (raw.zip_code) amenities.zip_code = raw.zip_code;
+  if (raw.latitude != null) amenities.latitude = raw.latitude;
+  if (raw.longitude != null) amenities.longitude = raw.longitude;
   if (raw.bio_links_parsed?.length) {
     amenities.bio_links = raw.bio_links_parsed;
   }
@@ -442,11 +459,23 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
       }
     }
   }
-  if (normalized && !phoneRaw) {
-    phoneRaw = NuviieInstagramMap.formatPhoneBr(normalized);
+  if (!normalized && raw.whatsapp_number) {
+    normalized = NuviieInstagramMap.normalizePhone(raw.whatsapp_number) || normalized;
   }
   if (!phoneRaw && normalized) {
     phoneRaw = NuviieInstagramMap.formatPhoneBr(normalized);
+  }
+
+  if (!ctx.facebook && raw.connected_fb_page) {
+    const fb = String(raw.connected_fb_page).trim();
+    if (/^\d+$/.test(fb)) {
+      ctx.facebook = `https://www.facebook.com/${fb}`;
+    } else if (fb && !/\s/.test(fb)) {
+      ctx.facebook = `https://www.facebook.com/${fb.replace(/^@/, '')}`;
+    }
+  }
+  if (!ctx.facebook && raw.fbid && /^\d+$/.test(String(raw.fbid))) {
+    ctx.facebook = `https://www.facebook.com/${raw.fbid}`;
   }
 
   if (!ctx.facebook && bioLinks.facebook) ctx.facebook = bioLinks.facebook;
@@ -466,7 +495,8 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
   } else {
     businessHours = NuviieInstagramMap.extractHoursFromBio(bioText);
   }
-  let leadCity = city || NuviieInstagramMap.extractCityFromBio(bioText) || '';
+  let leadCity = city || raw.city_name || NuviieInstagramMap.extractCityFromBio(bioText) || '';
+  const email = raw.public_email || raw.business_email || null;
   const instagramUrl = `https://www.instagram.com/${handle}/`;
 
   return {
@@ -475,6 +505,7 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
     city: leadCity,
     phone_number: phoneRaw,
     normalized_phone: normalized,
+    email,
     website: ctx.website,
     website_detected_type: ctx.website_detected_type,
     instagram: ctx.instagram,

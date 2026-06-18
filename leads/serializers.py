@@ -39,6 +39,7 @@ class LeadSerializer(serializers.ModelSerializer):
         model = Lead
         fields = [
             'id', 'name', 'category', 'city', 'phone_number', 'normalized_phone',
+            'email',
             'website', 'website_detected_type', 'website_detected_type_display',
             'instagram', 'instagram_link', 'facebook', 'youtube', 'twitter', 'linkedin',
             'bio', 'address', 'rating', 'review_count',

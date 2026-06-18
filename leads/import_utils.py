@@ -107,6 +107,8 @@ def _update_instagram_lead(existing: Lead, item: dict) -> None:
         existing.normalized_phone = item['normalized_phone']
     if not existing.phone_number and existing.normalized_phone:
         existing.phone_number = _format_phone_br(existing.normalized_phone)
+    if item.get('email') and not existing.email:
+        existing.email = item['email']
     if item.get('is_verified') is not None:
         existing.is_verified = item['is_verified']
     existing.save()
@@ -261,6 +263,7 @@ def save_leads_from_dicts(user, leads: list[dict]) -> tuple[int, int, int, dict]
             city=city,
             phone_number=item.get('phone_number'),
             normalized_phone=norm_p,
+            email=item.get('email'),
             website=website,
             website_detected_type=website_type,
             instagram=inst,
