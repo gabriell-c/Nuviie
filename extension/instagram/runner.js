@@ -313,11 +313,29 @@ const NuviieInstagramRunner = {
     return true;
   },
 
-  formatEnrichStats(saved, filtered, failed) {
+  formatEnrichStats(saved, filtered, failed, skipped) {
     const parts = [`${saved} extraídos`];
     if (filtered) parts.push(`${filtered} filtrados`);
+    if (skipped) parts.push(`${skipped} já no banco`);
     if (failed) parts.push(`${failed} falhas`);
     return parts.join(', ');
+  },
+
+  async fetchExistingHandles(options) {
+    const url = (options.nuviieUrl || '').replace(/\/$/, '');
+    const token = options.nuviieToken || '';
+    if (!url || !token || options.dedupRemote === false) return new Set();
+    try {
+      const resp = await fetch(`${url}/api/leads/existing-handles/`, {
+        headers: { 'X-Nuviie-Token': token },
+      });
+      if (!resp.ok) return new Set();
+      const data = await resp.json();
+      return new Set((data.handles || []).map((h) => String(h).replace(/^@/, '').toLowerCase()));
+    } catch (e) {
+      console.warn('[NuviieInstagram] Dedup contra o banco indisponível:', e);
+      return new Set();
+    }
   },
 
   async enrichHandles(initialHandles, options, igTabId) {
@@ -325,11 +343,15 @@ const NuviieInstagramRunner = {
     let withPhoto = 0;
     let filtered = 0;
     let failed = 0;
+    let skippedExisting = 0;
     let consecutiveFailures = 0;
 
     const filters = options.filters || {};
     const snowball = options.snowball !== false;
     const target = Math.max(1, parseInt(options.limit, 10) || initialHandles.length || 20);
+
+    // Dedup contra o banco: handles que já viraram lead não são re-extraídos.
+    const existing = await this.fetchExistingHandles(options);
 
     // Fila dinâmica: o snowball adiciona perfis parecidos enquanto faltam leads.
     const queue = [...initialHandles];
@@ -356,6 +378,14 @@ const NuviieInstagramRunner = {
       if (this.state.stopRequested) break;
 
       const handle = queue.shift();
+      const handleNorm = String(handle).replace(/^@/, '').toLowerCase();
+
+      // Pula perfis que já existem no banco (economiza tempo e reduz risco de bloqueio).
+      if (existing.has(handleNorm)) {
+        skippedExisting += 1;
+        continue;
+      }
+
       processed += 1;
       const raw = await this.fetchProfileOnTab(igTabId, handle);
 
@@ -382,7 +412,7 @@ const NuviieInstagramRunner = {
         if (snowball && Array.isArray(raw.related_profiles) && leads.length < target) {
           for (const rh of raw.related_profiles) {
             const norm = String(rh || '').replace(/^@/, '').toLowerCase();
-            if (norm && !seen.has(norm)) {
+            if (norm && !seen.has(norm) && !existing.has(norm)) {
               seen.add(norm);
               queue.push(norm);
             }
@@ -390,7 +420,7 @@ const NuviieInstagramRunner = {
         }
       }
 
-      const stats = this.formatEnrichStats(leads.length, filtered, failed);
+      const stats = this.formatEnrichStats(leads.length, filtered, failed, skippedExisting);
       this.state.progress = {
         current: leads.length,
         total: target,
@@ -410,7 +440,7 @@ const NuviieInstagramRunner = {
       }
     }
 
-    return { leads, filtered, failed, withPhoto };
+    return { leads, filtered, failed, withPhoto, skippedExisting };
   },
 
   async run(options) {
@@ -462,11 +492,11 @@ const NuviieInstagramRunner = {
         handles, { ...options, city, niche, limit }, igTab.id,
       );
       const leads = enrichResult.leads;
-      const { filtered, failed, withPhoto } = enrichResult;
+      const { filtered, failed, withPhoto, skippedExisting } = enrichResult;
 
       this.state.leads = leads;
       const stopped = this.state.stopRequested;
-      const stats = this.formatEnrichStats(leads.length, filtered, failed);
+      const stats = this.formatEnrichStats(leads.length, filtered, failed, skippedExisting);
       this.state.progress = {
         current: leads.length,
         total: Math.max(limit, leads.length),

@@ -4,6 +4,7 @@ INSTAGRAM_PATHS = {
     'effective_post_count', 'amenities.follower_count', 'amenities.post_count',
     'amenities.latest_post_at', 'days_since_latest_post',
     'amenities.recent_posts', 'amenities.recent_reels', 'is_verified',
+    'amenities.is_business_account', 'amenities.engagement_rate', 'is_opportunity',
 }
 
 GOOGLE_MAPS_PATHS = {

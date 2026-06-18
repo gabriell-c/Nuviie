@@ -12,5 +12,6 @@ urlpatterns = [
     path('leads/export/', views.export_leads_view, name='export_leads'),
     path('leads/import/', views.import_leads_view, name='import_leads'),
     path('api/leads/bulk-import/', views.bulk_import_leads_view, name='bulk_import_leads'),
+    path('api/leads/existing-handles/', views.existing_handles_view, name='existing_handles'),
     path('', include(router.urls)),
 ]

@@ -68,6 +68,9 @@ FIELD_REGISTRY: list[dict[str, Any]] = [
          ('perdido', 'Perdido'),
      ]},
     {'path': 'is_verified', 'label': 'Verificado (Instagram)', 'type': 'boolean'},
+    {'path': 'amenities.is_business_account', 'label': 'Conta comercial/profissional', 'type': 'boolean'},
+    {'path': 'amenities.engagement_rate', 'label': 'Taxa de engajamento (%)', 'type': 'number'},
+    {'path': 'is_opportunity', 'label': 'Oportunidade (sem site + contato)', 'type': 'boolean'},
 ]
 
 FIELD_REGISTRY_MAP = {item['path']: item for item in FIELD_REGISTRY}
@@ -174,6 +177,40 @@ def _recent_reviews_count(lead) -> int | None:
     return None
 
 
+def is_opportunity(lead) -> bool:
+    """Sinal de "lead quente": negócio ativo/comercial, com forma de contato e
+    SEM site próprio (logo, candidato ideal para vender um site).
+
+    Confia na flag pré-calculada pela extensão (amenities.is_opportunity) quando
+    existir; caso contrário deriva server-side a partir dos campos disponíveis.
+    """
+    amenities = lead.amenities if isinstance(lead.amenities, dict) else {}
+
+    flag = amenities.get('is_opportunity')
+    if isinstance(flag, bool):
+        return flag
+
+    website_type = getattr(lead, 'website_detected_type', None)
+    has_real_site = website_type == 'website'
+
+    has_contact = bool(
+        getattr(lead, 'normalized_phone', None)
+        or getattr(lead, 'phone_number', None)
+        or getattr(lead, 'email', None)
+        or amenities.get('whatsapp_number')
+    )
+
+    is_professional = bool(
+        amenities.get('is_business_account')
+        or amenities.get('is_professional_account')
+    )
+
+    days = _days_since_latest_post(lead)
+    is_active = days is not None and days <= 60
+
+    return (not has_real_site) and has_contact and (is_professional or is_active)
+
+
 def get_field_value(lead, field_path: str) -> Any:
     """Resolve valor de um campo do lead, incluindo paths derivados e aninhados."""
     if field_path == 'effective_post_count':
@@ -182,6 +219,8 @@ def get_field_value(lead, field_path: str) -> Any:
         return _days_since_latest_post(lead)
     if field_path == 'recent_reviews_count':
         return _recent_reviews_count(lead)
+    if field_path == 'is_opportunity':
+        return is_opportunity(lead)
 
     if '.' in field_path:
         root, nested = field_path.split('.', 1)

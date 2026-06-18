@@ -13,6 +13,14 @@ class Conversation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    memory_summary = models.TextField(
+        blank=True, default='',
+        help_text='Resumo rolante das mensagens antigas, usado como memória de longo prazo do agente.',
+    )
+    summary_until_id = models.PositiveIntegerField(
+        default=0,
+        help_text='ID da última mensagem já incluída no resumo de memória.',
+    )
 
     class Meta:
         ordering = ['-updated_at']

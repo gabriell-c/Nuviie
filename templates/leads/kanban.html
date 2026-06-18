@@ -111,6 +111,17 @@
                 </div>
             </div>
 
+            <!-- Opportunity Filter -->
+            <button type="button" @click="filters.onlyOpportunities = !filters.onlyOpportunities"
+                    class="nui-input-compact !w-auto inline-flex items-center gap-1.5 text-xs transition"
+                    :class="filters.onlyOpportunities
+                        ? 'bg-orange-500 text-white border-orange-500'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800'"
+                    title="Mostrar apenas leads quentes: negócio ativo, com contato e sem site próprio">
+                <i class="fa-solid fa-fire text-[11px]" :class="filters.onlyOpportunities ? 'text-white' : 'text-orange-500'"></i>
+                <span>Só oportunidades</span>
+            </button>
+
             <!-- Export Buttons -->
             <div class="flex items-center space-x-2 border-l border-slate-200 dark:border-slate-800 pl-3">
                 <button @click="exportLeads('csv')" class="p-2 text-slate-500 hover:text-indigo-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850 rounded-lg transition" title="Exportar CSV">
@@ -1508,7 +1519,8 @@
                 search: '',
                 source: '',
                 has_site: '',
-                ordering: '-created_at'
+                ordering: '-created_at',
+                onlyOpportunities: false
             },
             
             newLeadForm: {
@@ -1601,13 +1613,21 @@
                 return c ? ((c.client_name || c.name) + ' — ' + c.created_at) : 'Associar contrato...';
             },
             
+            applyClientFilters(items) {
+                if (this.filters.onlyOpportunities) {
+                    items = items.filter(l => l.is_opportunity);
+                }
+                return items;
+            },
+
             getLeadsByStatus(status) {
                 let items = this.leads.filter(l => l.status === status);
+                items = this.applyClientFilters(items);
                 return this.sortLeadItems(items);
             },
 
             getSortedLeads() {
-                return this.sortLeadItems([...this.leads]);
+                return this.sortLeadItems(this.applyClientFilters([...this.leads]));
             },
 
             sortLeadItems(items) {

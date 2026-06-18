@@ -105,6 +105,19 @@ REGRAS ABSOLUTAS:
 _SYSTEM_MSG = {"role": "system", "content": SYSTEM_PROMPT}
 MAX_HISTORY_MESSAGES = 16
 
+# Memória de longo prazo: quantas mensagens recentes mantemos na íntegra e a
+# partir de quantas mensagens antigas passamos a condensar num resumo rolante.
+RECENT_WINDOW = 12
+SUMMARY_SYSTEM_PROMPT = (
+    "Você é um assistente que mantém a MEMÓRIA de uma conversa de vendas no WhatsApp. "
+    "A partir do resumo atual e das novas mensagens, escreva um resumo único, curto e objetivo "
+    "(no máximo ~150 palavras) em português do Brasil, em texto corrido. "
+    "Capture e atualize: nome do cliente, tipo de negócio, dores/necessidades, serviço de interesse, "
+    "estágio da negociação, objeções levantadas, se o briefing já foi enviado, preferências de tom "
+    "e qualquer compromisso ou próximo passo combinado. "
+    "Não invente nada, não dê conselhos, não cumprimente — apenas o resumo factual."
+)
+
 _ollama_session = requests.Session()
 _adapter = requests.adapters.HTTPAdapter(
     pool_connections=4,
@@ -119,7 +132,7 @@ def _build_ollama_messages(conversation):
     rows = (
         conversation.messages
         .order_by('-created_at')
-        .values_list('role', 'content')[:MAX_HISTORY_MESSAGES]
+        .values_list('role', 'content')[:RECENT_WINDOW]
     )
     history = []
     for role, content in reversed(rows):
@@ -127,7 +140,65 @@ def _build_ollama_messages(conversation):
             history.append({"role": "user", "content": f"/no_think {content}"})
         else:
             history.append({"role": role, "content": content})
-    return [_SYSTEM_MSG] + history
+
+    messages = [_SYSTEM_MSG]
+    summary = (conversation.memory_summary or '').strip()
+    if summary:
+        messages.append({
+            "role": "system",
+            "content": (
+                "MEMÓRIA DA CONVERSA (contexto anterior já resumido, use para personalizar "
+                f"e não repetir perguntas): {summary}"
+            ),
+        })
+    return messages + history
+
+
+def _update_memory_summary(conversation):
+    """Condensa mensagens antigas num resumo rolante (memória de longo prazo).
+
+    Roda em background após salvar a resposta, então não adiciona latência ao
+    cliente. É idempotente: só processa mensagens ainda não resumidas.
+    """
+    try:
+        rows = list(
+            conversation.messages
+            .order_by('created_at')
+            .values_list('id', 'role', 'content')
+        )
+        if len(rows) <= RECENT_WINDOW:
+            return
+
+        older = rows[:-RECENT_WINDOW]
+        to_summarize = [r for r in older if r[0] > (conversation.summary_until_id or 0)]
+        if not to_summarize:
+            return
+
+        transcript = "\n".join(
+            f"{'Cliente' if role == 'user' else 'Vendedor'}: {content}"
+            for _id, role, content in to_summarize
+        )
+        current_summary = (conversation.memory_summary or '').strip() or '(sem resumo ainda)'
+        user_prompt = (
+            f"Resumo atual:\n{current_summary}\n\n"
+            f"Novas mensagens para incorporar:\n{transcript}\n\n"
+            "Devolva apenas o resumo atualizado."
+        )
+        summary_messages = [
+            {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ]
+        new_summary, error = _call_ollama(summary_messages)
+        if error or not new_summary:
+            return
+
+        last_id = to_summarize[-1][0]
+        Conversation.objects.filter(pk=conversation.pk).update(
+            memory_summary=new_summary.strip(),
+            summary_until_id=last_id,
+        )
+    except Exception:
+        logger.exception("Falha ao atualizar memória da conversa")
 
 
 def _auto_title(conversation):
@@ -361,6 +432,7 @@ def send_message(request):
                 _save_assistant_message(conversation, ai_text)
             except Exception:
                 logger.exception("Falha ao salvar resposta do assistente")
+            _update_memory_summary(conversation)
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()

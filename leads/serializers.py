@@ -34,6 +34,7 @@ class LeadSerializer(serializers.ModelSerializer):
     days_until_deadline = serializers.SerializerMethodField()
     contract_summary = serializers.SerializerMethodField()
     site_audit_summary = serializers.SerializerMethodField()
+    is_opportunity = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
@@ -50,7 +51,7 @@ class LeadSerializer(serializers.ModelSerializer):
             'deadline_urgency', 'days_until_deadline', 'contract_summary',
             'site_audit_summary',
             'source', 'source_display', 'status', 'status_display',
-            'quality_score', 'score_breakdown', 'is_verified', 'whatsapp_link',
+            'quality_score', 'score_breakdown', 'is_verified', 'is_opportunity', 'whatsapp_link',
             'price_range', 'plus_code', 'amenities', 'total_photos',
             'profile_picture_url', 'profile_picture_display_url',
             'notes', 'created_at', 'updated_at'
@@ -98,6 +99,10 @@ class LeadSerializer(serializers.ModelSerializer):
             'payment_mode': (c.payment_plan or {}).get('mode'),
             'download_path': f'/contracts/history/{c.id}/download/',
         }
+
+    def get_is_opportunity(self, obj):
+        from lead_scoring.engine import is_opportunity
+        return is_opportunity(obj)
 
     def get_site_audit_summary(self, obj):
         try:

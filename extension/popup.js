@@ -238,6 +238,7 @@ async function loadSettings() {
     lastPostWithin: 'any',
     includeExtras: false,
     snowball: true,
+    dedupRemote: true,
     mode: 'maps',
   });
   const local = await chrome.storage.local.get({
@@ -262,6 +263,8 @@ async function loadSettings() {
   if (includeExtrasEl) includeExtrasEl.checked = !!data.includeExtras;
   const snowballEl = document.getElementById('snowball');
   if (snowballEl) snowballEl.checked = data.snowball !== false;
+  const dedupEl = document.getElementById('dedupRemote');
+  if (dedupEl) dedupEl.checked = data.dedupRemote !== false;
 
   const mode = local.nuviieMode || data.mode || 'maps';
   applyModeUI(mode);
@@ -296,6 +299,7 @@ async function saveSettings() {
     lastPostWithin: igFilters.lastPostWithin,
     includeExtras: document.getElementById('includeExtras')?.checked || false,
     snowball: document.getElementById('snowball')?.checked !== false,
+    dedupRemote: document.getElementById('dedupRemote')?.checked !== false,
     mode,
   };
   const limitVal = parseInt(document.getElementById('limit').value, 10);
@@ -429,6 +433,9 @@ document.getElementById('btnToggle').addEventListener('click', async () => {
           niche: settings.niche,
           limit: settings.instagramLimit || 20,
           snowball: settings.snowball !== false,
+          dedupRemote: settings.dedupRemote !== false,
+          nuviieUrl: settings.nuviieUrl,
+          nuviieToken: settings.nuviieToken,
           filters: {
             onlyVerified: settings.onlyVerified,
             onlyWithBioLink: settings.onlyWithBioLink,
