@@ -149,11 +149,11 @@
     </div>
 
     <!-- Kanban Grid Columns Container -->
-    <div x-show="viewMode === 'pipeline'" x-cloak class="flex-1 overflow-x-auto overflow-y-hidden -mx-6 md:-mx-8 px-6 md:px-8 pb-4">
+    <div x-show="viewMode === 'pipeline'" x-cloak class="flex-1 overflow-x-auto overflow-y-hidden -mx-6 md:-mx-8 px-6 md:px-8 pb-4 snap-x snap-mandatory md:snap-none">
         <div class="flex space-x-4 min-w-[1200px] h-full items-start">
             <!-- Loop through stages -->
             {% for code, display in status_choices %}
-            <div class="flex-1 min-w-[240px] max-w-[320px] bg-slate-100/60 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/40 rounded-2xl p-4 flex flex-col h-full max-h-[calc(100vh-220px)]">
+            <div class="flex-1 min-w-[240px] max-w-[320px] snap-start bg-slate-100/60 dark:bg-slate-900/40 border border-slate-200/50 dark:border-slate-800/40 rounded-2xl p-4 flex flex-col h-full max-h-[calc(100vh-220px)]">
                 <!-- Column Header -->
                 <div class="flex items-center justify-between mb-4 shrink-0">
                     <div class="flex items-center space-x-2">
@@ -361,7 +361,7 @@
 
     <!-- MODAL 90% SCREEN: Lead Details -->
     <div x-show="detailsModalOpen" 
-         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+         class="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-950/60 backdrop-blur-sm"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0 scale-95"
          x-transition:enter-end="opacity-100 scale-100"
@@ -370,11 +370,11 @@
          x-transition:leave-end="opacity-0 scale-95"
          style="display: none;">
         
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-none sm:rounded-2xl w-full max-w-6xl h-[100dvh] sm:h-[90dvh] flex flex-col shadow-2xl overflow-hidden"
              @click.away="closeDetailsModal()">
              
             <!-- Modal Header -->
-            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+            <div class="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
                 <div class="flex items-center space-x-3 min-w-0">
                     <div class="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0 flex items-center justify-center relative"
                          x-show="currentLead.profile_picture_url || currentLead.instagram">
@@ -400,23 +400,23 @@
                             class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:opacity-90 text-white rounded-lg text-[10px] font-semibold transition"
                             title="Abrir perfil no Instagram">
                         <i class="fa-brands fa-instagram text-xs"></i>
-                        <span>Instagram</span>
+                        <span class="hidden sm:inline">Instagram</span>
                     </button>
                     <button x-show="currentLead.source !== 'instagram' && currentLead.maps_link"
                             @click="openExternalUrl(currentLead.maps_link)"
                             class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
                             title="Abrir no Google Maps">
                         <i class="fa-solid fa-map-location-dot text-xs"></i>
-                        <span>Maps</span>
+                        <span class="hidden sm:inline">Maps</span>
                     </button>
                     <button @click="downloadLeadExport('md')"
-                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-violet-200 dark:hover:border-violet-800"
+                            class="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-violet-50 dark:hover:bg-violet-950/40 text-slate-600 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-violet-200 dark:hover:border-violet-800"
                             title="Baixar perfil em Markdown">
                         <i class="fa-brands fa-markdown text-xs"></i>
                         <span>.md</span>
                     </button>
                     <button @click="downloadLeadExport('json')"
-                            class="flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-amber-200 dark:hover:border-amber-800"
+                            class="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 rounded-lg text-[10px] font-semibold transition border border-transparent hover:border-amber-200 dark:hover:border-amber-800"
                             title="Baixar perfil em JSON">
                         <i class="fa-solid fa-code text-xs"></i>
                         <span>.json</span>
@@ -434,7 +434,7 @@
             </div>
 
             <!-- Modal Content -->
-            <div class="flex-1 min-h-0 overflow-hidden p-6 grid grid-cols-1 lg:grid-cols-3 gap-6" x-show="currentLead">
+            <div class="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6" x-show="currentLead">
 
                 <!-- Hero perfil Instagram -->
                 <template x-if="currentLead.source === 'instagram'">
@@ -469,7 +469,7 @@
                 </template>
                 
                 <!-- Col Left: Main Fields & Actions -->
-                <div class="lg:col-span-2 space-y-6 overflow-y-auto pr-1 min-h-0">
+                <div class="lg:col-span-2 space-y-6 lg:overflow-y-auto lg:pr-1 min-h-0">
                     <!-- Actions Box -->
                     <div class="glass-panel p-5 rounded-2xl space-y-4 transition-all duration-300">
                         <h4 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Ações Rápidas de Contato</h4>
@@ -1095,7 +1095,7 @@
                 </div>
 
                 <!-- Col Right: Tabs (Reviews | Hours | Notes) -->
-                <div class="flex flex-col min-h-0 h-full overflow-hidden glass-panel rounded-2xl">
+                <div class="flex flex-col min-h-0 h-[70vh] lg:h-full overflow-hidden glass-panel rounded-2xl">
                     <div class="flex border-b border-slate-200 dark:border-slate-800 shrink-0 px-2 pt-2 gap-1">
                         <button type="button" @click="detailTab = 'reviews'"
                                 x-show="currentLead.source !== 'instagram'"
@@ -1344,7 +1344,7 @@
     <div x-show="createModalOpen" x-cloak
          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
          style="display: none;">
-        <div class="nui-modal-panel bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col"
+        <div class="nui-modal-panel bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90dvh] flex flex-col"
              @click.away="closeCreateModal()">
             <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
                 <h3 class="font-bold text-slate-800 dark:text-slate-200 text-base">Criar Lead Manualmente</h3>
@@ -1531,8 +1531,14 @@
             },
             
             init() {
-                const saved = localStorage.getItem('nuviie_kanban_view');
-                if (saved === 'list' || saved === 'pipeline') this.viewMode = saved;
+                let saved = null;
+                try { saved = localStorage.getItem('nuviie_kanban_view'); } catch { saved = null; }
+                if (saved === 'list' || saved === 'pipeline') {
+                    this.viewMode = saved;
+                } else if (window.matchMedia && window.matchMedia('(max-width: 767px)').matches) {
+                    // No celular, a lista é muito melhor que o pipeline (scroll horizontal largo).
+                    this.viewMode = 'list';
+                }
                 this.fetchLeads();
                 this.fetchContracts();
                 window.addEventListener('nuviie-leads-updated', () => {
