@@ -64,6 +64,36 @@ NuviieInstagramMap.extractPhoneFromBio = (bio) => {
   return null;
 };
 
+NuviieInstagramMap.extractEmailFromBio = (bio) => {
+  if (!bio) return null;
+  const text = String(bio);
+  const matches = text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g);
+  if (!matches || !matches.length) return null;
+  for (const raw of matches) {
+    const email = raw.trim().toLowerCase().replace(/[.,;]+$/, '');
+    // Ignora handles/CDNs que não são e-mail de contato.
+    if (/\.(png|jpg|jpeg|gif|webp)$/i.test(email)) continue;
+    return email;
+  }
+  return null;
+};
+
+NuviieInstagramMap.computeEngagementRate = (raw) => {
+  const followers = Number(raw && raw.follower_count);
+  if (!followers || followers <= 0) return null;
+  const posts = (raw.recent_posts || []).concat(raw.recent_reels || []);
+  const sample = posts
+    .filter((p) => p && (p.like_count != null || p.comment_count != null))
+    .slice(0, 12);
+  if (!sample.length) return null;
+  let sum = 0;
+  for (const p of sample) {
+    sum += (Number(p.like_count) || 0) + (Number(p.comment_count) || 0);
+  }
+  const avg = sum / sample.length;
+  return Math.round((avg / followers) * 10000) / 100;
+};
+
 NuviieInstagramMap.extractAddressFromBio = (bio) => {
   if (!bio) return null;
   const text = String(bio).trim();
@@ -280,6 +310,9 @@ NuviieInstagramMap.buildBio = (raw) => {
   if (raw.reels_count != null) {
     parts.push(`Reels: ${Number(raw.reels_count).toLocaleString('pt-BR')}`);
   }
+  if (raw.engagement_rate != null) {
+    parts.push(`Engajamento médio: ${raw.engagement_rate}%`);
+  }
   if (raw.is_business_account) parts.push('Conta comercial');
   if (raw.is_private) parts.push('Perfil privado');
   if (raw.business_email || raw.public_email) {
@@ -321,6 +354,7 @@ NuviieInstagramMap.buildAmenities = (raw, handle) => {
   if (raw.zip_code) amenities.zip_code = raw.zip_code;
   if (raw.latitude != null) amenities.latitude = raw.latitude;
   if (raw.longitude != null) amenities.longitude = raw.longitude;
+  if (raw.engagement_rate != null) amenities.engagement_rate = raw.engagement_rate;
   if (raw.bio_links_parsed?.length) {
     amenities.bio_links = raw.bio_links_parsed;
   }
@@ -496,7 +530,26 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
     businessHours = NuviieInstagramMap.extractHoursFromBio(bioText);
   }
   let leadCity = city || raw.city_name || NuviieInstagramMap.extractCityFromBio(bioText) || '';
-  const email = raw.public_email || raw.business_email || null;
+  const email = raw.public_email || raw.business_email
+    || NuviieInstagramMap.extractEmailFromBio(bioText) || null;
+
+  raw.engagement_rate = NuviieInstagramMap.computeEngagementRate(raw);
+
+  const hasRealSite = !!(ctx.website && ctx.website_detected_type === 'website');
+  const hasContact = !!(normalized || email);
+  const isProfessional = !!(raw.is_business_account || raw.is_professional_account);
+  let isActive = false;
+  if (raw.latest_post_at) {
+    const daysAgo = (Date.now() / 1000 - Number(raw.latest_post_at)) / 86400;
+    isActive = daysAgo <= 60;
+  }
+  // Lead "quente" para uma agência: profissional/ativo, com contato e SEM site próprio.
+  const isOpportunity = !hasRealSite && hasContact && (isProfessional || isActive);
+
+  const amenities = NuviieInstagramMap.buildAmenities(raw, handle);
+  amenities.has_real_site = hasRealSite;
+  amenities.is_opportunity = isOpportunity;
+
   const instagramUrl = `https://www.instagram.com/${handle}/`;
 
   return {
@@ -520,7 +573,7 @@ NuviieInstagramMap.mapInstagramToLead = (raw, { city, niche, handle: handleHint 
     profile_picture_url: profilePic,
     profile_picture_data: raw.profile_picture_data || null,
     total_photos: raw.post_count != null ? Number(raw.post_count) : null,
-    amenities: NuviieInstagramMap.buildAmenities(raw, handle),
+    amenities,
     source: 'instagram',
     status: 'novo',
     is_verified: !!raw.is_verified,

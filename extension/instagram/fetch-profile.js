@@ -424,6 +424,12 @@
       }
     }
 
+    if (user.edge_related_profiles && Array.isArray(user.edge_related_profiles.edges)) {
+      user.related_profiles = user.edge_related_profiles.edges
+        .map(function (e) { return e && e.node && e.node.username; })
+        .filter(Boolean);
+    }
+
     return user;
   };
 
@@ -438,6 +444,26 @@
   NS.getCsrfToken = function () {
     var m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : '';
+  };
+
+  NS.isLoggedIn = function () {
+    return /(?:^|;\s*)ds_user_id=/.test(document.cookie || '');
+  };
+
+  NS.fetchRelatedProfiles = async function (userId, referer) {
+    if (!userId) return [];
+    try {
+      var resp = await fetch(
+        'https://www.instagram.com/api/v1/discover/chaining/?target_id=' + userId,
+        { headers: NS.apiHeaders(referer), credentials: 'include' },
+      );
+      if (!resp.ok) return [];
+      var data = await resp.json();
+      var users = data.users || [];
+      return users.map(function (u) { return u && u.username; }).filter(Boolean);
+    } catch (e) {
+      return [];
+    }
   };
 
   NS.apiHeaders = function (referer) {
@@ -962,6 +988,17 @@
         user = await NS.enrichUserWithMedia(user, clean);
       } catch (e) {
         /* ignore media enrichment failure */
+      }
+    }
+
+    if (user && user.id && NS.isLoggedIn()
+      && (!user.related_profiles || !user.related_profiles.length)) {
+      try {
+        user.related_profiles = await NS.fetchRelatedProfiles(
+          user.id, 'https://www.instagram.com/' + clean + '/',
+        );
+      } catch (e) {
+        /* ignore related fetch failure */
       }
     }
 

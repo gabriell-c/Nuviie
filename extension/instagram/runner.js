@@ -15,6 +15,25 @@ const NuviieInstagramRunner = {
     return new Promise((r) => setTimeout(r, ms));
   },
 
+  jitter(min, max) {
+    return Math.floor(min + Math.random() * Math.max(0, max - min));
+  },
+
+  async checkLoggedIn(tabId) {
+    try {
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: () => (window.NuviieInstagramFetch
+          ? window.NuviieInstagramFetch.isLoggedIn()
+          : /(?:^|;\s*)ds_user_id=/.test(document.cookie || '')),
+      });
+      return !!result;
+    } catch (e) {
+      return true;
+    }
+  },
+
   sendProgress() {
     chrome.runtime.sendMessage({
       type: 'PROGRESS',
@@ -301,23 +320,50 @@ const NuviieInstagramRunner = {
     return parts.join(', ');
   },
 
-  async enrichHandles(handles, options, igTabId) {
+  async enrichHandles(initialHandles, options, igTabId) {
     const leads = [];
     let withPhoto = 0;
     let filtered = 0;
     let failed = 0;
+    let consecutiveFailures = 0;
+
+    const filters = options.filters || {};
+    const snowball = options.snowball !== false;
+    const target = Math.max(1, parseInt(options.limit, 10) || initialHandles.length || 20);
+
+    // Fila dinâmica: o snowball adiciona perfis parecidos enquanto faltam leads.
+    const queue = [...initialHandles];
+    const seen = new Set(initialHandles.map((h) => String(h).replace(/^@/, '').toLowerCase()));
+    let processed = 0;
+    // Teto de segurança para não rodar indefinidamente quando os filtros são severos.
+    const maxProcess = snowball ? Math.max(target * 8, 80) : queue.length;
 
     await this.prepareInstagramTab(igTabId);
 
-    for (let i = 0; i < handles.length; i++) {
+    const loggedIn = await this.checkLoggedIn(igTabId);
+    if (!loggedIn) {
+      this.state.progress = {
+        current: 0,
+        total: target,
+        status: 'running',
+        message: 'Atenção: você não está logado no Instagram nesta aba. Os dados podem vir incompletos.',
+      };
+      this.sendProgress();
+      await this.sleep(1500);
+    }
+
+    while (queue.length && leads.length < target && processed < maxProcess) {
       if (this.state.stopRequested) break;
 
-      const handle = handles[i];
+      const handle = queue.shift();
+      processed += 1;
       const raw = await this.fetchProfileOnTab(igTabId, handle);
 
       if (!raw) {
         failed += 1;
+        consecutiveFailures += 1;
       } else {
+        consecutiveFailures = 0;
         const lead = NuviieInstagramMap.mapInstagramToLead(raw, {
           city: options.city,
           niche: options.niche,
@@ -325,27 +371,42 @@ const NuviieInstagramRunner = {
         });
         if (!lead) {
           failed += 1;
-        } else if (!this.passesFilters(lead, options.filters || {})) {
+        } else if (!this.passesFilters(lead, filters)) {
           filtered += 1;
         } else {
           if (lead.profile_picture_url || lead.profile_picture_data) withPhoto += 1;
           leads.push(lead);
         }
+
+        // Snowball: alimenta a fila com perfis parecidos ainda não vistos.
+        if (snowball && Array.isArray(raw.related_profiles) && leads.length < target) {
+          for (const rh of raw.related_profiles) {
+            const norm = String(rh || '').replace(/^@/, '').toLowerCase();
+            if (norm && !seen.has(norm)) {
+              seen.add(norm);
+              queue.push(norm);
+            }
+          }
+        }
       }
 
-      const done = i + 1;
       const stats = this.formatEnrichStats(leads.length, filtered, failed);
       this.state.progress = {
-        current: done,
-        total: handles.length,
+        current: leads.length,
+        total: target,
         status: 'running',
-        message: `Enriquecendo ${done}/${handles.length} — ${stats} (${withPhoto} com foto)`,
+        message: `Enriquecendo ${leads.length}/${target} — ${stats} (${withPhoto} com foto)`,
       };
       this.state.leads = leads;
       this.sendProgress();
 
-      if (i + 1 < handles.length) {
-        await this.sleep(800);
+      // Backoff progressivo se o Instagram começar a recusar (anti-bloqueio).
+      if (consecutiveFailures >= 3) {
+        await this.sleep(this.jitter(4000, 8000));
+      }
+
+      if (queue.length && leads.length < target && processed < maxProcess) {
+        await this.sleep(this.jitter(700, 1600));
       }
     }
 
@@ -385,16 +446,21 @@ const NuviieInstagramRunner = {
         throw new Error('Nenhum perfil encontrado no Google. Tente outro nicho ou cidade.');
       }
 
+      const snowball = options.snowball !== false;
       this.state.progress = {
         current: 0,
-        total: handles.length,
+        total: limit,
         status: 'running',
-        message: `${handles.length} perfis encontrados. Enriquecendo...`,
+        message: snowball
+          ? `${handles.length} perfis-semente. Enriquecendo e buscando parecidos...`
+          : `${handles.length} perfis encontrados. Enriquecendo...`,
       };
       this.sendProgress();
 
       igTab = await this.ensureInstagramTab();
-      const enrichResult = await this.enrichHandles(handles, { ...options, city, niche }, igTab.id);
+      const enrichResult = await this.enrichHandles(
+        handles, { ...options, city, niche, limit }, igTab.id,
+      );
       const leads = enrichResult.leads;
       const { filtered, failed, withPhoto } = enrichResult;
 
@@ -402,8 +468,8 @@ const NuviieInstagramRunner = {
       const stopped = this.state.stopRequested;
       const stats = this.formatEnrichStats(leads.length, filtered, failed);
       this.state.progress = {
-        current: handles.length,
-        total: handles.length,
+        current: leads.length,
+        total: Math.max(limit, leads.length),
         status: stopped ? 'stopped' : 'done',
         message: stopped
           ? `Parado. ${stats} (${withPhoto} com foto).`

@@ -1001,12 +1001,18 @@
                                         <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="Number(currentLead.amenities.follower_count).toLocaleString('pt-BR')"></span>
                                     </div>
                                 </template>
+                                <template x-if="currentLead.amenities && currentLead.amenities.engagement_rate != null">
+                                    <div>
+                                        <span class="text-slate-400 block mb-0.5">Engajamento médio</span>
+                                        <span class="font-semibold text-slate-800 dark:text-slate-200" x-text="currentLead.amenities.engagement_rate + '%'"></span>
+                                    </div>
+                                </template>
                             </div>
                         </div>
                     </template>
 
                     <!-- Contato & vínculos (e-mail, WhatsApp vinculado, Facebook conectado, conta comercial) -->
-                    <template x-if="currentLead.email || (currentLead.amenities && (currentLead.amenities.email || currentLead.amenities.whatsapp_number || currentLead.amenities.is_whatsapp_linked || currentLead.amenities.connected_fb_page || currentLead.amenities.is_business_account))">
+                    <template x-if="currentLead.email || (currentLead.amenities && (currentLead.amenities.email || currentLead.amenities.whatsapp_number || currentLead.amenities.is_whatsapp_linked || currentLead.amenities.connected_fb_page || currentLead.amenities.is_business_account || currentLead.amenities.is_opportunity))">
                         <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80">
                             <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Contato &amp; vínculos</h4>
                             <div class="space-y-2 text-xs">
@@ -1033,13 +1039,18 @@
                                         <span class="font-medium text-slate-600 dark:text-slate-300" x-text="'Facebook: ' + currentLead.amenities.connected_fb_page"></span>
                                     </div>
                                 </template>
-                                <template x-if="currentLead.amenities && currentLead.amenities.is_business_account">
-                                    <div>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <template x-if="currentLead.amenities && currentLead.amenities.is_business_account">
                                         <span class="inline-block text-[10px] px-2 py-1 rounded-lg bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 font-semibold">
                                             <i class="fa-solid fa-briefcase mr-1"></i> Conta comercial
                                         </span>
-                                    </div>
-                                </template>
+                                    </template>
+                                    <template x-if="currentLead.amenities && currentLead.amenities.is_opportunity">
+                                        <span class="inline-block text-[10px] px-2 py-1 rounded-lg bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 font-semibold">
+                                            <i class="fa-solid fa-fire mr-1"></i> Oportunidade (sem site)
+                                        </span>
+                                    </template>
+                                </div>
                             </div>
                         </div>
                     </template>
