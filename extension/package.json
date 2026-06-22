@@ -1,0 +1,9 @@
+{
+  "name": "nuviie-extractor-extension",
+  "version": "1.4.4",
+  "private": true,
+  "description": "Extensão Chrome do Nuviie — extração de leads (Maps/Instagram).",
+  "scripts": {
+    "test": "node --test"
+  }
+}

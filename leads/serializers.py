@@ -101,8 +101,8 @@ class LeadSerializer(serializers.ModelSerializer):
         }
 
     def get_is_opportunity(self, obj):
-        from lead_scoring.engine import is_opportunity
-        return is_opportunity(obj)
+        from lead_scoring.engine import compute_is_opportunity
+        return compute_is_opportunity(obj)
 
     def get_site_audit_summary(self, obj):
         try:

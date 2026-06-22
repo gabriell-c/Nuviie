@@ -57,9 +57,10 @@ class NuviieSaaSTestCase(TestCase):
         )
         self.assertEqual(poor_lead.quality_score, 0)
 
-    @patch('leads.instagram_scraper.fetch_instagram_profile_pic', return_value=None)
+    @patch('leads.instagram_scraper.time.sleep', return_value=None)
+    @patch('leads.instagram_scraper.fetch_instagram_profile', return_value={})
     @patch('leads.instagram_scraper.requests.post')
-    def test_instagram_scraper_filters(self, mock_post, _mock_pic):
+    def test_instagram_scraper_filters(self, mock_post, _mock_profile, _mock_sleep):
         from leads.instagram_scraper import run_instagram_scraper
 
         html = """

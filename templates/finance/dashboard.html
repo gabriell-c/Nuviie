@@ -272,13 +272,13 @@
 
         <!-- Table -->
         <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left">
+            <table class="w-full min-w-[600px] text-sm text-left">
                 <thead class="text-slate-400 uppercase text-[10px] bg-slate-50/80 dark:bg-slate-900/50">
                     <tr>
                         <th class="px-4 py-3 font-bold"><i class="fa-regular fa-calendar mr-1"></i> Data</th>
                         <th class="px-4 py-3 font-bold"><i class="fa-solid fa-tag mr-1"></i> Título</th>
-                        <th class="px-4 py-3 font-bold"><i class="fa-solid fa-folder mr-1"></i> Categoria</th>
-                        <th class="px-4 py-3 font-bold"><i class="fa-solid fa-user mr-1"></i> Cliente</th>
+                        <th class="px-4 py-3 font-bold hidden md:table-cell"><i class="fa-solid fa-folder mr-1"></i> Categoria</th>
+                        <th class="px-4 py-3 font-bold hidden lg:table-cell"><i class="fa-solid fa-user mr-1"></i> Cliente</th>
                         <th class="px-4 py-3 font-bold"><i class="fa-solid fa-coins mr-1"></i> Valor</th>
                         <th class="px-4 py-3 font-bold"><i class="fa-solid fa-circle-dot mr-1"></i> Status</th>
                         <th class="px-4 py-3 font-bold text-right">Ações</th>
@@ -314,7 +314,7 @@
                                     <span class="font-semibold text-slate-800 dark:text-slate-100" x-text="e.title"></span>
                                 </div>
                             </td>
-                            <td class="px-4 py-3">
+                            <td class="px-4 py-3 hidden md:table-cell">
                                 <span class="inline-flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                                     <span class="nui-cat-icon" :style="'background:' + (e.category_color || '#6366f1') + '22;color:' + (e.category_color || '#6366f1')">
                                         <template x-if="e.category_icon_svg">
@@ -327,7 +327,7 @@
                                     <span x-text="e.category_name"></span>
                                 </span>
                             </td>
-                            <td class="px-4 py-3 text-slate-500" x-text="e.lead_name || '—'"></td>
+                            <td class="px-4 py-3 text-slate-500 hidden lg:table-cell" x-text="e.lead_name || '—'"></td>
                             <td class="px-4 py-3 font-bold tabular-nums whitespace-nowrap"
                                 :class="e.entry_type === 'income' ? 'text-emerald-500' : 'text-red-500'"
                                 x-text="(e.entry_type === 'expense' ? '− ' : '+ ') + fmtMoney(e.amount)"></td>

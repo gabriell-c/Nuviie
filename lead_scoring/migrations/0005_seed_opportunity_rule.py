@@ -1,8 +1,8 @@
-"""Adiciona regra de pontuação para leads "oportunidade" (sem site + contato)."""
+"""Adiciona a regra de 'Oportunidade' ao score oficial e recalcula os leads."""
 
 from django.db import migrations
 
-RULE_NAME = 'Oportunidade (negócio ativo sem site)'
+RULE_NAME = 'Oportunidade (sem site + contato)'
 
 
 def seed_opportunity_rule(apps, schema_editor):
@@ -15,8 +15,9 @@ def seed_opportunity_rule(apps, schema_editor):
     rule = ScoringRule.objects.create(
         name=RULE_NAME,
         description=(
-            'Negócio comercial/ativo, com forma de contato e sem site próprio — '
-            'o perfil ideal para vender um site.'
+            'Lead quente para a agência: não tem site próprio, tem um canal de '
+            'contato (telefone/WhatsApp ou e-mail) e está ativo ou é conta '
+            'profissional. Forte sinal de venda.'
         ),
         points=25,
         priority=110,
@@ -48,6 +49,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('lead_scoring', '0004_scoringrule_scope'),
+        ('leads', '0010_lead_email'),
     ]
 
     operations = [

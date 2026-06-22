@@ -68,8 +68,6 @@ FIELD_REGISTRY: list[dict[str, Any]] = [
          ('perdido', 'Perdido'),
      ]},
     {'path': 'is_verified', 'label': 'Verificado (Instagram)', 'type': 'boolean'},
-    {'path': 'amenities.is_business_account', 'label': 'Conta comercial/profissional', 'type': 'boolean'},
-    {'path': 'amenities.engagement_rate', 'label': 'Taxa de engajamento (%)', 'type': 'number'},
     {'path': 'is_opportunity', 'label': 'Oportunidade (sem site + contato)', 'type': 'boolean'},
 ]
 
@@ -177,32 +175,21 @@ def _recent_reviews_count(lead) -> int | None:
     return None
 
 
-def is_opportunity(lead) -> bool:
-    """Sinal de "lead quente": negócio ativo/comercial, com forma de contato e
-    SEM site próprio (logo, candidato ideal para vender um site).
+def compute_is_opportunity(lead) -> bool:
+    """Lead 'quente' para uma agência: sem site próprio, com contato e ativo/profissional.
 
-    Confia na flag pré-calculada pela extensão (amenities.is_opportunity) quando
-    existir; caso contrário deriva server-side a partir dos campos disponíveis.
+    Espelha a heurística da extensão (map-lead.js) mas roda no servidor, então
+    vale para leads de qualquer origem (não só os que vieram com amenities prontos).
     """
-    amenities = lead.amenities if isinstance(lead.amenities, dict) else {}
-
-    flag = amenities.get('is_opportunity')
-    if isinstance(flag, bool):
-        return flag
-
+    website = getattr(lead, 'website', None)
     website_type = getattr(lead, 'website_detected_type', None)
-    has_real_site = website_type == 'website'
+    has_real_site = bool(website and website_type == 'website')
 
-    has_contact = bool(
-        getattr(lead, 'normalized_phone', None)
-        or getattr(lead, 'phone_number', None)
-        or getattr(lead, 'email', None)
-        or amenities.get('whatsapp_number')
-    )
+    has_contact = bool(getattr(lead, 'normalized_phone', None) or getattr(lead, 'email', None))
 
+    amenities = lead.amenities if isinstance(getattr(lead, 'amenities', None), dict) else {}
     is_professional = bool(
-        amenities.get('is_business_account')
-        or amenities.get('is_professional_account')
+        amenities.get('is_business_account') or amenities.get('is_professional_account')
     )
 
     days = _days_since_latest_post(lead)
@@ -220,7 +207,7 @@ def get_field_value(lead, field_path: str) -> Any:
     if field_path == 'recent_reviews_count':
         return _recent_reviews_count(lead)
     if field_path == 'is_opportunity':
-        return is_opportunity(lead)
+        return compute_is_opportunity(lead)
 
     if '.' in field_path:
         root, nested = field_path.split('.', 1)

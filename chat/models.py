@@ -13,13 +13,11 @@ class Conversation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-    memory_summary = models.TextField(
-        blank=True, default='',
-        help_text='Resumo rolante das mensagens antigas, usado como memória de longo prazo do agente.',
-    )
-    summary_until_id = models.PositiveIntegerField(
+    # Memória de longo prazo: resumo rolante das mensagens mais antigas.
+    summary = models.TextField(blank=True, default='')
+    summary_message_count = models.PositiveIntegerField(
         default=0,
-        help_text='ID da última mensagem já incluída no resumo de memória.',
+        help_text='Quantas das mensagens mais antigas já estão consolidadas no resumo.',
     )
 
     class Meta:

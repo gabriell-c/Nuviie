@@ -89,6 +89,17 @@
                 </div>
             </div>
 
+            <!-- Opportunity toggle -->
+            <button type="button" @click="toggleOpportunity()"
+                    class="nui-select-trigger nui-input-compact !w-auto"
+                    :class="filters.opportunity ? 'open ring-1 ring-amber-400' : ''"
+                    title="Mostrar só oportunidades (sem site + contato)">
+                <span class="flex items-center gap-1.5 truncate text-xs">
+                    <i class="fa-solid fa-bolt text-[10px]" :class="filters.opportunity ? 'text-amber-500' : 'text-slate-400'"></i>
+                    <span x-text="filters.opportunity ? 'Só oportunidades' : 'Oportunidades'"></span>
+                </span>
+            </button>
+
             <!-- Score Sort -->
             <div class="relative">
                 <button type="button" @click="filterUi.sortOpen = !filterUi.sortOpen"
@@ -110,17 +121,6 @@
                     </button>
                 </div>
             </div>
-
-            <!-- Opportunity Filter -->
-            <button type="button" @click="filters.onlyOpportunities = !filters.onlyOpportunities"
-                    class="nui-input-compact !w-auto inline-flex items-center gap-1.5 text-xs transition"
-                    :class="filters.onlyOpportunities
-                        ? 'bg-orange-500 text-white border-orange-500'
-                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800'"
-                    title="Mostrar apenas leads quentes: negócio ativo, com contato e sem site próprio">
-                <i class="fa-solid fa-fire text-[11px]" :class="filters.onlyOpportunities ? 'text-white' : 'text-orange-500'"></i>
-                <span>Só oportunidades</span>
-            </button>
 
             <!-- Export Buttons -->
             <div class="flex items-center space-x-2 border-l border-slate-200 dark:border-slate-800 pl-3">
@@ -1519,8 +1519,8 @@
                 search: '',
                 source: '',
                 has_site: '',
-                ordering: '-created_at',
-                onlyOpportunities: false
+                opportunity: false,
+                ordering: '-created_at'
             },
             
             newLeadForm: {
@@ -1613,9 +1613,13 @@
                 return c ? ((c.client_name || c.name) + ' — ' + c.created_at) : 'Associar contrato...';
             },
             
+            toggleOpportunity() {
+                this.filters.opportunity = !this.filters.opportunity;
+            },
+
             applyClientFilters(items) {
-                if (this.filters.onlyOpportunities) {
-                    items = items.filter(l => l.is_opportunity);
+                if (this.filters.opportunity) {
+                    return items.filter(l => l.is_opportunity);
                 }
                 return items;
             },

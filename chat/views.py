@@ -104,18 +104,21 @@ REGRAS ABSOLUTAS:
 
 _SYSTEM_MSG = {"role": "system", "content": SYSTEM_PROMPT}
 MAX_HISTORY_MESSAGES = 16
+# A cada SUMMARY_CHUNK mensagens antigas "saídas" da janela recente, atualizamos o resumo.
+SUMMARY_CHUNK = 8
 
-# Memória de longo prazo: quantas mensagens recentes mantemos na íntegra e a
-# partir de quantas mensagens antigas passamos a condensar num resumo rolante.
-RECENT_WINDOW = 12
 SUMMARY_SYSTEM_PROMPT = (
-    "Você é um assistente que mantém a MEMÓRIA de uma conversa de vendas no WhatsApp. "
-    "A partir do resumo atual e das novas mensagens, escreva um resumo único, curto e objetivo "
-    "(no máximo ~150 palavras) em português do Brasil, em texto corrido. "
-    "Capture e atualize: nome do cliente, tipo de negócio, dores/necessidades, serviço de interesse, "
-    "estágio da negociação, objeções levantadas, se o briefing já foi enviado, preferências de tom "
-    "e qualquer compromisso ou próximo passo combinado. "
-    "Não invente nada, não dê conselhos, não cumprimente — apenas o resumo factual."
+    "Você é um assistente que mantém a MEMÓRIA de longo prazo de uma conversa de "
+    "vendas pelo WhatsApp entre um atendente da Nuviie e um cliente. Sua tarefa é "
+    "produzir/atualizar um resumo conciso e factual, em português do Brasil, que o "
+    "atendente vai reler para lembrar do cliente nas próximas mensagens.\n\n"
+    "Capture e mantenha apenas o que importa: nome do cliente, nome/tipo do negócio, "
+    "nicho, cidade, problemas e dores mencionados, orçamento/limitações, preferências, "
+    "objeções levantadas, o que já foi oferecido/combinado, e próximos passos. "
+    "Se a pessoa não é o decisor, registre isso.\n\n"
+    "Regras: reescreva um resumo único e atualizado (não acumule repetições), use no "
+    "máximo ~180 palavras, tópicos curtos, sem floreio e sem inventar nada que não "
+    "esteja nas mensagens. Não inclua saudações nem comentários — só o resumo."
 )
 
 _ollama_session = requests.Session()
@@ -129,76 +132,111 @@ _ollama_session.mount("https://", _adapter)
 
 
 def _build_ollama_messages(conversation):
-    rows = (
+    """Monta o contexto: system + resumo de longo prazo + mensagens recentes.
+
+    Tudo que já foi consolidado em `summary` (as `summary_message_count` mensagens
+    mais antigas) sai da janela recente, mantendo o contexto enxuto mas com memória.
+    """
+    covered = conversation.summary_message_count or 0
+    rows = list(
         conversation.messages
-        .order_by('-created_at')
-        .values_list('role', 'content')[:RECENT_WINDOW]
+        .order_by('created_at')
+        .values_list('role', 'content')
     )
+    recent = rows[covered:]
+
     history = []
-    for role, content in reversed(rows):
+    for role, content in recent:
         if role == 'user':
             history.append({"role": "user", "content": f"/no_think {content}"})
         else:
             history.append({"role": role, "content": content})
 
     messages = [_SYSTEM_MSG]
-    summary = (conversation.memory_summary or '').strip()
+    summary = (conversation.summary or '').strip()
     if summary:
         messages.append({
             "role": "system",
             "content": (
-                "MEMÓRIA DA CONVERSA (contexto anterior já resumido, use para personalizar "
-                f"e não repetir perguntas): {summary}"
+                "MEMÓRIA DA CONVERSA (resumo do que já foi conversado antes — "
+                "use para lembrar do cliente, não repita perguntas já respondidas):\n"
+                + summary
             ),
         })
     return messages + history
 
 
-def _update_memory_summary(conversation):
-    """Condensa mensagens antigas num resumo rolante (memória de longo prazo).
-
-    Roda em background após salvar a resposta, então não adiciona latência ao
-    cliente. É idempotente: só processa mensagens ainda não resumidas.
-    """
+def _call_ollama_summary(summary_messages):
+    """Chamada dedicada ao Ollama só para gerar/atualizar o resumo (memória)."""
     try:
-        rows = list(
-            conversation.messages
-            .order_by('created_at')
-            .values_list('id', 'role', 'content')
+        resp = _ollama_session.post(
+            OLLAMA_URL,
+            json={
+                "model": OLLAMA_MODEL,
+                "messages": summary_messages,
+                "stream": False,
+                "think": False,
+                "options": {
+                    "num_ctx": 8192,
+                    "num_predict": 280,
+                    "temperature": 0.3,
+                    "top_p": 0.9,
+                },
+            },
+            timeout=TOTAL_TIMEOUT,
         )
-        if len(rows) <= RECENT_WINDOW:
-            return
-
-        older = rows[:-RECENT_WINDOW]
-        to_summarize = [r for r in older if r[0] > (conversation.summary_until_id or 0)]
-        if not to_summarize:
-            return
-
-        transcript = "\n".join(
-            f"{'Cliente' if role == 'user' else 'Vendedor'}: {content}"
-            for _id, role, content in to_summarize
-        )
-        current_summary = (conversation.memory_summary or '').strip() or '(sem resumo ainda)'
-        user_prompt = (
-            f"Resumo atual:\n{current_summary}\n\n"
-            f"Novas mensagens para incorporar:\n{transcript}\n\n"
-            "Devolva apenas o resumo atualizado."
-        )
-        summary_messages = [
-            {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ]
-        new_summary, error = _call_ollama(summary_messages)
-        if error or not new_summary:
-            return
-
-        last_id = to_summarize[-1][0]
-        Conversation.objects.filter(pk=conversation.pk).update(
-            memory_summary=new_summary.strip(),
-            summary_until_id=last_id,
-        )
+        resp.raise_for_status()
+        text = resp.json().get('message', {}).get('content', '').strip()
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+        return text or None
     except Exception:
-        logger.exception("Falha ao atualizar memória da conversa")
+        logger.exception("Falha ao gerar resumo da conversa")
+        return None
+
+
+def _maybe_summarize(conversation):
+    """Consolida mensagens antigas no resumo quando a janela recente cresce demais.
+
+    Roda de forma incremental e idempotente: só atualiza quando há pelo menos
+    SUMMARY_CHUNK mensagens novas a consolidar, evitando chamadas desnecessárias.
+    """
+    rows = list(
+        conversation.messages
+        .order_by('created_at')
+        .values_list('role', 'content')
+    )
+    total = len(rows)
+    target = max(0, total - MAX_HISTORY_MESSAGES)
+    covered = conversation.summary_message_count or 0
+
+    if target - covered < SUMMARY_CHUNK:
+        return
+
+    to_fold = rows[covered:target]
+    convo_text = "\n".join(
+        f"{'Cliente' if role == 'user' else 'Atendente'}: {content}"
+        for role, content in to_fold
+    )
+
+    previous = (conversation.summary or '').strip()
+    user_parts = []
+    if previous:
+        user_parts.append("Resumo atual:\n" + previous)
+    user_parts.append("Novas mensagens a incorporar:\n" + convo_text)
+    user_parts.append("Reescreva o resumo atualizado (único, conciso).")
+
+    summary_messages = [
+        {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+        {"role": "user", "content": "\n\n".join(user_parts)},
+    ]
+
+    new_summary = _call_ollama_summary(summary_messages)
+    if not new_summary:
+        return
+
+    conversation.summary = new_summary
+    conversation.summary_message_count = target
+    conversation.save(update_fields=['summary', 'summary_message_count'])
 
 
 def _auto_title(conversation):
@@ -432,7 +470,10 @@ def send_message(request):
                 _save_assistant_message(conversation, ai_text)
             except Exception:
                 logger.exception("Falha ao salvar resposta do assistente")
-            _update_memory_summary(conversation)
+            try:
+                _maybe_summarize(conversation)
+            except Exception:
+                logger.exception("Falha ao atualizar memória da conversa")
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()

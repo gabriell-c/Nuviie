@@ -573,41 +573,25 @@ def bulk_import_leads_view(request):
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
-def existing_handles_view(request):
-    """Retorna os identificadores de leads já existentes (Instagram handles,
-    telefones normalizados e domínios) para a extensão evitar re-extrair.
+def extension_existing_handles_view(request):
+    """Lista os @handles de Instagram já no CRM, para a extensão evitar re-extrair.
 
-    Autenticado pelo mesmo token da extensão (X-Nuviie-Token).
+    Autenticado pelo mesmo token da extensão (X-Nuviie-Token). Retorna handles
+    normalizados (minúsculos, sem @) para dedup do lado do scraper.
     """
     expected = getattr(settings, 'NUVIIE_EXTENSION_TOKEN', '')
     token = request.headers.get('X-Nuviie-Token', '')
     if not expected or token != expected:
         return Response({'error': 'Token inválido ou não configurado.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    user = _extension_import_user()
-    if not user:
-        return Response(
-            {'error': 'Usuário NUVIIE_EXTENSION_USER não encontrado.'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-    handles = set()
-    qs = Lead.objects.filter(user=user).values_list('instagram', 'maps_url', 'amenities')
-    for instagram, maps_url, amenities in qs.iterator(chunk_size=500):
-        if instagram:
-            handles.add(str(instagram).strip().lstrip('@').lower())
-        # Leads do Instagram às vezes guardam a URL no maps_url
-        if maps_url and 'instagram.com/' in maps_url:
-            slug = maps_url.split('instagram.com/', 1)[1].strip('/').split('/')[0].split('?')[0]
-            if slug:
-                handles.add(slug.lower())
-        if isinstance(amenities, dict):
-            amen_handle = amenities.get('instagram_handle') or amenities.get('username')
-            if amen_handle:
-                handles.add(str(amen_handle).strip().lstrip('@').lower())
-
-    handles.discard('')
-    return Response({'handles': sorted(handles), 'count': len(handles)})
+    raw = (
+        Lead.objects.filter(source='instagram')
+        .exclude(instagram__isnull=True)
+        .exclude(instagram='')
+        .values_list('instagram', flat=True)
+    )
+    handles = sorted({str(h).strip().lstrip('@').lower() for h in raw if h and str(h).strip()})
+    return Response({'handles': handles, 'count': len(handles)})
 
 
 @login_required

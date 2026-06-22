@@ -316,26 +316,9 @@ const NuviieInstagramRunner = {
   formatEnrichStats(saved, filtered, failed, skipped) {
     const parts = [`${saved} extraídos`];
     if (filtered) parts.push(`${filtered} filtrados`);
-    if (skipped) parts.push(`${skipped} já no banco`);
+    if (skipped) parts.push(`${skipped} já no CRM`);
     if (failed) parts.push(`${failed} falhas`);
     return parts.join(', ');
-  },
-
-  async fetchExistingHandles(options) {
-    const url = (options.nuviieUrl || '').replace(/\/$/, '');
-    const token = options.nuviieToken || '';
-    if (!url || !token || options.dedupRemote === false) return new Set();
-    try {
-      const resp = await fetch(`${url}/api/leads/existing-handles/`, {
-        headers: { 'X-Nuviie-Token': token },
-      });
-      if (!resp.ok) return new Set();
-      const data = await resp.json();
-      return new Set((data.handles || []).map((h) => String(h).replace(/^@/, '').toLowerCase()));
-    } catch (e) {
-      console.warn('[NuviieInstagram] Dedup contra o banco indisponível:', e);
-      return new Set();
-    }
   },
 
   async enrichHandles(initialHandles, options, igTabId) {
@@ -343,19 +326,23 @@ const NuviieInstagramRunner = {
     let withPhoto = 0;
     let filtered = 0;
     let failed = 0;
-    let skippedExisting = 0;
     let consecutiveFailures = 0;
 
     const filters = options.filters || {};
     const snowball = options.snowball !== false;
     const target = Math.max(1, parseInt(options.limit, 10) || initialHandles.length || 20);
 
-    // Dedup contra o banco: handles que já viraram lead não são re-extraídos.
-    const existing = await this.fetchExistingHandles(options);
+    // Dedup contra o banco: handles que já existem no CRM são pulados.
+    const skip = options.existingHandles instanceof Set ? options.existingHandles : new Set();
+    const norm = (h) => String(h || '').replace(/^@/, '').toLowerCase();
+    const initial = initialHandles.filter((h) => !skip.has(norm(h)));
+    let skippedExisting = initialHandles.length - initial.length;
 
     // Fila dinâmica: o snowball adiciona perfis parecidos enquanto faltam leads.
-    const queue = [...initialHandles];
-    const seen = new Set(initialHandles.map((h) => String(h).replace(/^@/, '').toLowerCase()));
+    const queue = [...initial];
+    const seen = new Set(initial.map(norm));
+    // Marca os já existentes como "vistos" para o snowball também não os re-enfileirar.
+    for (const s of skip) seen.add(s);
     let processed = 0;
     // Teto de segurança para não rodar indefinidamente quando os filtros são severos.
     const maxProcess = snowball ? Math.max(target * 8, 80) : queue.length;
@@ -378,14 +365,6 @@ const NuviieInstagramRunner = {
       if (this.state.stopRequested) break;
 
       const handle = queue.shift();
-      const handleNorm = String(handle).replace(/^@/, '').toLowerCase();
-
-      // Pula perfis que já existem no banco (economiza tempo e reduz risco de bloqueio).
-      if (existing.has(handleNorm)) {
-        skippedExisting += 1;
-        continue;
-      }
-
       processed += 1;
       const raw = await this.fetchProfileOnTab(igTabId, handle);
 
@@ -411,10 +390,10 @@ const NuviieInstagramRunner = {
         // Snowball: alimenta a fila com perfis parecidos ainda não vistos.
         if (snowball && Array.isArray(raw.related_profiles) && leads.length < target) {
           for (const rh of raw.related_profiles) {
-            const norm = String(rh || '').replace(/^@/, '').toLowerCase();
-            if (norm && !seen.has(norm) && !existing.has(norm)) {
-              seen.add(norm);
-              queue.push(norm);
+            const handleNorm = norm(rh);
+            if (handleNorm && !seen.has(handleNorm)) {
+              seen.add(handleNorm);
+              queue.push(handleNorm);
             }
           }
         }
@@ -441,6 +420,24 @@ const NuviieInstagramRunner = {
     }
 
     return { leads, filtered, failed, withPhoto, skippedExisting };
+  },
+
+  async fetchExistingHandles(options) {
+    const url = String(options.nuviieUrl || '').replace(/\/$/, '');
+    const token = options.nuviieToken || '';
+    if (!url || !token) return new Set();
+    try {
+      const resp = await fetch(`${url}/api/leads/existing-handles/`, {
+        method: 'GET',
+        headers: { 'X-Nuviie-Token': token },
+      });
+      if (!resp.ok) return new Set();
+      const data = await resp.json();
+      const handles = Array.isArray(data.handles) ? data.handles : [];
+      return new Set(handles.map((h) => String(h || '').replace(/^@/, '').toLowerCase()));
+    } catch (e) {
+      return new Set();
+    }
   },
 
   async run(options) {
@@ -487,16 +484,21 @@ const NuviieInstagramRunner = {
       };
       this.sendProgress();
 
+      let existingHandles = new Set();
+      if (options.skipExisting !== false) {
+        existingHandles = await this.fetchExistingHandles(options);
+      }
+
       igTab = await this.ensureInstagramTab();
       const enrichResult = await this.enrichHandles(
-        handles, { ...options, city, niche, limit }, igTab.id,
+        handles, { ...options, city, niche, limit, existingHandles }, igTab.id,
       );
       const leads = enrichResult.leads;
-      const { filtered, failed, withPhoto, skippedExisting } = enrichResult;
+      const { filtered, failed, withPhoto } = enrichResult;
 
       this.state.leads = leads;
       const stopped = this.state.stopRequested;
-      const stats = this.formatEnrichStats(leads.length, filtered, failed, skippedExisting);
+      const stats = this.formatEnrichStats(leads.length, filtered, failed);
       this.state.progress = {
         current: leads.length,
         total: Math.max(limit, leads.length),

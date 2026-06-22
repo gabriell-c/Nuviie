@@ -10,19 +10,15 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name='conversation',
-            name='memory_summary',
-            field=models.TextField(
-                blank=True,
-                default='',
-                help_text='Resumo rolante das mensagens antigas, usado como memória de longo prazo do agente.',
-            ),
+            name='summary',
+            field=models.TextField(blank=True, default=''),
         ),
         migrations.AddField(
             model_name='conversation',
-            name='summary_until_id',
+            name='summary_message_count',
             field=models.PositiveIntegerField(
                 default=0,
-                help_text='ID da última mensagem já incluída no resumo de memória.',
+                help_text='Quantas das mensagens mais antigas já estão consolidadas no resumo.',
             ),
         ),
     ]

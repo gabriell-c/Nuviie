@@ -17,18 +17,18 @@
     </div>
 
     <!-- Table Card list -->
-    <div class="glass-panel rounded-2xl p-6 shadow-md overflow-hidden">
+    <div class="glass-panel rounded-2xl p-4 sm:p-6 shadow-md overflow-hidden">
         <h3 class="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800 pb-3 mb-6 tracking-wider">Documentos Gerados</h3>
 
         {% if contracts %}
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
+        <div class="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+            <table class="w-full min-w-[560px] text-left text-xs">
                 <thead>
                     <tr class="text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-100 dark:border-slate-800/80">
                         <th class="pb-3 pl-2">Nome do Contrato</th>
-                        <th class="pb-3">Modelo Base</th>
+                        <th class="pb-3 hidden md:table-cell">Modelo Base</th>
                         <th class="pb-3">Data de Geração</th>
-                        <th class="pb-3">Campos Preenchidos</th>
+                        <th class="pb-3 hidden lg:table-cell">Campos Preenchidos</th>
                         <th class="pb-3 text-right pr-2">Ações</th>
                     </tr>
                 </thead>
@@ -42,17 +42,17 @@
                         </td>
                         
                         <!-- Base Template -->
-                        <td class="py-4 text-slate-500 dark:text-slate-400">
+                        <td class="py-4 text-slate-500 dark:text-slate-400 hidden md:table-cell">
                             {{ contract.template.name|default:"Modelo Removido" }}
                         </td>
                         
                         <!-- Created timestamp -->
-                        <td class="py-4 text-slate-450 dark:text-slate-500">
+                        <td class="py-4 text-slate-450 dark:text-slate-500 whitespace-nowrap">
                             {{ contract.created_at|date:"d/m/Y H:i" }}
                         </td>
                         
                         <!-- Filled fields list -->
-                        <td class="py-4">
+                        <td class="py-4 hidden lg:table-cell">
                             <div class="flex flex-wrap gap-1 max-w-xs">
                                 {% for key, val in contract.filled_data.items %}
                                 <span class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[9px] font-medium text-slate-600 dark:text-slate-400 truncate max-w-[120px]" title="{{ key }}: {{ val }}">
