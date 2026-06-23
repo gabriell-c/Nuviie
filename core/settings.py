@@ -230,6 +230,31 @@ WHATSAPP_WEBHOOK_TOKEN = os.environ.get('WHATSAPP_WEBHOOK_TOKEN', '')
 OLLAMA_URL             = os.environ.get('OLLAMA_URL', 'http://localhost:11434/api/chat')
 OLLAMA_MODEL           = os.environ.get('OLLAMA_MODEL', 'qwen2.5:7b')
 
+# ── IA / LLM (Atendente IA multi-provedor) ───────────────────────────────────
+# Modo padrão quando a conversa/instância está em "default": 'local' (Ollama) ou
+# 'cloud' (provedores de nuvem). O toggle na interface sobrescreve por conversa/número.
+AI_DEFAULT_MODE = os.environ.get('AI_DEFAULT_MODE', 'local').strip().lower()
+# Ordem da cadeia de fallback no modo nuvem (só entram os que tiverem API key).
+AI_CLOUD_CHAIN = _env_list('AI_CLOUD_CHAIN', ['openai', 'gemini', 'groq'])
+# Se a cadeia de nuvem falhar inteira, tentar o Ollama local? (padrão: não — o
+# toggle é uma escolha, não fallback). Ligue com AI_CLOUD_FALLBACK_LOCAL=true.
+AI_CLOUD_FALLBACK_LOCAL = _env_bool('AI_CLOUD_FALLBACK_LOCAL', default=False)
+AI_HTTP_TIMEOUT       = int(os.environ.get('AI_HTTP_TIMEOUT', 60))        # provedores de nuvem
+AI_HTTP_TIMEOUT_LOCAL = int(os.environ.get('AI_HTTP_TIMEOUT_LOCAL', 180))  # Ollama local
+
+# Provedores de nuvem (todos compatíveis com o formato OpenAI). Sem chave = desativado.
+OPENAI_API_KEY  = os.environ.get('OPENAI_API_KEY', '')
+OPENAI_MODEL    = os.environ.get('OPENAI_MODEL', '')   # ex.: gpt-4o-mini / gpt-5-mini
+OPENAI_BASE_URL = os.environ.get('OPENAI_BASE_URL', '')  # padrão: https://api.openai.com/v1
+
+GEMINI_API_KEY  = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_MODEL    = os.environ.get('GEMINI_MODEL', '')   # ex.: gemini-1.5-flash
+GEMINI_BASE_URL = os.environ.get('GEMINI_BASE_URL', '')  # padrão: .../v1beta/openai
+
+GROQ_API_KEY    = os.environ.get('GROQ_API_KEY', '')
+GROQ_MODEL      = os.environ.get('GROQ_MODEL', '')     # ex.: llama-3.3-70b-versatile
+GROQ_BASE_URL   = os.environ.get('GROQ_BASE_URL', '')  # padrão: https://api.groq.com/openai/v1
+
 # ── Playwright / Scraper ─────────────────────────────────────────────────────
 PLAYWRIGHT_BROWSERS_PATH = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '')
 MAPS_SCRAPER_TIMEOUT     = int(os.environ.get('MAPS_SCRAPER_TIMEOUT', 600))
@@ -291,6 +316,12 @@ LOGGING = {
             'propagate': False,
         },
         'whatsapp': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # IA / LLM — qual provedor respondeu, falhas e fallback
+        'ai': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,

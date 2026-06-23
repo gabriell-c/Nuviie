@@ -1009,6 +1009,17 @@
       <div class="topbar-divider"></div>
       <span class="chat-conv-title" id="conv-title-display">{{ active_conversation.title }}</span>
 
+      <label for="ai-mode-select" style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);">
+        <span title="Escolha o motor da IA: Nuvem (GPT/Gemini/Groq) ou Local (Ollama).">Motor da IA</span>
+        <select id="ai-mode-select"
+                onchange="setAiMode(this.value)"
+                style="font-size:11px;padding:4px 8px;border-radius:8px;border:1px solid var(--border,#334155);background:var(--bg-input,#0f172a);color:inherit;cursor:pointer;">
+          <option value="default">Padrão</option>
+          <option value="cloud">Nuvem (GPT/Gemini/Groq)</option>
+          <option value="local">Local (Ollama)</option>
+        </select>
+      </label>
+
       <div class="topbar-model-badge">AI</div>
     </div>
 
@@ -1150,6 +1161,17 @@
   const USER_PHOTO = '{% if request.user.profile_picture %}{{ request.user.profile_picture.url }}{% endif %}';
 
   let currentConvId = ACTIVE_CONV_ID;
+  let currentAiMode = '{{ active_conversation.ai_mode|default:"default" }}';
+
+  // Sincroniza o seletor de motor da IA com a conversa atual.
+  function applyAiModeToSelect() {
+    const sel = document.getElementById('ai-mode-select');
+    if (sel) sel.value = currentAiMode || 'default';
+  }
+  function setAiMode(mode) {
+    currentAiMode = mode || 'default';
+  }
+  document.addEventListener('DOMContentLoaded', applyAiModeToSelect);
 
   // ── Sidebar mobile ──
   function toggleSidebar() {
@@ -1359,7 +1381,7 @@
           'Content-Type': 'application/json',
           'X-CSRFToken': CSRF_TOKEN,
         },
-        body: JSON.stringify({ conversation_id: currentConvId, message: text }),
+        body: JSON.stringify({ conversation_id: currentConvId, message: text, ai_mode: currentAiMode }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1510,6 +1532,8 @@
     });
 
     document.getElementById('conv-title-display').textContent = data.title;
+    currentAiMode = data.ai_mode || 'default';
+    applyAiModeToSelect();
 
     if (data.messages.length === 0) {
       const es = document.createElement('div');

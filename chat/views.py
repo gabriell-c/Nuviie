@@ -1,25 +1,22 @@
 import json
 import logging
-import re
 import threading
 
-import requests
-from django.conf import settings
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST, require_GET
 from django.utils import timezone
 
+from ai.service import AIUnavailable, busy_message, generate_reply
+
 from .models import Conversation, Message
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = getattr(settings, 'OLLAMA_URL', 'http://localhost:11434/api/chat')
-OLLAMA_MODEL = getattr(settings, 'OLLAMA_MODEL', 'qwen2.5:7b')
+VALID_AI_MODES = ('default', 'cloud', 'local')
 
 SLOW_RESPONSE_THRESHOLD = 90
-TOTAL_TIMEOUT = 180
 PROVISIONAL_REPLY = "Deixa eu verificar isso direitinho pra te dar a melhor resposta 😊"
 
 SYSTEM_PROMPT = """Você é um consultor comercial da Nuviie, agência especializada em sites, sistemas web, automações e soluções digitais. Atende pelo WhatsApp e conduz o cliente, com naturalidade, até o formulário de briefing. Você é um vendedor excelente: consultivo, humano e genuinamente interessado em resolver o problema do cliente — nunca um vendedor chato, insistente ou robótico.
@@ -121,21 +118,13 @@ SUMMARY_SYSTEM_PROMPT = (
     "esteja nas mensagens. Não inclua saudações nem comentários — só o resumo."
 )
 
-_ollama_session = requests.Session()
-_adapter = requests.adapters.HTTPAdapter(
-    pool_connections=4,
-    pool_maxsize=16,
-    max_retries=0,
-)
-_ollama_session.mount("http://", _adapter)
-_ollama_session.mount("https://", _adapter)
-
-
-def _build_ollama_messages(conversation):
+def _build_messages(conversation):
     """Monta o contexto: system + resumo de longo prazo + mensagens recentes.
 
     Tudo que já foi consolidado em `summary` (as `summary_message_count` mensagens
     mais antigas) sai da janela recente, mantendo o contexto enxuto mas com memória.
+    As mensagens saem "limpas" (role/content) — prefixos específicos de provedor
+    (ex.: `/no_think` do Ollama) são aplicados na camada `ai`.
     """
     covered = conversation.summary_message_count or 0
     rows = list(
@@ -145,12 +134,7 @@ def _build_ollama_messages(conversation):
     )
     recent = rows[covered:]
 
-    history = []
-    for role, content in recent:
-        if role == 'user':
-            history.append({"role": "user", "content": f"/no_think {content}"})
-        else:
-            history.append({"role": role, "content": content})
+    history = [{"role": role, "content": content} for role, content in recent]
 
     messages = [_SYSTEM_MSG]
     summary = (conversation.summary or '').strip()
@@ -164,34 +148,6 @@ def _build_ollama_messages(conversation):
             ),
         })
     return messages + history
-
-
-def _call_ollama_summary(summary_messages):
-    """Chamada dedicada ao Ollama só para gerar/atualizar o resumo (memória)."""
-    try:
-        resp = _ollama_session.post(
-            OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": summary_messages,
-                "stream": False,
-                "think": False,
-                "options": {
-                    "num_ctx": 8192,
-                    "num_predict": 280,
-                    "temperature": 0.3,
-                    "top_p": 0.9,
-                },
-            },
-            timeout=TOTAL_TIMEOUT,
-        )
-        resp.raise_for_status()
-        text = resp.json().get('message', {}).get('content', '').strip()
-        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
-        return text or None
-    except Exception:
-        logger.exception("Falha ao gerar resumo da conversa")
-        return None
 
 
 def _maybe_summarize(conversation):
@@ -230,7 +186,17 @@ def _maybe_summarize(conversation):
         {"role": "user", "content": "\n\n".join(user_parts)},
     ]
 
-    new_summary = _call_ollama_summary(summary_messages)
+    try:
+        new_summary = generate_reply(
+            summary_messages,
+            mode=conversation.ai_mode,
+            options={"temperature": 0.3, "max_tokens": 280},
+        )
+    except AIUnavailable:
+        logger.info("Resumo da conversa adiado: IA indisponível.")
+        return
+
+    new_summary = (new_summary or '').strip()
     if not new_summary:
         return
 
@@ -252,54 +218,22 @@ def _auto_title(conversation):
         conversation.save(update_fields=['title'])
 
 
-def _call_ollama(ollama_messages):
+def _generate_chat_reply(conversation, messages):
+    """Gera a resposta do atendente via camada `ai` (nuvem/local conforme a conversa).
+
+    Retorna (texto, erro). Em qualquer falha, `texto` é None e `erro` é 'unavailable'
+    — o chamador então usa uma mensagem humana de "ocupado", nunca um erro técnico.
+    """
     try:
-        resp = _ollama_session.post(
-            OLLAMA_URL,
-            json={
-                "model": OLLAMA_MODEL,
-                "messages": ollama_messages,
-                "stream": False,
-                "think": False,
-                "options": {
-                    "num_ctx": 8192,
-                    "num_predict": 320,
-                    "temperature": 0.7,
-                    "repeat_penalty": 1.1,
-                    "top_p": 0.9,
-                },
-            },
-            timeout=TOTAL_TIMEOUT,
+        text = generate_reply(
+            messages,
+            mode=conversation.ai_mode,
+            options={"temperature": 0.7, "max_tokens": 320},
         )
-        resp.raise_for_status()
-        result = resp.json()
-        logger.debug("Ollama response: %s", result)
-        ai_text = result.get('message', {}).get('content', '').strip()
-        ai_text = re.sub(
-            r'<think>.*?</think>',
-            '', ai_text, flags=re.DOTALL,
-        ).strip()
-        if not ai_text:
-            logger.warning("Ollama retornou conteúdo vazio: %s", result)
-        return ai_text, None
-
-    except requests.exceptions.ConnectionError as exc:
-        logger.error("Ollama connection error: %s", exc)
-        return None, "connection_error"
-    except requests.exceptions.Timeout as exc:
-        logger.error("Ollama timeout: %s", exc)
-        return None, "timeout"
-    except Exception as exc:
-        logger.exception("Ollama unexpected error")
-        return None, f"error:{exc}"
-
-
-def _error_to_text(error_code):
-    if error_code == "connection_error":
-        return "⚠️ Não consegui conectar ao servidor. Certifique-se que o Ollama está rodando."
-    if error_code == "timeout":
-        return "⚠️ O servidor demorou muito para responder. Tente novamente em instantes."
-    return "⚠️ Ocorreu um erro inesperado. Por favor, tente novamente."
+        return (text or '').strip(), None
+    except AIUnavailable as exc:
+        logger.warning("Atendente IA indisponível: %s", exc)
+        return None, "unavailable"
 
 
 def _save_assistant_message(conversation, content):
@@ -345,7 +279,7 @@ def chat_home(request):
 @require_POST
 def new_conversation(request):
     conv = Conversation.objects.create(user=request.user, title='Nova Conversa')
-    return JsonResponse({'id': conv.id, 'title': conv.title})
+    return JsonResponse({'id': conv.id, 'title': conv.title, 'ai_mode': conv.ai_mode})
 
 
 @login_required
@@ -393,7 +327,7 @@ def load_messages(request, conv_id):
         }
         for m in msgs
     ]
-    return JsonResponse({'messages': data, 'title': conv.title})
+    return JsonResponse({'messages': data, 'title': conv.title, 'ai_mode': conv.ai_mode})
 
 
 @login_required
@@ -436,11 +370,17 @@ def send_message(request):
 
     conv_id = data.get('conversation_id')
     user_text = data.get('message', '').strip()
+    ai_mode = data.get('ai_mode')
 
     if not user_text:
         return JsonResponse({'error': 'Mensagem vazia'}, status=400)
 
     conversation = get_object_or_404(Conversation, id=conv_id, user=request.user)
+
+    # Persiste o modo escolhido no toggle (nuvem x local), se válido.
+    if ai_mode in VALID_AI_MODES and ai_mode != conversation.ai_mode:
+        conversation.ai_mode = ai_mode
+        conversation.save(update_fields=['ai_mode'])
 
     Message.objects.create(
         conversation=conversation,
@@ -456,11 +396,11 @@ def send_message(request):
         .first()
     )
 
-    ollama_messages = _build_ollama_messages(conversation)
+    chat_messages = _build_messages(conversation)
     result_holder = {"ai_text": None, "error": None, "done": False}
 
     def _run():
-        ai_text, error = _call_ollama(ollama_messages)
+        ai_text, error = _generate_chat_reply(conversation, chat_messages)
         result_holder["ai_text"] = ai_text
         result_holder["error"] = error
         result_holder["done"] = True
@@ -486,7 +426,7 @@ def send_message(request):
         error = result_holder["error"]
 
         if not ai_text and error:
-            ai_text = _error_to_text(error)
+            ai_text = busy_message()
             _save_assistant_message(conversation, ai_text)
 
         if is_new_conversation:

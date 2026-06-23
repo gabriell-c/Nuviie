@@ -21,6 +21,7 @@ from .serializers import WhatsAppInstanceSerializer, WhatsAppMessageSerializer
 from .services import (
     EvolutionClient,
     EvolutionError,
+    dispatch_text,
     get_default_instance,
     normalize_number,
     store_incoming_message,
@@ -203,27 +204,42 @@ class WhatsAppMessageViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        msg = WhatsAppMessage.objects.create(
-            instance=inst, user=request.user, lead=lead,
-            direction='out', phone=phone, message_type='text',
-            text=text, status='pending', timestamp=timezone.now(),
-        )
-
-        client = EvolutionClient(inst)
-        try:
-            result = client.send_text(phone, text)
-        except EvolutionError as exc:
-            msg.status = 'failed'
-            msg.error = str(exc)
-            msg.save(update_fields=['status', 'error'])
-            return Response({'error': str(exc), 'message': WhatsAppMessageSerializer(msg).data},
+        msg = dispatch_text(request.user, inst, phone, text, lead=lead)
+        if msg.status == 'failed':
+            return Response({'error': msg.error, 'message': WhatsAppMessageSerializer(msg).data},
                             status=status.HTTP_502_BAD_GATEWAY)
-
-        msg.status = 'sent'
-        msg.evolution_id = (result.get('key') or {}).get('id', '') or ''
-        msg.raw = result
-        msg.save(update_fields=['status', 'evolution_id', 'raw'])
         return Response(WhatsAppMessageSerializer(msg).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='suggest')
+    def suggest(self, request):
+        """Gera um rascunho de resposta com a IA (não envia) para você revisar."""
+        from ai.service import AIUnavailable, busy_message
+        from .ai_reply import generate_draft
+
+        phone = normalize_number(request.data.get('phone') or '')
+        lead_id = request.data.get('lead')
+        instance_id = request.data.get('instance')
+
+        if not phone and lead_id:
+            lead = Lead.objects.filter(user=request.user, id=lead_id).first()
+            if lead:
+                phone = normalize_number(lead.normalized_phone or lead.phone_number)
+        if not phone:
+            return Response({'error': 'Número de destino ausente.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if instance_id:
+            inst = WhatsAppInstance.objects.filter(user=request.user, id=instance_id).first()
+        else:
+            inst = get_default_instance(request.user)
+
+        try:
+            draft = generate_draft(request.user, inst, phone)
+        except AIUnavailable:
+            return Response(
+                {'error': busy_message()},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({'draft': (draft or '').strip()})
 
 
 # ── Webhook (Evolution → Nuviie) ──────────────────────────────────────────────
@@ -253,14 +269,25 @@ def evolution_webhook(request):
         data = payload.get('data') or {}
         items = data if isinstance(data, list) else [data]
         stored = 0
+        last_msg = None
         for item in items:
             try:
                 msg, created = store_incoming_message(user=user, instance=inst, payload_data=item)
                 if created:
                     stored += 1
+                    last_msg = msg
                     _notify_incoming(user, msg)
             except Exception:
                 logger.exception('Falha ao armazenar mensagem recebida')
+
+        # Auto-resposta por IA (opt-in por número). Roda em background.
+        if last_msg and inst and inst.ai_autoreply_enabled and last_msg.text:
+            try:
+                from .ai_reply import autoreply_async
+                autoreply_async(user, inst, last_msg.phone, lead=last_msg.lead)
+            except Exception:
+                logger.exception('Falha ao agendar auto-resposta WhatsApp')
+
         return _json({'ok': True, 'stored': stored})
 
     if event == 'connection.update' and inst:

@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from ai.service import AIUnavailable
 from leads.models import Lead
 
 from .models import WhatsAppInstance, WhatsAppMessage
@@ -126,3 +127,82 @@ class SendTests(TestCase):
         self.assertEqual(msg.status, 'sent')
         self.assertEqual(msg.lead, self.lead)
         mock_send.assert_called_once()
+
+
+class AIAutoreplyTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='admin', password='x')
+        self.inst = WhatsAppInstance.objects.create(
+            user=self.user, name='Comercial', instance_name='nuviie-1',
+            status='connected', is_default=True,
+            api_url='http://evo.local', api_key='k',
+            ai_autoreply_enabled=True,
+        )
+
+    def _payload(self):
+        return {
+            'event': 'messages.upsert',
+            'instance': 'nuviie-1',
+            'data': {
+                'key': {'remoteJid': '5511988887777@s.whatsapp.net', 'fromMe': False, 'id': 'IN1'},
+                'pushName': 'Cliente',
+                'message': {'conversation': 'Oi, quero um site!'},
+                'messageTimestamp': 1700000000,
+            },
+        }
+
+    @override_settings(WHATSAPP_WEBHOOK_TOKEN='secret-token')
+    @patch('whatsapp.ai_reply.autoreply_async')
+    def test_autoreply_triggered_when_enabled(self, mock_auto):
+        resp = self.client.post(
+            reverse('whatsapp_webhook'),
+            data=json.dumps(self._payload()),
+            content_type='application/json',
+            HTTP_AUTHORIZATION='Bearer secret-token',
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_auto.assert_called_once()
+
+    @override_settings(WHATSAPP_WEBHOOK_TOKEN='secret-token')
+    @patch('whatsapp.ai_reply.autoreply_async')
+    def test_autoreply_not_triggered_when_disabled(self, mock_auto):
+        self.inst.ai_autoreply_enabled = False
+        self.inst.save(update_fields=['ai_autoreply_enabled'])
+        resp = self.client.post(
+            reverse('whatsapp_webhook'),
+            data=json.dumps(self._payload()),
+            content_type='application/json',
+            HTTP_AUTHORIZATION='Bearer secret-token',
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_auto.assert_not_called()
+
+
+class SuggestTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='admin', password='x')
+        self.client.force_login(self.user)
+        self.inst = WhatsAppInstance.objects.create(
+            user=self.user, name='Comercial', instance_name='nuviie-1',
+            status='connected', is_default=True,
+        )
+
+    @patch('whatsapp.ai_reply.generate_reply', return_value='Posso te ajudar com isso! 😊')
+    def test_suggest_returns_draft(self, _mock):
+        resp = self.client.post(
+            reverse('whatsapp-message-suggest'),
+            data=json.dumps({'phone': '5511988887777'}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()['draft'], 'Posso te ajudar com isso! 😊')
+
+    @patch('whatsapp.ai_reply.generate_reply', side_effect=AIUnavailable('x'))
+    def test_suggest_returns_busy_when_unavailable(self, _mock):
+        resp = self.client.post(
+            reverse('whatsapp-message-suggest'),
+            data=json.dumps({'phone': '5511988887777'}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 503)
+        self.assertTrue(resp.json()['error'])

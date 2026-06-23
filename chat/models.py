@@ -13,6 +13,13 @@ class Conversation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    # Modo da IA para esta conversa (toggle nuvem x local).
+    AI_MODE_CHOICES = [
+        ('default', 'Padrão do sistema'),
+        ('cloud', 'Nuvem (GPT/Gemini/Groq)'),
+        ('local', 'Local (Ollama)'),
+    ]
+    ai_mode = models.CharField(max_length=10, choices=AI_MODE_CHOICES, default='default')
     # Memória de longo prazo: resumo rolante das mensagens mais antigas.
     summary = models.TextField(blank=True, default='')
     summary_message_count = models.PositiveIntegerField(

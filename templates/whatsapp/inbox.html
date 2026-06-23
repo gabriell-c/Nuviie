@@ -59,6 +59,25 @@
                         Desconectar
                     </button>
                 </div>
+                <!-- Atendente IA por número -->
+                <div class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <label class="flex items-center gap-2 cursor-pointer min-w-0">
+                        <input type="checkbox" :checked="inst.ai_autoreply_enabled"
+                               @change="toggleAutoreply(inst, $event.target.checked)"
+                               class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500/30">
+                        <span class="text-xs text-slate-600 dark:text-slate-300 truncate">
+                            <i class="fa-solid fa-robot mr-1 text-indigo-500"></i>Resposta automática (IA)
+                        </span>
+                    </label>
+                    <select :value="inst.ai_mode || 'default'"
+                            @change="setAiMode(inst, $event.target.value)"
+                            title="Motor da IA para este número"
+                            class="text-[11px] px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 shrink-0">
+                        <option value="default">Padrão</option>
+                        <option value="cloud">Nuvem</option>
+                        <option value="local">Local</option>
+                    </select>
+                </div>
             </div>
         </template>
         <template x-if="!instances.length">
@@ -151,6 +170,11 @@
                         </template>
                     </div>
                     <form @submit.prevent="send()" class="p-3 border-t border-slate-100 dark:border-slate-800 flex items-end gap-2">
+                        <button type="button" @click="suggest()" :disabled="suggesting"
+                                title="Sugerir resposta com IA (você revisa antes de enviar)"
+                                class="w-10 h-10 shrink-0 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 disabled:opacity-40 transition flex items-center justify-center">
+                            <i class="fa-solid" :class="suggesting ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+                        </button>
                         <textarea x-model="draft" rows="1" placeholder="Digite uma mensagem..."
                                   @keydown.enter.exact.prevent="send()"
                                   class="flex-1 resize-none px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none"></textarea>
@@ -231,6 +255,7 @@ function whatsappApp() {
         active: null,
         draft: '',
         sending: false,
+        suggesting: false,
         webhookConfigured: {{ webhook_configured|yesno:"true,false" }},
         showAdd: false,
         savingInstance: false,
@@ -335,6 +360,48 @@ function whatsappApp() {
                 await NuviieModal.alert(e.message, 'Falha ao enviar');
             } finally {
                 this.sending = false;
+            }
+        },
+        async suggest() {
+            if (!this.active || this.suggesting) return;
+            this.suggesting = true;
+            try {
+                const d = await this.api('/api/whatsapp/messages/suggest/', {
+                    method: 'POST',
+                    body: JSON.stringify({ phone: this.active.phone, lead: this.active.lead_id }),
+                });
+                if (d.draft) {
+                    this.draft = d.draft;
+                    this.$nextTick(() => { const el = document.querySelector('textarea[x-model="draft"]'); if (el) el.focus(); });
+                }
+            } catch (e) {
+                await NuviieModal.alert(e.message, 'IA indisponível');
+            } finally {
+                this.suggesting = false;
+            }
+        },
+        async toggleAutoreply(inst, enabled) {
+            try {
+                await this.api('/api/whatsapp/instances/' + inst.id + '/', {
+                    method: 'PATCH',
+                    body: JSON.stringify({ ai_autoreply_enabled: enabled }),
+                });
+                inst.ai_autoreply_enabled = enabled;
+            } catch (e) {
+                await NuviieModal.alert(e.message, 'Erro ao salvar');
+                await this.loadInstances();
+            }
+        },
+        async setAiMode(inst, mode) {
+            try {
+                await this.api('/api/whatsapp/instances/' + inst.id + '/', {
+                    method: 'PATCH',
+                    body: JSON.stringify({ ai_mode: mode }),
+                });
+                inst.ai_mode = mode;
+            } catch (e) {
+                await NuviieModal.alert(e.message, 'Erro ao salvar');
+                await this.loadInstances();
             }
         },
 

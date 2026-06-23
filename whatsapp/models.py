@@ -41,6 +41,22 @@ class WhatsAppInstance(models.Model):
     )
     is_active = models.BooleanField(default=True)
 
+    # ── Atendente IA por número ──────────────────────────────────────────────
+    AI_MODE_CHOICES = [
+        ('default', 'Padrão do sistema'),
+        ('cloud', 'Nuvem (GPT/Gemini/Groq)'),
+        ('local', 'Local (Ollama)'),
+    ]
+    ai_autoreply_enabled = models.BooleanField(
+        default=False,
+        verbose_name='Resposta automática por IA',
+        help_text='Se ligado, a IA responde sozinha as mensagens recebidas neste número.',
+    )
+    ai_mode = models.CharField(
+        max_length=10, choices=AI_MODE_CHOICES, default='default',
+        verbose_name='Modo da IA (nuvem x local)',
+    )
+
     last_qr_base64 = models.TextField(blank=True, default='')
     last_connected_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

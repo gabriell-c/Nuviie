@@ -204,6 +204,39 @@ def get_default_instance(user):
     return qs.filter(is_default=True).first() or qs.first()
 
 
+def dispatch_text(user, inst, phone, text, *, lead=None, delay=0):
+    """Envia um texto via Evolution e registra no histórico (direction='out').
+
+    Reutilizável pelo envio manual (inbox) e pela auto-resposta da IA. Nunca
+    levanta: em caso de falha, o WhatsAppMessage volta com status='failed' e o
+    erro preenchido, para o chamador decidir o que fazer.
+    """
+    from .models import WhatsAppMessage
+
+    phone = normalize_number(phone)
+    msg = WhatsAppMessage.objects.create(
+        instance=inst, user=user, lead=lead,
+        direction='out', phone=phone, message_type='text',
+        text=text, status='pending', timestamp=timezone.now(),
+    )
+
+    client = EvolutionClient(inst)
+    try:
+        result = client.send_text(phone, text, delay=delay)
+    except EvolutionError as exc:
+        msg.status = 'failed'
+        msg.error = str(exc)
+        msg.save(update_fields=['status', 'error'])
+        logger.warning('Falha ao enviar WhatsApp para %s: %s', phone, exc)
+        return msg
+
+    msg.status = 'sent'
+    msg.evolution_id = (result.get('key') or {}).get('id', '') or ''
+    msg.raw = result
+    msg.save(update_fields=['status', 'evolution_id', 'raw'])
+    return msg
+
+
 def find_lead_by_phone(user, phone):
     """Tenta casar um número com um lead pelo normalized_phone (com tolerância de DDI/9)."""
     from leads.models import Lead

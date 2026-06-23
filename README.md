@@ -229,21 +229,62 @@ Acesse: `/contracts/templates/`
 
 ---
 
-### 💬 Chat IA (Ollama)
+### 💬 Atendente IA (multi-provedor)
+
+O mesmo "cérebro" de IA atende o **Chat IA** (`/chat/`) e o **WhatsApp** (auto-resposta + rascunho assistido). Você escolhe o **motor** por um toggle:
+
+- 🌐 **Nuvem** — provedores compatíveis com a API da OpenAI, tentados em **cadeia de fallback**: `OpenAI (GPT) → Gemini → Groq`. Se o primeiro falhar, tenta o próximo automaticamente.
+- 💻 **Local** — modelo rodando na sua máquina via **Ollama** (custo zero, funciona offline).
+
+O toggle é uma **escolha**, não um fallback: se você está em *Nuvem* e **todos** os provedores falham (ou em *Local* o Ollama cai), o cliente recebe uma **mensagem humana de "ocupado"** (ex.: *"opa, aqui tá meio corrido agora, me dá 1 minutinho 🙏"*) — nunca um erro técnico.
+
+> Por padrão (`AI_DEFAULT_MODE=local`) tudo funciona out-of-the-box com o Ollama. Ligue a nuvem quando tiver as chaves.
+
+#### Opção A — Local (Ollama)
 
 ```bash
 ollama pull qwen2.5:7b
 ollama serve
 ```
 
-Configure no `.env` (opcional):
-
 ```env
+AI_DEFAULT_MODE=local
 OLLAMA_URL=http://localhost:11434/api/chat
 OLLAMA_MODEL=qwen2.5:7b
 ```
 
-Acesse `/chat/` — o Ollama **não é obrigatório** para leads e Kanban.
+#### Opção B — Nuvem (GPT / Gemini / Groq)
+
+Basta ter **pelo menos uma** API key. Só entram na cadeia os provedores que tiverem chave configurada, na ordem de `AI_CLOUD_CHAIN`.
+
+```env
+AI_DEFAULT_MODE=cloud
+AI_CLOUD_CHAIN=openai,gemini,groq
+
+# OpenAI (GPT)
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+
+# Gemini (endpoint compatível com OpenAI)
+GEMINI_API_KEY=AIza...
+GEMINI_MODEL=gemini-1.5-flash
+
+# Groq
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile
+```
+
+**Onde pegar cada chave (todas têm camada gratuita):**
+
+| Provedor | Onde criar a chave | Observação |
+|----------|--------------------|------------|
+| **OpenAI (GPT)** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Modelos `gpt-4o-mini`, `gpt-4o`, etc. (uso pago/crédito) |
+| **Gemini (Google)** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Camada gratuita generosa; usa o endpoint compatível com OpenAI |
+| **Groq** | [console.groq.com/keys](https://console.groq.com/keys) | Gratuito e muito rápido; modelos Llama/Mixtral |
+
+> Todos os 3 (e qualquer outro provedor "OpenAI-compatible") falam o mesmo formato `/chat/completions`, então **não é preciso instalar SDK nenhum** — tudo via `requests`.
+
+Acesse `/chat/` e use o seletor **"Motor da IA"** no topo para alternar entre *Nuvem* e *Local* (a escolha fica salva por conversa). A IA **não é obrigatória** para leads e Kanban.
 
 ---
 
@@ -259,6 +300,7 @@ Acesse `/chat/` — o Ollama **não é obrigatório** para leads e Kanban.
 - 🔗 **Vínculo automático** com o lead (casa o número, tolerante a DDI/9º dígito)
 - 🔔 Mensagem recebida vira **notificação** no sino do header
 - 🚀 Botão **WhatsApp CRM** no modal do lead abre a conversa já pronta
+- 🤖 **Atendente IA por número** (opcional): resposta automática e rascunho assistido
 
 **Pré-requisitos:**
 
@@ -280,6 +322,17 @@ Acesse `/chat/` — o Ollama **não é obrigatório** para leads e Kanban.
 
 > O OTP de recuperação de senha usa a instância única `EVOLUTION_INSTANCE`. Já o
 > módulo do CRM gerencia os números pela tela (não usa `EVOLUTION_INSTANCE`).
+
+**🤖 Atendente IA no WhatsApp (opcional):**
+
+Em cada número (card na tela `/whatsapp/`) você tem dois controles de IA:
+
+- **Resposta automática (IA)** — *desligada por padrão*. Quando ligada, toda mensagem recebida naquele número é respondida sozinha pela IA, usando o mesmo "vendedor" do Chat IA e o histórico da conversa como memória. Responde em background, com um pequeno atraso humano.
+- **Motor da IA** (Padrão / Nuvem / Local) — escolhe se aquele número usa a nuvem ou o Ollama local (igual ao toggle do Chat IA).
+
+Sem ligar a auto-resposta, você ainda pode usar o **rascunho assistido**: no inbox, clique no botão ✨ ao lado do campo de texto para a IA **sugerir** uma resposta — ela preenche o campo para você revisar/editar e enviar. Nada é enviado sem você confirmar.
+
+> A auto-resposta usa o webhook (precisa de `WHATSAPP_WEBHOOK_TOKEN` + URL pública). Se a IA estiver indisponível, o número simplesmente **não responde** naquele momento (não manda erro técnico ao cliente).
 
 ---
 
@@ -460,6 +513,8 @@ curl -X POST -u email@exemplo.com:senha \
 | GET | `/api/whatsapp/messages/conversations/` | Conversas agrupadas por telefone |
 | GET | `/api/whatsapp/messages/?lead={id}` | Mensagens de um lead (ou `?phone=`) |
 | POST | `/api/whatsapp/messages/send/` | Envia texto (`{lead, phone, text}`) |
+| POST | `/api/whatsapp/messages/suggest/` | Gera um rascunho de resposta com IA (`{phone, lead}`), sem enviar |
+| PATCH | `/api/whatsapp/instances/{id}/` | Atualiza o número (ex.: `ai_autoreply_enabled`, `ai_mode`) |
 | POST | `/api/whatsapp/webhook/` | Recebe eventos do Evolution (Bearer token) |
 
 ### Health check
@@ -485,8 +540,16 @@ Copie `.env.example` para `.env`:
 | `NUVIIE_EXTENSION_TOKEN` | Extensão | Token para `X-Nuviie-Token` | vazio |
 | `NUVIIE_EXTENSION_USER` | Extensão | Username Django que recebe os leads | `admin` |
 | `CORS_ALLOWED_ORIGINS` | Não | Origens CORS permitidas | vazio (DEBUG = aberto) |
-| `OLLAMA_URL` | Não | URL da API Ollama | `localhost:11434` |
-| `OLLAMA_MODEL` | Não | Modelo Ollama | `qwen2.5:7b` |
+| `OLLAMA_URL` | Não | URL da API Ollama (modo local) | `localhost:11434` |
+| `OLLAMA_MODEL` | Não | Modelo Ollama (modo local) | `qwen2.5:7b` |
+| `AI_DEFAULT_MODE` | Não | Motor padrão da IA: `local` ou `cloud` | `local` |
+| `AI_CLOUD_CHAIN` | Não | Ordem de fallback dos provedores de nuvem (CSV) | `openai,gemini,groq` |
+| `AI_CLOUD_FALLBACK_LOCAL` | Não | Se a nuvem falhar inteira, tentar o Ollama local? | `false` |
+| `AI_HTTP_TIMEOUT` | Não | Timeout (s) das chamadas de nuvem | `60` |
+| `AI_HTTP_TIMEOUT_LOCAL` | Não | Timeout (s) do Ollama local | `180` |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | IA nuvem | Credenciais GPT (sem chave = desativado) | — / `gpt-4o-mini` / API oficial |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` / `GEMINI_BASE_URL` | IA nuvem | Credenciais Gemini (endpoint compatível com OpenAI) | — / `gemini-1.5-flash` / API oficial |
+| `GROQ_API_KEY` / `GROQ_MODEL` / `GROQ_BASE_URL` | IA nuvem | Credenciais Groq | — / `llama-3.3-70b-versatile` / API oficial |
 | `EVOLUTION_API_URL` | WhatsApp | Endereço do servidor Evolution API (envio e recebimento) | simulado no console |
 | `EVOLUTION_API_KEY` | WhatsApp | API key global do Evolution | — |
 | `EVOLUTION_INSTANCE` | OTP | Instância única usada **só** pelo OTP de senha | — |

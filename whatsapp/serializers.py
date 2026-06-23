@@ -11,6 +11,7 @@ class WhatsAppInstanceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'instance_name', 'phone_number',
             'status', 'is_connected', 'is_default', 'is_active',
+            'ai_autoreply_enabled', 'ai_mode',
             'last_connected_at', 'created_at', 'updated_at',
         ]
         read_only_fields = [
