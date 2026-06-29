@@ -42,7 +42,7 @@ def generate_draft(user, inst, phone):
     messages = build_messages(user, phone)
     mode = getattr(inst, 'ai_mode', 'default') if inst else 'default'
     return generate_reply(
-        messages, mode=mode, options={'temperature': 0.7, 'max_tokens': 320},
+        messages, mode=mode, options={'temperature': 0.7, 'max_tokens': 200},
     )
 
 
