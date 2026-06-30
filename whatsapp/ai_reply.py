@@ -9,7 +9,7 @@ import threading
 import time
 
 from ai.service import AIUnavailable, generate_reply
-from chat.views import SYSTEM_PROMPT
+from chat.views import SYSTEM_PROMPT, TURN_REMINDER
 
 logger = logging.getLogger('ai')
 
@@ -34,6 +34,8 @@ def build_messages(user, phone):
     for direction, text in rows:
         role = 'user' if direction == 'in' else 'assistant'
         messages.append({'role': role, 'content': text})
+    # Lembrete por último (efeito recência): logo antes da geração.
+    messages.append({'role': 'system', 'content': TURN_REMINDER})
     return messages
 
 
@@ -42,7 +44,7 @@ def generate_draft(user, inst, phone):
     messages = build_messages(user, phone)
     mode = getattr(inst, 'ai_mode', 'default') if inst else 'default'
     return generate_reply(
-        messages, mode=mode, options={'temperature': 0.7, 'max_tokens': 200},
+        messages, mode=mode, options={'temperature': 0.5, 'max_tokens': 150},
     )
 
 
